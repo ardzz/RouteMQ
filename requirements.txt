@@ -1,0 +1,9 @@
+# Core dependencies for RouteMQ MQTT Framework
+python-dotenv==1.0.0
+paho-mqtt==1.6.1
+SQLAlchemy==2.0.23
+aiomysql==0.2.0
+
+# Optional: For development and testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
