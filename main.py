@@ -61,17 +61,63 @@ class ExampleController(Controller):
         return {"status": "success", "device_id": device_id}
 """)
 
+    # Create example middleware
+    middleware_path = "app/middleware/logging_middleware.py"
+    if not os.path.exists(middleware_path):
+        with open(middleware_path, "w") as f:
+            f.write("""from core.middleware import Middleware
+from typing import Dict, Any, Callable, Awaitable
+import time
+
+
+class LoggingMiddleware(Middleware):
+    \"\"\"Example middleware that logs request information and timing.\"\"\"
+
+    async def handle(self, context: Dict[str, Any], next_handler: Callable[[Dict[str, Any]], Awaitable[Any]]) -> Any:
+        \"\"\"Log request details and execution time.\"\"\"
+        topic = context.get('topic', 'unknown')
+        client_id = context.get('client', {})._client_id if 'client' in context else 'unknown'
+        device_id = context.get('params', {}).get('device_id', 'unknown')
+        
+        # Log incoming request
+        self.logger.info(f"[INCOMING] Topic: {topic}, Client: {client_id}")
+        
+        # Record start time
+        start_time = time.time()
+        
+        try:
+            # Call the next handler in the chain
+            result = await next_handler(context)
+            
+            # Calculate execution time
+            execution_time = (time.time() - start_time) * 1000  # Convert to milliseconds
+            
+            # Log successful completion
+            self.logger.info(f"[COMPLETED] Topic: {topic}, Execution time: {execution_time:.2f}ms")
+            
+            return result
+            
+        except Exception as e:
+            # Log any errors that occur
+            execution_time = (time.time() - start_time) * 1000
+            self.logger.error(f"[ERROR] Topic: {topic}, Error: {str(e)}, Execution time: {execution_time:.2f}ms")
+            raise
+""")
+
     router_path = "app/routers/api.py"
     if not os.path.exists(router_path):
         with open(router_path, "w") as f:
             f.write("""from core.router import Router
 from app.controllers.example_controller import ExampleController
+from app.middleware.logging_middleware import LoggingMiddleware
 
 router = Router()
 
 # Define routes using the with syntax for better readability
 with router.group(prefix="devices") as devices:
-    devices.on("message/{device_id}", ExampleController.handle_message, qos=1)
+    # Apply logging middleware to this route
+    devices.on("message/{device_id}", ExampleController.handle_message, 
+              middleware=[LoggingMiddleware()], qos=1)
 """)
 
     init_dirs = ["app", "app/controllers", "app/middleware", "app/models", "app/routers"]
