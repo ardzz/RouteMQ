@@ -9,6 +9,7 @@ from paho.mqtt import client as mqtt_client
 
 from core.model import Model
 from core.router import Router
+from core.worker_manager import WorkerManager
 
 
 class Application:
@@ -20,16 +21,13 @@ class Application:
             router: A Router instance to use. If None, tries to import from app.routers.api
             env_file: The environment file to load configuration from
         """
-        # Load environment variables from .env file if it exists
         load_dotenv(env_file)
 
         self._setup_logging()
 
-        # Setup router
         self.router = router
         if self.router is None:
             try:
-                # Dynamically import the router to avoid hard-coding dependencies
                 api_module = importlib.import_module('app.routers.api')
                 self.router = getattr(api_module, 'router')
                 self.logger.info("Router loaded from app.routers.api")
@@ -38,7 +36,6 @@ class Application:
                 self.logger.warning(f"Could not load router from app.routers.api: {str(e)}")
                 self.logger.info("Using empty router. Register routes manually.")
 
-        # Setup database if enabled
         self.mysql_enabled = os.getenv("ENABLE_MYSQL", "true").lower() == "true"
         if self.mysql_enabled:
             self._setup_database()
@@ -48,7 +45,9 @@ class Application:
         self.client = None
         self.group_name = os.getenv("MQTT_GROUP_NAME", "mqtt_framework_group")
         self.loop = asyncio.get_event_loop()
-    
+
+        self.worker_manager = WorkerManager(self.router, self.group_name)
+
     def _setup_logging(self):
         """Configure logging based on environment variables."""
         log_level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -79,14 +78,15 @@ class Application:
 
     def _on_connect(self, client, userdata, flags, rc):
         """Callback for when the client receives a CONNACK response from the server."""
-        self.logger.info(f"Connected with result code {rc}")
-        
+        self.logger.info(f"Main client connected with result code {rc}")
+
         for route in self.router.routes:
-            topic = route.get_subscription_topic(self.group_name if route.shared else None)
-            self.logger.info(f"Subscribing to {topic}")
-            client.subscribe(topic, route.qos)
-            self.logger.info(f"Subscribed to {topic} with QoS {route.qos}")
-    
+            if not route.shared:
+                topic = route.get_subscription_topic()
+                self.logger.info(f"Main client subscribing to {topic}")
+                client.subscribe(topic, route.qos)
+                self.logger.info(f"Subscribed to {topic} with QoS {route.qos}")
+
     def _on_message(self, client, userdata, msg):
         """Callback for when a PUBLISH message is received from the server."""
         self.logger.debug(f"Received message on topic {msg.topic}")
@@ -109,7 +109,7 @@ class Application:
         """Connect to the MQTT broker."""
         broker = os.getenv("MQTT_BROKER", "localhost")
         port = int(os.getenv("MQTT_PORT", "1883"))
-        client_id = os.getenv("MQTT_CLIENT_ID", f"mqtt-framework-{os.getpid()}")
+        client_id = os.getenv("MQTT_CLIENT_ID", f"mqtt-framework-main-{os.getpid()}")
         username = os.getenv("MQTT_USERNAME")
         password = os.getenv("MQTT_PASSWORD")
         
@@ -120,22 +120,35 @@ class Application:
         if username and password:
             self.client.username_pw_set(username, password)
         
-        self.logger.info(f"Connecting to {broker}:{port}")
+        self.logger.info(f"Connecting main client to {broker}:{port}")
         self.client.connect(broker, port)
         
+    def start_workers(self):
+        """Start worker processes for shared subscriptions."""
+        total_workers = self.router.get_total_workers_needed()
+        if total_workers > 0:
+            self.logger.info(f"Starting {total_workers} workers for shared subscriptions")
+            self.worker_manager.start_workers(total_workers)
+        else:
+            self.logger.info("No shared routes found, no workers needed")
+
     def run(self):
         """Run the application."""
+        self.start_workers()
         self.client.loop_start()
         
         try:
             self.loop.run_until_complete(self.initialize_database())
             self.logger.info("Application started. Press Ctrl+C to exit.")
+            self.logger.info(f"Active workers: {self.worker_manager.get_worker_count()}")
             self.loop.run_forever()
             
         except KeyboardInterrupt:
             self.logger.info("Shutting down...")
             
         finally:
+            self.worker_manager.stop_workers()
+
             self.client.loop_stop()
             self.client.disconnect()
             self.loop.close()

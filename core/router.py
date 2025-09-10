@@ -6,12 +6,13 @@ from .middleware import Middleware
 
 class Route:
     def __init__(self, topic: str, handler: Callable, qos: int = 0, 
-                 middleware: List[Middleware] = None, shared: bool = False):
+                 middleware: List[Middleware] = None, shared: bool = False, worker_count: int = 1):
         self.topic = topic
         self.handler = handler
         self.qos = qos
         self.middleware = middleware or []
         self.shared = shared
+        self.worker_count = worker_count if shared else 1  # Only apply worker_count for shared subscriptions
         self.pattern = self._compile_topic_pattern()
         self.mqtt_topic = self._get_mqtt_subscription_topic()
 
@@ -46,14 +47,14 @@ class RouterGroup:
         self.middleware = middleware or []
         
     def on(self, topic: str, handler: Callable, qos: int = 0, 
-           middleware: List[Middleware] = None, shared: bool = False) -> None:
+           middleware: List[Middleware] = None, shared: bool = False, worker_count: int = 1) -> None:
         """Register a route handler with this group's prefix and middleware."""
         full_topic = f"{self.prefix}/{topic}" if self.prefix else topic
         combined_middleware = list(self.middleware)
         if middleware:
             combined_middleware.extend(middleware)
             
-        self.router.on(full_topic, handler, qos, combined_middleware, shared)
+        self.router.on(full_topic, handler, qos, combined_middleware, shared, worker_count)
 
     def __enter__(self):
         return self
@@ -67,9 +68,9 @@ class Router:
         self.routes: List[Route] = []
         
     def on(self, topic: str, handler: Callable, qos: int = 0, 
-           middleware: List[Middleware] = None, shared: bool = False) -> None:
+           middleware: List[Middleware] = None, shared: bool = False, worker_count: int = 1) -> None:
         """Register a route handler."""
-        route = Route(topic, handler, qos, middleware, shared)
+        route = Route(topic, handler, qos, middleware, shared, worker_count)
         self.routes.append(route)
         
     def group(self, prefix: str = "", middleware: List[Middleware] = None):
@@ -100,3 +101,7 @@ class Router:
                 return await handler(context)
                 
         raise ValueError(f"No route found for topic: {topic}")
+
+    def get_total_workers_needed(self) -> int:
+        """Calculate total number of workers needed for all shared routes."""
+        return max((route.worker_count for route in self.routes if route.shared), default=0)
