@@ -19,7 +19,7 @@ A flexible MQTT routing framework with middleware support, inspired by web frame
 Clone this repository:
 
 ```bash
-git clone https://github.com/yourusername/RouteMQ.git
+git clone https://github.com/ardzz/RouteMQ.git
 cd RouteMQ
 pip install -e .
 ```
