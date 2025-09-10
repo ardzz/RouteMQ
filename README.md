@@ -1,4 +1,6 @@
-![logo.png](logo.png)
+<img alt="logo.png" height="200" src="logo.png" width="200"/>
+
+
 # RouteMQ Framework
 
 A flexible MQTT routing framework with middleware support, inspired by web frameworks.
