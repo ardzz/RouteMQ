@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  # RouteMQ Application - Single Container Setup
+  routemq:
+    build: .
+    container_name: routemq-app
+    ports:
+      - "8080:8080"
+    environment:
+      MQTT_BROKER: ${MQTT_BROKER:-test.mosquitto.org}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      MQTT_USERNAME: ${MQTT_USERNAME:-}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      MQTT_GROUP_NAME: ${MQTT_GROUP_NAME:-mqtt_framework_group}
+
+      ENABLE_MYSQL: ${ENABLE_MYSQL:-false}
+      DB_HOST: ${DB_HOST:-localhost}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_NAME: ${DB_NAME:-mqtt_framework}
+      DB_USER: ${DB_USER:-root}
+      DB_PASS: ${DB_PASS:-}
+
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'      # Limit to 1 CPU core
+          memory: 512M     # Limit to 512MB RAM
+        reservations:
+          cpus: '0.5'      # Reserve 0.5 CPU core
+          memory: 256M     # Reserve 256MB RAM
+
+    networks:
+      - routemq-network
+
+    restart: unless-stopped
+
+    volumes:
+      - ./app:/app/app:ro
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import paho.mqtt.client as mqtt; print('Health check passed')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  routemq-network:
+    driver: bridge
