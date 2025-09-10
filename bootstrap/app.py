@@ -9,31 +9,34 @@ from paho.mqtt import client as mqtt_client
 
 from core.model import Model
 from core.router import Router
+from core.router_registry import RouterRegistry
 from core.worker_manager import WorkerManager
 
 
 class Application:
-    def __init__(self, router=None, env_file=".env"):
+    def __init__(self, router=None, env_file=".env", router_directory="app.routers"):
         """
         Initialize a new RouteMQ application.
 
         Args:
-            router: A Router instance to use. If None, tries to import from app.routers.api
+            router: A Router instance to use. If None, dynamically loads from router_directory
             env_file: The environment file to load configuration from
+            router_directory: Directory containing router modules (default: "app.routers")
         """
         load_dotenv(env_file)
 
         self._setup_logging()
 
+        self.router_directory = router_directory
         self.router = router
         if self.router is None:
             try:
-                api_module = importlib.import_module('app.routers.api')
-                self.router = getattr(api_module, 'router')
-                self.logger.info("Router loaded from app.routers.api")
-            except (ImportError, AttributeError) as e:
+                registry = RouterRegistry(self.router_directory)
+                self.router = registry.discover_and_load_routers()
+                self.logger.info(f"Router loaded dynamically from {self.router_directory}")
+            except Exception as e:
                 self.router = Router()
-                self.logger.warning(f"Could not load router from app.routers.api: {str(e)}")
+                self.logger.warning(f"Could not load routers dynamically: {str(e)}")
                 self.logger.info("Using empty router. Register routes manually.")
 
         self.mysql_enabled = os.getenv("ENABLE_MYSQL", "true").lower() == "true"
@@ -46,7 +49,7 @@ class Application:
         self.group_name = os.getenv("MQTT_GROUP_NAME", "mqtt_framework_group")
         self.loop = asyncio.get_event_loop()
 
-        self.worker_manager = WorkerManager(self.router, self.group_name)
+        self.worker_manager = WorkerManager(self.router, self.group_name, self.router_directory)
 
     def _setup_logging(self):
         """Configure logging based on environment variables."""

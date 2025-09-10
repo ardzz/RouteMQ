@@ -8,15 +8,16 @@ import uuid
 from typing import List, Dict, Any
 
 from .router import Router
+from .router_registry import RouterRegistry
 
 
 class WorkerProcess:
     """Individual worker process that handles MQTT subscriptions."""
 
-    def __init__(self, worker_id: int, router_module_path: str, shared_routes: List[Dict[str, Any]],
+    def __init__(self, worker_id: int, router_directory: str, shared_routes: List[Dict[str, Any]],
                  broker_config: Dict[str, str], group_name: str):
         self.worker_id = worker_id
-        self.router_module_path = router_module_path
+        self.router_directory = router_directory
         self.router = None
         self.shared_routes = shared_routes
         self.broker_config = broker_config
@@ -25,16 +26,16 @@ class WorkerProcess:
         self.logger = logging.getLogger(f"worker-{worker_id}")
 
     def setup_router(self):
-        """Setup router by importing from the module path."""
+        """Setup router by dynamically loading from router directory."""
         try:
-            if self.router_module_path:
-                module = importlib.import_module(self.router_module_path)
-                self.router = getattr(module, 'router')
-                self.logger.info(f"Worker {self.worker_id} loaded router from {self.router_module_path}")
+            if self.router_directory:
+                registry = RouterRegistry(self.router_directory)
+                self.router = registry.discover_and_load_routers()
+                self.logger.info(f"Worker {self.worker_id} loaded router dynamically from {self.router_directory}")
             else:
                 self.router = Router()
                 self.logger.warning(f"Worker {self.worker_id} using empty router")
-        except (ImportError, AttributeError) as e:
+        except Exception as e:
             self.logger.error(f"Worker {self.worker_id} failed to load router: {e}")
             self.router = Router()
 
@@ -112,7 +113,7 @@ class WorkerProcess:
             self.client.disconnect()
 
 
-def worker_process_main(worker_id: int, router_module_path: str, shared_routes: List[Dict],
+def worker_process_main(worker_id: int, router_directory: str, shared_routes: List[Dict],
                        broker_config: Dict, group_name: str):
     """Main function for worker process."""
     logging.basicConfig(
@@ -120,16 +121,17 @@ def worker_process_main(worker_id: int, router_module_path: str, shared_routes: 
         format=f'%(asctime)s - Worker-{worker_id} - %(name)s - %(levelname)s - %(message)s'
     )
 
-    worker = WorkerProcess(worker_id, router_module_path, shared_routes, broker_config, group_name)
+    worker = WorkerProcess(worker_id, router_directory, shared_routes, broker_config, group_name)
     worker.run()
 
 
 class WorkerManager:
     """Manages multiple worker processes for horizontal scaling."""
 
-    def __init__(self, router: Router, group_name: str = None):
+    def __init__(self, router: Router, group_name: str = None, router_directory: str = "app.routers"):
         self.router = router
         self.group_name = group_name or os.getenv("MQTT_GROUP_NAME", "mqtt_framework_group")
+        self.router_directory = router_directory
         self.workers: List[multiprocessing.Process] = []
         self.logger = logging.getLogger("worker_manager")
 
@@ -167,14 +169,12 @@ class WorkerManager:
             'client_id_prefix': os.getenv("MQTT_CLIENT_ID", "mqtt-worker")
         }
 
-        router_module_path = "app.routers.api"
-
         self.logger.info(f"Starting {num_workers} workers for shared subscriptions")
 
         for worker_id in range(num_workers):
             process = multiprocessing.Process(
                 target=worker_process_main,
-                args=(worker_id, router_module_path, shared_routes, broker_config, self.group_name)
+                args=(worker_id, self.router_directory, shared_routes, broker_config, self.group_name)
             )
             process.start()
             self.workers.append(process)
