@@ -11,6 +11,7 @@ from core.model import Model
 from core.router import Router
 from core.router_registry import RouterRegistry
 from core.worker_manager import WorkerManager
+from core.redis_manager import redis_manager
 
 
 class Application:
@@ -45,6 +46,12 @@ class Application:
         else:
             self.logger.info("MySQL integration is disabled")
 
+        self.redis_enabled = os.getenv("ENABLE_REDIS", "false").lower() == "true"
+        if self.redis_enabled:
+            self.logger.info("Redis integration is enabled")
+        else:
+            self.logger.info("Redis integration is disabled")
+
         self.client = None
         self.group_name = os.getenv("MQTT_GROUP_NAME", "mqtt_framework_group")
         self.loop = asyncio.get_event_loop()
@@ -78,6 +85,15 @@ class Application:
         """Create database tables."""
         if self.mysql_enabled:
             await Model.create_tables()
+
+    async def initialize_redis(self):
+        """Initialize Redis connection."""
+        if self.redis_enabled:
+            success = await redis_manager.initialize()
+            if success:
+                self.logger.info("Redis initialized successfully")
+            else:
+                self.logger.warning("Redis initialization failed")
 
     def _on_connect(self, client, userdata, flags, rc):
         """Callback for when the client receives a CONNACK response from the server."""
@@ -142,6 +158,7 @@ class Application:
         
         try:
             self.loop.run_until_complete(self.initialize_database())
+            self.loop.run_until_complete(self.initialize_redis())
             self.logger.info("Application started. Press Ctrl+C to exit.")
             self.logger.info(f"Active workers: {self.worker_manager.get_worker_count()}")
             self.loop.run_forever()
@@ -151,6 +168,10 @@ class Application:
             
         finally:
             self.worker_manager.stop_workers()
+
+            # Cleanup Redis connections
+            if self.redis_enabled:
+                self.loop.run_until_complete(redis_manager.disconnect())
 
             self.client.loop_stop()
             self.client.disconnect()

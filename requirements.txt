@@ -4,6 +4,9 @@ paho-mqtt==1.6.1
 SQLAlchemy==2.0.23
 aiomysql==0.2.0
 
+# Redis integration (optional)
+redis==5.0.1
+
 # Optional: For development and testing
 pytest==7.4.3
 pytest-asyncio==0.21.1
