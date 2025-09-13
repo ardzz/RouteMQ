@@ -7,8 +7,11 @@ on:
       - develop
 
 permissions:
+  actions: write
+  security-events: write
   contents: write
   pull-requests: write
+  repository-projects: write
 
 jobs:
   release:
@@ -34,3 +37,19 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           changelog: true
           push: true
+
+  update_release_draft:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Release
+        uses: release-drafter/release-drafter@v5
+        with:
+          version: ${{ env.REVISION }}
+          tag: ${{ env.REVISION }}
+          name: ${{ env.REVISION }}
+          publish: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
