@@ -1,7 +1,6 @@
-import asyncio
 import logging
 import os
-from typing import Optional, Union, Any, Dict
+from typing import Optional, Union, Any, Dict, TYPE_CHECKING
 import json
 
 try:
@@ -11,6 +10,9 @@ except ImportError:
     REDIS_AVAILABLE = False
     redis = None
 
+if TYPE_CHECKING:
+    from redis.asyncio import ConnectionPool, Redis
+
 
 class RedisManager:
     """
@@ -19,8 +21,8 @@ class RedisManager:
     """
 
     _instance: Optional['RedisManager'] = None
-    _redis_pool: Optional[redis.ConnectionPool] = None
-    _redis_client: Optional[redis.Redis] = None
+    _redis_pool: Optional['ConnectionPool'] = None
+    _redis_client: Optional['Redis'] = None
 
     def __new__(cls) -> 'RedisManager':
         """Singleton pattern to ensure one Redis manager instance."""
@@ -33,7 +35,7 @@ class RedisManager:
         if hasattr(self, '_initialized'):
             return
 
-        self.logger = logging.getLogger("redis_manager")
+        self.logger = logging.getLogger("RouteMQ.RedisManager")
         self.enabled = os.getenv("ENABLE_REDIS", "false").lower() == "true"
         self.host = os.getenv("REDIS_HOST", "localhost")
         self.port = int(os.getenv("REDIS_PORT", "6379"))
@@ -47,7 +49,7 @@ class RedisManager:
         self._initialized = True
 
         if self.enabled and not REDIS_AVAILABLE:
-            self.logger.error("Redis is enabled but redis package is not installed. Install with: pip install redis")
+            self.logger.error("Redis is enabled but redis package is not installed. Install with: uv add redis")
             self.enabled = False
 
         if self.enabled:
@@ -105,7 +107,7 @@ class RedisManager:
 
         self.logger.info("Redis connections closed")
 
-    def get_client(self) -> Optional[redis.Redis]:
+    def get_client(self) -> Optional['Redis']:
         """
         Get Redis client instance.
 
