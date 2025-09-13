@@ -127,11 +127,17 @@ with router.group(prefix="devices") as devices:
 
     print("Example files created successfully!")
 
+def tinker():
+    """Start the interactive REPL environment for testing ORM and queries."""
+    from core.tinker import run_tinker
+    run_tinker()
+
 def main():
     """Main entry point for the CLI."""
     parser = argparse.ArgumentParser(description="RouteMQ - MQTT routing framework")
     parser.add_argument('--init', action='store_true', help="Initialize a new RouteMQ project")
     parser.add_argument('--run', action='store_true', help="Run the MQTT application")
+    parser.add_argument('--tinker', action='store_true', help="Start interactive REPL for testing ORM and queries")
 
     args = parser.parse_args()
 
@@ -139,6 +145,10 @@ def main():
         create_env_file()
         setup_example()
         print("RouteMQ project initialized successfully!")
+        return
+
+    if args.tinker:
+        tinker()
         return
 
     if args.run or not sys.argv[1:]:

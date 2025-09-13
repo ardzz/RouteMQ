@@ -7,6 +7,9 @@ aiomysql==0.2.0
 # Redis integration (optional)
 redis==5.0.1
 
+# REPL/Tinker functionality
+IPython==8.16.1
+
 # Optional: For development and testing
 pytest==7.4.3
 pytest-asyncio==0.21.1
