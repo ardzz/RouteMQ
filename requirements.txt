@@ -4,6 +4,9 @@ paho-mqtt==1.6.1
 SQLAlchemy==2.0.23
 aiomysql==0.2.0
 
+# System information
+psutil==5.9.6
+
 # Redis integration (optional)
 redis==5.0.1
 

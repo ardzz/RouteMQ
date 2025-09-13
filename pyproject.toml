@@ -21,6 +21,7 @@ dependencies = [
     "aiomysql>=0.2.0",
     "IPython>=8.20.0",
     "nest-asyncio>=1.5.8",
+    "psutil>=5.9.6"
 ]
 
 [project.optional-dependencies]

@@ -28,6 +28,16 @@ class Model:
         logger.info("Database connection configured")
 
     @classmethod
+    async def cleanup(cls):
+        """Cleanup database connections and close the engine."""
+        if cls._engine is not None:
+            await cls._engine.dispose()
+            cls._engine = None
+            cls._session_factory = None
+            cls._is_enabled = False
+            logger.info("Database connections closed")
+
+    @classmethod
     async def get_session(cls) -> Optional[AsyncSession]:
         """Get a new session for database operations."""
         if not cls._is_enabled:

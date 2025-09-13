@@ -3,6 +3,8 @@ import json
 import logging
 import logging.handlers
 import os
+import platform
+import psutil
 import tomllib
 from pathlib import Path
 
@@ -30,8 +32,14 @@ class Application:
 
     @staticmethod
     def print_banner():
-        """Print the RouteMQ ASCII art banner."""
+        """Print the RouteMQ ASCII art banner with system information."""
         version = Application.get_version()
+
+        system_info = platform.system()
+        cpu_count = psutil.cpu_count(logical=True)
+        memory = psutil.virtual_memory()
+        memory_gb = round(memory.total / (1024**3), 1)
+
         banner = f"""
 ______            _      ___  ________ 
 | ___ \\          | |     |  \\/  |  _  |
@@ -40,7 +48,7 @@ ______            _      ___  ________
 | |\\ \\ (_) | |_| | ||  __/ |  | \\ \\/' /
 \\_| \\_\\___/ \\__,_|\\__\\___\\_|  |_/\\_/\\_\\ {version}
 
-A flexible MQTT routing framework with middleware support
+Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
 """
         print(banner)
 
@@ -256,9 +264,11 @@ A flexible MQTT routing framework with middleware support
         finally:
             self.worker_manager.stop_workers()
 
-            # Cleanup Redis connections
             if self.redis_enabled:
                 self.loop.run_until_complete(redis_manager.disconnect())
+
+            if self.mysql_enabled:
+                self.loop.run_until_complete(Model.cleanup())
 
             self.client.loop_stop()
             self.client.disconnect()
