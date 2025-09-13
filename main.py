@@ -32,6 +32,9 @@ DB_NAME=mqtt_framework
 DB_USER=root
 DB_PASS=
 
+# Timezone Configuration
+TIMEZONE=Asia/Jakarta
+
 # Logging Configuration
 LOG_LEVEL=INFO
 LOG_FORMAT=%(asctime)s - %(name)s - %(levelname)s - %(message)s

@@ -1,6 +1,9 @@
 services:
   routemq:
-    build: .
+    build:
+      context: .
+      args:
+        TIMEZONE: ${TIMEZONE:-Asia/Jakarta}
     container_name: routemq-app
     environment:
       MQTT_BROKER: ${MQTT_BROKER:-test.mosquitto.org}
