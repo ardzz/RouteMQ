@@ -3,6 +3,7 @@ import json
 import logging
 import logging.handlers
 import os
+import tomllib
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -16,6 +17,33 @@ from core.redis_manager import redis_manager
 
 
 class Application:
+    @staticmethod
+    def get_version():
+        """Get version from pyproject.toml commitizen section."""
+        try:
+            pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
+            with open(pyproject_path, "rb") as f:
+                data = tomllib.load(f)
+            return data.get("tool", {}).get("commitizen", {}).get("version", "latest")
+        except Exception:
+            return "latest"
+
+    @staticmethod
+    def print_banner():
+        """Print the RouteMQ ASCII art banner."""
+        version = Application.get_version()
+        banner = f"""
+______            _      ___  ________ 
+| ___ \\          | |     |  \\/  |  _  |
+| |_/ /___  _   _| |_ ___| .  . | | | |
+|    // _ \\| | | | __/ _ \\ |\\/| | | | |
+| |\\ \\ (_) | |_| | ||  __/ |  | \\ \\/' /
+\\_| \\_\\___/ \\__,_|\\__\\___\\_|  |_/\\_/\\_\\ {version}
+
+A flexible MQTT routing framework with middleware support
+"""
+        print(banner)
+
     def __init__(self, router=None, env_file=".env", router_directory="app.routers"):
         """
         Initialize a new RouteMQ application.
@@ -25,6 +53,9 @@ class Application:
             env_file: The environment file to load configuration from
             router_directory: Directory containing router modules (default: "app.routers")
         """
+        # Print banner first
+        self.print_banner()
+
         load_dotenv(env_file)
 
         self._setup_logging()
