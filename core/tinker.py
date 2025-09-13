@@ -10,6 +10,7 @@ import nest_asyncio
 
 from IPython import embed
 from IPython.terminal.interactiveshell import TerminalInteractiveShell
+from IPython.core.magic import Magics, magics_class, line_magic
 
 from bootstrap.app import Application
 from core.model import Model, Base
@@ -18,6 +19,17 @@ from core.redis_manager import redis_manager
 
 # Enable nested event loops for IPython compatibility
 nest_asyncio.apply()
+
+
+@magics_class
+class AsyncMagics(Magics):
+    """Custom magic commands for async operations."""
+
+    @line_magic
+    def arun(self, line):
+        """Execute async code using line magic."""
+        code = f"await {line}"
+        return self.shell.run_cell_async(code)
 
 
 class TinkerEnvironment:
@@ -42,6 +54,19 @@ class TinkerEnvironment:
         from sqlalchemy.future import select
         from sqlalchemy import and_, or_, func, desc, asc
 
+        def run_async(coro):
+            """Helper to run async code synchronously in REPL."""
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    import nest_asyncio
+                    nest_asyncio.apply()
+                    return loop.run_until_complete(coro)
+                else:
+                    return loop.run_until_complete(coro)
+            except RuntimeError:
+                return asyncio.run(coro)
+
         self.globals = {
             'app': self.app,
             'Model': Model,
@@ -59,6 +84,8 @@ class TinkerEnvironment:
             'func': func,
             'desc': desc,
             'asc': asc,
+            # Helper functions
+            'run_async': run_async,
         }
 
         # Import all models dynamically
@@ -111,34 +138,34 @@ class TinkerEnvironment:
         print("  and_, or_    - SQLAlchemy logical operators")
         print("  func         - SQLAlchemy functions")
         print("  desc, asc    - SQLAlchemy ordering")
+        print("  run_async()  - Helper to run async code")
+        print("\nHelper Functions:")
+        print("  query_devices()      - Get all devices")
+        print("  query_users()        - Get all users")
+        print("  create_sample_device() - Create a sample device")
         print("\nExample usage:")
         if Model._is_enabled:
-            print("  # Query examples:")
-            print("  result = await session.execute(select(Device))")
+            print("  # Using run_async helper for queries:")
+            print("  devices = run_async(query_devices())")
+            print("  print(devices)")
+            print("  ")
+            print("  # Direct async queries (use run_async):")
+            print("  result = run_async(session.execute(select(Device)))")
             print("  devices = result.scalars().all()")
             print("  ")
-            print("  # Query with filters:")
-            print("  result = await session.execute(")
-            print("      select(Device).where(Device.status == 'active')")
-            print("  )")
-            print("  ")
             print("  # Create new record:")
-            print("  device = Device(device_id='test-001', name='Test Device', device_type='sensor')")
-            print("  session.add(device)")
-            print("  await session.commit()")
+            print("  device = run_async(create_sample_device())")
+            print("  print(device)")
             print("  ")
-            print("  # Relationships:")
-            print("  result = await session.execute(")
-            print("      select(Device).where(Device.id == 1)")
-            print("  )")
-            print("  device = result.scalar_one_or_none()")
-            print("  if device:")
-            print("      await session.refresh(device, ['messages', 'sensors'])")
-            print("      print(device.messages)  # Access related messages")
+            print("  # Manual creation:")
+            print("  device = Device(device_id='test-001', name='Test Device')")
+            print("  session.add(device)")
+            print("  run_async(session.commit())")
         else:
             print("  # Database is disabled. Enable it in .env file:")
             print("  ENABLE_MYSQL=true")
-        print("\nTip: Put a ';' at the end of a line to suppress output.")
+        print("\nTip: Use 'run_async()' to execute async functions.")
+        print("Tip: Put a ';' at the end of a line to suppress output.")
         print("Type 'exit()' or Ctrl+D to quit")
         print("="*60 + "\n")
 
@@ -155,15 +182,25 @@ def start_tinker_sync(env_file=".env"):
             tinker_env = TinkerEnvironment(app)
             await tinker_env.setup()
 
-            # Configure IPython for async support
+            # Configure IPython for better async support
+            from IPython.terminal.interactiveshell import TerminalInteractiveShell
+            from IPython import get_ipython
+
+            # Get or create IPython instance
             shell = TerminalInteractiveShell.instance()
+
+            # Enable autoawait for async support
             shell.autoawait = True
+
+            # Register custom magic commands
+            shell.register_magics(AsyncMagics)
 
             # Start the embedding with our custom namespace
             embed(
                 user_ns=tinker_env.globals,
                 banner1="",  # We'll show our own banner
-                exit_msg="Goodbye! 👋"
+                exit_msg="Goodbye! 👋",
+                config=shell.config
             )
 
         except KeyboardInterrupt:
@@ -174,18 +211,26 @@ def start_tinker_sync(env_file=".env"):
             traceback.print_exc()
         finally:
             # Cleanup
-            if hasattr(tinker_env, 'session') and tinker_env.session:
+            if 'tinker_env' in locals() and hasattr(tinker_env, 'session') and tinker_env.session:
                 await tinker_env.session.close()
 
     # Check if we're already in an event loop
     try:
         loop = asyncio.get_running_loop()
         # If we get here, there's already a running loop
-        # Use asyncio.create_task or run in thread
+        # Use nest_asyncio to handle this
+        nest_asyncio.apply()
+        # Create a new event loop in a thread
         import threading
 
         def run_in_thread():
-            asyncio.run(_start_tinker())
+            # Create new event loop for this thread
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            try:
+                new_loop.run_until_complete(_start_tinker())
+            finally:
+                new_loop.close()
 
         thread = threading.Thread(target=run_in_thread)
         thread.start()
