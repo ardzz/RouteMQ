@@ -8,7 +8,6 @@ Monitor your RouteMQ application performance and health.
 - [Metrics Collection](metrics.md) - Performance metrics and statistics
 - [Redis Monitoring](redis-monitoring.md) - Redis performance tracking
 - [MQTT Monitoring](mqtt-monitoring.md) - MQTT broker monitoring
-- [Alerting](alerting.md) - Setting up alerts and notifications
 
 ## Health Check Endpoint
 
