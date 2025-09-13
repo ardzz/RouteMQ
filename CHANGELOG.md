@@ -1,3 +1,9 @@
+## v0.1.0 (2025-09-13)
+
+### Feat
+
+- Add release drafter configuration and update permissions in release.yml
+
 ## v0.2.2 (2025-09-13)
 
 ### Refactor
