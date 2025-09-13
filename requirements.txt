@@ -9,6 +9,7 @@ redis==5.0.1
 
 # REPL/Tinker functionality
 IPython==8.16.1
+nest-asyncio==1.5.8
 
 # Optional: For development and testing
 pytest==7.4.3

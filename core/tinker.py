@@ -6,6 +6,7 @@ import asyncio
 import os
 import sys
 from pathlib import Path
+import nest_asyncio
 
 from IPython import embed
 from IPython.terminal.interactiveshell import TerminalInteractiveShell
@@ -13,6 +14,10 @@ from IPython.terminal.interactiveshell import TerminalInteractiveShell
 from bootstrap.app import Application
 from core.model import Model, Base
 from core.redis_manager import redis_manager
+
+
+# Enable nested event loops for IPython compatibility
+nest_asyncio.apply()
 
 
 class TinkerEnvironment:
@@ -33,6 +38,10 @@ class TinkerEnvironment:
 
     def _setup_globals(self):
         """Setup global variables for the REPL session."""
+        # Import SQLAlchemy query functions
+        from sqlalchemy.future import select
+        from sqlalchemy import and_, or_, func, desc, asc
+
         self.globals = {
             'app': self.app,
             'Model': Model,
@@ -43,6 +52,13 @@ class TinkerEnvironment:
             'os': os,
             'sys': sys,
             'Path': Path,
+            # SQLAlchemy query helpers
+            'select': select,
+            'and_': and_,
+            'or_': or_,
+            'func': func,
+            'desc': desc,
+            'asc': asc,
         }
 
         # Import all models dynamically
@@ -91,74 +107,98 @@ class TinkerEnvironment:
         print("  Base         - SQLAlchemy declarative base")
         print("  session      - Database session (if enabled)")
         print("  redis_manager- Redis manager (if enabled)")
-        print("  asyncio      - Asyncio module for async operations")
+        print("  select       - SQLAlchemy select function")
+        print("  and_, or_    - SQLAlchemy logical operators")
+        print("  func         - SQLAlchemy functions")
+        print("  desc, asc    - SQLAlchemy ordering")
         print("\nExample usage:")
         if Model._is_enabled:
-            print("  # Query examples (adjust for your models):")
-            print("  result = await session.execute(select(YourModel))")
-            print("  items = result.scalars().all()")
+            print("  # Query examples:")
+            print("  result = await session.execute(select(Device))")
+            print("  devices = result.scalars().all()")
+            print("  ")
+            print("  # Query with filters:")
+            print("  result = await session.execute(")
+            print("      select(Device).where(Device.status == 'active')")
+            print("  )")
             print("  ")
             print("  # Create new record:")
-            print("  new_item = YourModel(name='test')")
-            print("  session.add(new_item)")
+            print("  device = Device(device_id='test-001', name='Test Device', device_type='sensor')")
+            print("  session.add(device)")
             print("  await session.commit()")
+            print("  ")
+            print("  # Relationships:")
+            print("  result = await session.execute(")
+            print("      select(Device).where(Device.id == 1)")
+            print("  )")
+            print("  device = result.scalar_one_or_none()")
+            print("  if device:")
+            print("      await session.refresh(device, ['messages', 'sensors'])")
+            print("      print(device.messages)  # Access related messages")
         else:
             print("  # Database is disabled. Enable it in .env file:")
             print("  ENABLE_MYSQL=true")
-        print("\nType 'exit()' or Ctrl+D to quit")
+        print("\nTip: Put a ';' at the end of a line to suppress output.")
+        print("Type 'exit()' or Ctrl+D to quit")
         print("="*60 + "\n")
 
 
-class AsyncIPythonShell:
-    """Custom IPython shell with async support."""
+def start_tinker_sync(env_file=".env"):
+    """Synchronous wrapper for starting tinker."""
+    async def _start_tinker():
+        try:
+            # Create application instance
+            print("Initializing RouteMQ application...")
+            app = Application(env_file=env_file)
 
-    def __init__(self, tinker_env: TinkerEnvironment):
-        self.tinker_env = tinker_env
+            # Setup tinker environment
+            tinker_env = TinkerEnvironment(app)
+            await tinker_env.setup()
 
-    def start(self):
-        """Start the interactive shell."""
-        # Configure IPython for async support
-        shell = TerminalInteractiveShell.instance()
-        shell.autoawait = True
+            # Configure IPython for async support
+            shell = TerminalInteractiveShell.instance()
+            shell.autoawait = True
 
-        # Start the embedding with our custom namespace
-        embed(
-            user_ns=self.tinker_env.globals,
-            banner1="",  # We'll show our own banner
-            exit_msg="Goodbye! 👋"
-        )
+            # Start the embedding with our custom namespace
+            embed(
+                user_ns=tinker_env.globals,
+                banner1="",  # We'll show our own banner
+                exit_msg="Goodbye! 👋"
+            )
 
+        except KeyboardInterrupt:
+            print("\nGoodbye! 👋")
+        except Exception as e:
+            print(f"Error starting tinker: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            # Cleanup
+            if hasattr(tinker_env, 'session') and tinker_env.session:
+                await tinker_env.session.close()
 
-async def start_tinker(env_file=".env"):
-    """Start the tinker REPL environment."""
+    # Check if we're already in an event loop
     try:
-        # Create application instance
-        print("Initializing RouteMQ application...")
-        app = Application(env_file=env_file)
+        loop = asyncio.get_running_loop()
+        # If we get here, there's already a running loop
+        # Use asyncio.create_task or run in thread
+        import threading
 
-        # Setup tinker environment
-        tinker_env = TinkerEnvironment(app)
-        await tinker_env.setup()
+        def run_in_thread():
+            asyncio.run(_start_tinker())
 
-        # Start interactive shell
-        shell = AsyncIPythonShell(tinker_env)
-        shell.start()
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
+        thread.join()
 
-    except KeyboardInterrupt:
-        print("\nGoodbye! 👋")
-    except Exception as e:
-        print(f"Error starting tinker: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        # Cleanup
-        if hasattr(tinker_env, 'session') and tinker_env.session:
-            await tinker_env.session.close()
+    except RuntimeError:
+        # No running loop, safe to use asyncio.run
+        asyncio.run(_start_tinker())
 
 
 def run_tinker():
     """Entry point for running tinker from command line."""
-    asyncio.run(start_tinker())
+    start_tinker_sync()
 
 
 if __name__ == "__main__":

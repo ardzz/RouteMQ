@@ -20,6 +20,7 @@ dependencies = [
     "SQLAlchemy>=2.0.23",
     "aiomysql>=0.2.0",
     "IPython>=8.20.0",
+    "nest-asyncio>=1.5.8",
 ]
 
 [project.optional-dependencies]
