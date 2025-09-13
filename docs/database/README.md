@@ -7,8 +7,6 @@ RouteMQ supports optional MySQL integration for persistent data storage.
 - [Configuration](configuration.md) - Database setup and connection
 - [Creating Models](creating-models.md) - Define database models
 - [Database Operations](operations.md) - CRUD operations
-- [Migrations](migrations.md) - Database schema management
-- [Best Practices](best-practices.md) - Performance and organization tips
 
 ## Quick Setup
 
