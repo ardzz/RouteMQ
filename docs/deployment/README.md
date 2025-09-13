@@ -5,10 +5,8 @@ Learn how to deploy RouteMQ in production environments.
 ## Topics
 
 - [Docker Deployment](docker.md) - Containerized deployment
-- [Production Configuration](production-config.md) - Production-ready settings
 - [Scaling](scaling.md) - Horizontal and vertical scaling
 - [Load Balancing](load-balancing.md) - Distributing traffic
-- [Security](security.md) - Production security considerations
 
 ## Quick Docker Deployment
 
