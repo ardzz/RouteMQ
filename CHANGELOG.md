@@ -1,3 +1,11 @@
+## v0.1.13 (2025-09-13)
+
+### Fix
+
+- update required Python version to 3.12 and add IPython dependency
+
+## v0.7.0 (2025-09-13)
+
 ## v0.1.12 (2025-09-13)
 
 ### Feat
