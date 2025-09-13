@@ -5,27 +5,31 @@ Understanding how messages flow through RouteMQ from MQTT broker to your applica
 ## Complete Message Flow
 
 ```
-┌─────────────────┐---->┌─────────────────┐---->┌─────────────────┐---->┌─────────────────┐
-│   MQTT Broker   │     │  Route Matcher  │     │  Middleware     │     │   Controller    │
-│ - Receives Msg  │     │ - Topic Match   │     │ - Auth Check    │     │ - Business      │
-│ - Delivers      │     │ - Extract Params│     │ - Rate Limit    │     │   Logic         │
-│ - Load Balance  │     │ - Find Route    │     │ - Logging       │     │ - Data Process  │
-└─────────────────┘     └─────────────────┘     └─────────────────┘     └─────────────────┘
-         |                         |                         |                         |
-         |                         |                         |                         v
-         |                         |                         |                ┌─────────────────┐
-         |                         |                         |                │    Response     │
-         |                         |                         |                │ - Publish Reply │
-         |                         |                         |                │ - Update State  │
-         |                         |                         |                │ - Log Result    │
-         |                         |                         |                └─────────────────┘
-         |                         |                         |
-         v                         v                         v
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│    Error Case   │     │     No Route    │     │ Middleware Block│
-│ - Log Error     │     │ - Log Warning   │     │ - Auth Failed   │
-│ - Continue Op   │     │ - Continue Op   │     │ - Rate Limited  │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   MQTT Broker   │───▶│  Route Matcher  │───▶│  Middleware     │───▶│   Controller    │
+│                 │    │                 │    │   Pipeline      │    │    Handler      │
+│ - Receives Msg  │    │ - Topic Match   │    │ - Auth Check    │    │ - Business      │
+│ - Delivers      │    │ - Extract Params│    │ - Rate Limit    │    │   Logic         │
+│ - Load Balance  │    │ - Find Route    │    │ - Logging       │    │ - Data Process  │
+└─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │                       │
+         │                       │                       │                       ▼
+         │                       │                       │              ┌─────────────────┐
+         │                       │                       │              │   Response      │
+         │                       │                       │              │                 │
+         │                       │                       │              │ - Publish Reply │
+         │                       │                       │              │ - Update State  │
+         │                       │                       │              │ - Log Result    │
+         │                       │                       │              └─────────────────┘
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Error Case    │    │   No Route      │    │   Middleware    │
+│                 │    │                 │    │    Blocked      │
+│ - Log Error     │    │ - Log Warning   │    │                 │
+│ - Continue      │    │ - Continue      │    │ - Auth Failed   │
+│   Operation     │    │   Operation     │    │ - Rate Limited  │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
 ## Step-by-Step Flow
