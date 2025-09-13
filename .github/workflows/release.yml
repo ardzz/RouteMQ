@@ -32,3 +32,5 @@ jobs:
         uses: commitizen-tools/commitizen-action@0.24.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          changelog: true
+          push: true
