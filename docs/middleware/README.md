@@ -5,10 +5,7 @@ Middleware allows you to process messages before they reach route handlers.
 ## Topics
 
 - [Creating Middleware](creating-middleware.md) - Basic middleware structure
-- [Built-in Middleware](built-in-middleware.md) - Available middleware components
 - [Middleware Chains](middleware-chains.md) - Combining multiple middleware
-- [Authentication Middleware](authentication.md) - User authentication
-- [Caching Middleware](caching.md) - Response caching
 
 ## Quick Overview
 
