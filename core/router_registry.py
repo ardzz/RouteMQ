@@ -15,7 +15,7 @@ class RouterRegistry:
 
     def __init__(self, router_directory: str = "app.routers"):
         self.router_directory = router_directory
-        self.logger = logging.getLogger("router_registry")
+        self.logger = logging.getLogger("RouteMQ.RouterRegistry")
         self.main_router = Router()
 
     def discover_and_load_routers(self) -> Router:

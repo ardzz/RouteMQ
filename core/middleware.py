@@ -7,7 +7,7 @@ class Middleware(ABC):
     """Base middleware class that all middleware should extend."""
     
     # Class-level logger that can be accessed by all middleware instances
-    logger = logging.getLogger("mqtt_framework.middleware")
+    logger = logging.getLogger("RouteMQ.Middleware")
 
     @abstractmethod
     async def handle(self, context: Dict[str, Any], next_handler: Callable[[Dict[str, Any]], Awaitable[Any]]) -> Any:

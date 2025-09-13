@@ -68,7 +68,7 @@ class Application:
             format=log_format
         )
         
-        self.logger = logging.getLogger("mqtt_framework")
+        self.logger = logging.getLogger("RouteMQ.Application")
     
     def _setup_database(self):
         """Configure database connection."""
@@ -132,7 +132,7 @@ class Application:
         username = os.getenv("MQTT_USERNAME")
         password = os.getenv("MQTT_PASSWORD")
         
-        self.client = mqtt_client.Client(client_id)
+        self.client = mqtt_client.Client(client_id=client_id)
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
         

@@ -7,7 +7,7 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import sessionmaker
 
 Base = declarative_base()
-logger = logging.getLogger("mqtt_framework")
+logger = logging.getLogger("RouteMQ.Model")
 
 class Model:
     """Base model class that all models should extend."""

@@ -1,5 +1,4 @@
 import asyncio
-import importlib
 import logging
 import multiprocessing
 import os
@@ -23,7 +22,7 @@ class WorkerProcess:
         self.broker_config = broker_config
         self.group_name = group_name
         self.client = None
-        self.logger = logging.getLogger(f"worker-{worker_id}")
+        self.logger = logging.getLogger(f"RouteMQ.Worker-{self.worker_id}")
 
     def setup_router(self):
         """Setup router by dynamically loading from router directory."""
@@ -45,7 +44,7 @@ class WorkerProcess:
 
         client_id = f"{self.broker_config.get('client_id_prefix', 'mqtt-worker')}-{self.worker_id}-{uuid.uuid4().hex[:8]}"
 
-        self.client = mqtt_client.Client(client_id)
+        self.client = mqtt_client.Client(client_id=client_id)
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
 
@@ -133,7 +132,7 @@ class WorkerManager:
         self.group_name = group_name or os.getenv("MQTT_GROUP_NAME", "mqtt_framework_group")
         self.router_directory = router_directory
         self.workers: List[multiprocessing.Process] = []
-        self.logger = logging.getLogger("worker_manager")
+        self.logger = logging.getLogger("RouteMQ.WorkerManager")
 
     def get_shared_routes_info(self) -> List[Dict[str, Any]]:
         """Extract information about shared routes."""
