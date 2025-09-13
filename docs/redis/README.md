@@ -2,14 +2,6 @@
 
 RouteMQ includes optional Redis integration for distributed caching, session management, and advanced rate limiting.
 
-## Topics
-
-- [Configuration](configuration.md) - Redis setup and connection
-- [Basic Operations](basic-operations.md) - GET, SET, DELETE operations
-- [JSON Operations](json-operations.md) - Working with JSON data
-- [Hash Operations](hash-operations.md) - Redis hash operations
-- [Counters and Expiration](counters.md) - Incrementing and TTL
-
 ## Quick Setup
 
 Enable Redis in your `.env` file:
