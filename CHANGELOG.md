@@ -1,3 +1,10 @@
+## v0.2.2 (2025-09-13)
+
+### Refactor
+
+- Update authors list in pyproject.toml
+- Remove unused port exposure for routemq service in Docker configuration
+
 ## v0.2.1 (2025-09-13)
 
 ### Refactor
