@@ -1,3 +1,11 @@
+## v0.1.12 (2025-09-13)
+
+### Feat
+
+- add interactive REPL for testing ORM and queries
+
+## v0.6.2 (2025-09-13)
+
 ## v0.1.11 (2025-09-13)
 
 ### Fix
