@@ -56,3 +56,4 @@
   * [Worker Manager API](api-reference/worker-manager-api.md)
 * [Troubleshooting](troubleshooting/README.md)
 * [Frequently Asked Questions (FAQ)](faq.md)
+* [RouteMQ Tinker - Interactive REPL](tinker.md)
