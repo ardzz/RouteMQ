@@ -4,6 +4,8 @@
 RouteMQ **isn’t production-ready** yet. Use only in test/staging. Known gaps: stability, security hardening, performance tuning, docs. I’ll post updates as we land fixes.
 {% endhint %}
 
+<figure><img src=".gitbook/assets/Logo1-500x500.png" alt=""><figcaption></figcaption></figure>
+
 Welcome to the RouteMQ Framework documentation! This guide will help you get started and master all the features of this flexible MQTT routing framework.
 
 ## Table of Contents
