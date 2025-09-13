@@ -1,3 +1,13 @@
+## v0.1.17 (2025-09-14)
+
+### Feat
+
+- add timezone configuration to Docker setup
+
+## v0.1.16 (2025-09-13)
+
+## v0.9.0 (2025-09-13)
+
 ## v0.1.15 (2025-09-13)
 
 ### Feat
