@@ -1,3 +1,13 @@
+## v0.1.3 (2025-09-13)
+
+### Feat
+
+- Add comprehensive documentation for creating controllers and database operations in RouteMQ
+
+## v0.1.2 (2025-09-13)
+
+## v0.4.0 (2025-09-13)
+
 ## v0.1.1 (2025-09-13)
 
 ### Feat
