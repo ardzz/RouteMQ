@@ -5,31 +5,27 @@ Understanding how messages flow through RouteMQ from MQTT broker to your applica
 ## Complete Message Flow
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   MQTT Broker   │───▶│  Route Matcher  │───▶│  Middleware     │───▶│   Controller    │
-│                 │    │                 │    │   Pipeline      │    │    Handler      │
-│ - Receives Msg  │    │ - Topic Match   │    │ - Auth Check    │    │ - Business      │
-│ - Delivers      │    │ - Extract Params│    │ - Rate Limit    │    │   Logic         │
-│ - Load Balance  │    │ - Find Route    │    │ - Logging       │    │ - Data Process  │
-└─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │                       │
-         │                       │                       │                       ▼
-         │                       │                       │              ┌─────────────────┐
-         │                       │                       │              │   Response      │
-         │                       │                       │              │                 │
-         │                       │                       │              │ - Publish Reply │
-         │                       │                       │              │ - Update State  │
-         │                       │                       │              │ - Log Result    │
-         │                       │                       │              └─────────────────┘
-         │                       │                       │
-         ▼                       ▼                       ▼
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Error Case    │    │   No Route      │    │   Middleware    │
-│                 │    │                 │    │    Blocked      │
-│ - Log Error     │    │ - Log Warning   │    │                 │
-│ - Continue      │    │ - Continue      │    │ - Auth Failed   │
-│   Operation     │    │   Operation     │    │ - Rate Limited  │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
+┌─────────────────┐---->┌─────────────────┐---->┌─────────────────┐---->┌─────────────────┐
+│   MQTT Broker   │     │  Route Matcher  │     │  Middleware     │     │   Controller    │
+│ - Receives Msg  │     │ - Topic Match   │     │ - Auth Check    │     │ - Business      │
+│ - Delivers      │     │ - Extract Params│     │ - Rate Limit    │     │   Logic         │
+│ - Load Balance  │     │ - Find Route    │     │ - Logging       │     │ - Data Process  │
+└─────────────────┘     └─────────────────┘     └─────────────────┘     └─────────────────┘
+         |                         |                         |                         |
+         |                         |                         |                         v
+         |                         |                         |                ┌─────────────────┐
+         |                         |                         |                │    Response     │
+         |                         |                         |                │ - Publish Reply │
+         |                         |                         |                │ - Update State  │
+         |                         |                         |                │ - Log Result    │
+         |                         |                         |                └─────────────────┘
+         |                         |                         |
+         v                         v                         v
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│    Error Case   │     │     No Route    │     │ Middleware Block│
+│ - Log Error     │     │ - Log Warning   │     │ - Auth Failed   │
+│ - Continue Op   │     │ - Continue Op   │     │ - Rate Limited  │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
 ```
 
 ## Step-by-Step Flow
@@ -279,17 +275,17 @@ Each worker follows the same message flow:
 
 ### Throughput Optimization
 
-- **Async Processing**: Handle multiple messages simultaneously
-- **Shared Subscriptions**: Distribute load across workers
-- **Middleware Caching**: Cache expensive operations in middleware
-- **Connection Pooling**: Reuse database and Redis connections
+* **Async Processing**: Handle multiple messages simultaneously
+* **Shared Subscriptions**: Distribute load across workers
+* **Middleware Caching**: Cache expensive operations in middleware
+* **Connection Pooling**: Reuse database and Redis connections
 
 ### Latency Optimization
 
-- **Direct Route Matching**: O(n) route lookup where n = number of routes
-- **Minimal Middleware**: Only necessary middleware in chain
-- **Async I/O**: Non-blocking external operations
-- **Memory Efficiency**: Reuse context objects
+* **Direct Route Matching**: O(n) route lookup where n = number of routes
+* **Minimal Middleware**: Only necessary middleware in chain
+* **Async I/O**: Non-blocking external operations
+* **Memory Efficiency**: Reuse context objects
 
 ## Message Flow Examples
 
@@ -368,6 +364,6 @@ class MetricsMiddleware(Middleware):
 
 ## Next Steps
 
-- [Middleware Pipeline](middleware-pipeline.md) - Implement message processing logic
-- [Worker Processes](worker-processes.md) - Scale with shared subscriptions
-- [Controllers](../controllers/README.md) - Write message handlers
+* [Middleware Pipeline](middleware-pipeline.md) - Implement message processing logic
+* [Worker Processes](worker-processes.md) - Scale with shared subscriptions
+* [Controllers](../controllers/) - Write message handlers
