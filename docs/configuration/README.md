@@ -39,6 +39,14 @@ DB_USER=root
 DB_PASS=password
 ```
 
+### With Custom Timezone
+
+```env
+MQTT_BROKER=localhost
+MQTT_PORT=1883
+TIMEZONE=Asia/Jakarta
+```
+
 ## Configuration Files
 
 RouteMQ looks for configuration in this order:
@@ -47,7 +55,17 @@ RouteMQ looks for configuration in this order:
 2. `.env` file in project root
 3. Default values
 
+## Configuration Topics
+
+- **[Environment Variables](environment-variables.md)** - Complete reference of all configuration options
+- **[Logging Configuration](logging.md)** - Configure logging levels, formats, and file rotation
+- **[Timezone Configuration](timezone.md)** - Set up timezone for logs and application operations
+
 ## Next Steps
 
-- [Environment Variables](environment-variables.md) - See all available options
-- [MQTT Configuration](mqtt-configuration.md) - Detailed MQTT setup
+After configuring your environment:
+
+1. **[Getting Started Guide](../getting-started/README.md)** - Set up your first RouteMQ application
+2. **[Routing](../routing/README.md)** - Configure MQTT topic routing
+3. **[Controllers](../controllers/README.md)** - Create message handlers
+4. **[Middleware](../middleware/README.md)** - Add middleware for cross-cutting concerns

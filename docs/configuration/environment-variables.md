@@ -37,6 +37,27 @@ Complete reference for all RouteMQ configuration options.
 | `REDIS_MAX_CONNECTIONS` | 10 | Redis connection pool size |
 | `REDIS_SOCKET_TIMEOUT` | 5.0 | Redis socket timeout |
 
+## Timezone Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TIMEZONE` | Asia/Jakarta | Application timezone (IANA timezone format) |
+
+The timezone setting affects:
+- Log timestamps in file outputs
+- System timezone in Docker containers
+- Application-level datetime operations
+
+**Supported timezone formats:**
+- `UTC` - Coordinated Universal Time
+- `Asia/Jakarta` - Jakarta, Indonesia
+- `America/New_York` - Eastern Time (US)
+- `Europe/London` - London, UK
+- `Asia/Tokyo` - Tokyo, Japan
+- `Australia/Sydney` - Sydney, Australia
+
+For a complete list of supported timezones, see the [IANA Time Zone Database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones).
+
 ## Logging Configuration
 
 | Variable | Default | Description |
@@ -72,6 +93,9 @@ REDIS_PASSWORD=your_redis_password
 REDIS_USERNAME=your_redis_username
 REDIS_MAX_CONNECTIONS=10
 REDIS_SOCKET_TIMEOUT=5.0
+
+# Timezone Configuration
+TIMEZONE=Asia/Jakarta
 
 # Logging Configuration
 LOG_LEVEL=INFO
