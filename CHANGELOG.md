@@ -1,3 +1,11 @@
+## v0.1.14 (2025-09-13)
+
+### Feat
+
+- add nest-asyncio support and create interactive REPL documentation
+
+## v0.7.1 (2025-09-13)
+
 ## v0.1.13 (2025-09-13)
 
 ### Fix
