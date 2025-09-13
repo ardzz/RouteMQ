@@ -331,6 +331,8 @@ class RateLimitMiddleware(Middleware):
             return self._fixed_window_memory(cache_entry, current_time)
         elif self.strategy == "token_bucket":
             return self._token_bucket_memory(cache_entry, current_time)
+        else:
+            raise ValueError(f"Unknown strategy: {self.strategy}, pick from sliding_window, fixed_window, token_bucket!")
 
     def _sliding_window_memory(self, cache_entry: Dict, current_time: float) -> tuple[bool, int, int]:
         """Sliding window rate limiting in memory."""
