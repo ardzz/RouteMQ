@@ -1,3 +1,9 @@
+## v0.2.1 (2025-09-13)
+
+### Refactor
+
+- Add example files for middleware and router in the application
+
 ## v0.2.0 (2025-09-13)
 
 ### Feat
