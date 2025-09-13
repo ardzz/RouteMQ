@@ -2,14 +2,6 @@
 
 Learn how to configure RouteMQ for your specific needs.
 
-## Topics
-
-- [Environment Variables](environment-variables.md) - Complete list of configuration options
-- [MQTT Configuration](mqtt-configuration.md) - MQTT broker setup
-- [Database Configuration](database-configuration.md) - MySQL setup
-- [Redis Configuration](redis-configuration.md) - Redis integration
-- [Logging Configuration](logging-configuration.md) - Logging setup
-
 ## Configuration Overview
 
 RouteMQ uses environment variables for configuration, typically stored in a `.env` file in your project root.
