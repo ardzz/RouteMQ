@@ -1,8 +1,9 @@
 import asyncio
-import importlib
 import json
 import logging
+import logging.handlers
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from paho.mqtt import client as mqtt_client
@@ -59,17 +60,72 @@ class Application:
         self.worker_manager = WorkerManager(self.router, self.group_name, self.router_directory)
 
     def _setup_logging(self):
-        """Configure logging based on environment variables."""
+        """Configure logging based on environment variables with file rotation support."""
         log_level = os.getenv("LOG_LEVEL", "INFO").upper()
         log_format = os.getenv("LOG_FORMAT", "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-        
+
+        log_to_file = os.getenv("LOG_TO_FILE", "true").lower() == "true"
+        log_file = os.getenv("LOG_FILE", "logs/app.log")
+
+        log_rotation_type = os.getenv("LOG_ROTATION_TYPE", "size").lower()  # 'size' or 'time'
+
+        max_bytes = int(os.getenv("LOG_MAX_BYTES", "10485760"))  # 10 MB default
+        backup_count = int(os.getenv("LOG_BACKUP_COUNT", "5"))
+
+        rotation_when = os.getenv("LOG_ROTATION_WHEN", "midnight").lower()  # 'midnight', 'D', 'H', etc.
+        rotation_interval = int(os.getenv("LOG_ROTATION_INTERVAL", "1"))
+
+        date_format = os.getenv("LOG_DATE_FORMAT", "%Y-%m-%d")
+
+        handlers = [logging.StreamHandler()]
+
+        if log_to_file:
+            log_path = Path(log_file)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+
+            try:
+                if log_rotation_type == "time":
+                    file_handler = logging.handlers.TimedRotatingFileHandler(
+                        filename=log_file,
+                        when=rotation_when,
+                        interval=rotation_interval,
+                        backupCount=backup_count,
+                        encoding='utf-8'
+                    )
+                    file_handler.suffix = date_format
+                else:
+                    file_handler = logging.handlers.RotatingFileHandler(
+                        filename=log_file,
+                        maxBytes=max_bytes,
+                        backupCount=backup_count,
+                        encoding='utf-8'
+                    )
+
+                file_handler.setFormatter(logging.Formatter(log_format))
+                handlers.append(file_handler)
+
+            except Exception as e:
+                print(f"Warning: Could not setup file logging: {e}")
+                print("Falling back to console logging only")
+
         logging.basicConfig(
             level=getattr(logging, log_level),
-            format=log_format
+            format=log_format,
+            handlers=handlers,
+            force=True
         )
         
         self.logger = logging.getLogger("RouteMQ.Application")
-    
+
+        if log_to_file:
+            self.logger.info(f"Logging configured - File: {log_file}, Rotation: {log_rotation_type}")
+            if log_rotation_type == "size":
+                self.logger.info(f"Size rotation - Max: {max_bytes} bytes, Backups: {backup_count}")
+            else:
+                self.logger.info(f"Time rotation - When: {rotation_when}, Interval: {rotation_interval}, Backups: {backup_count}")
+        else:
+            self.logger.info("File logging disabled - Console only")
+
     def _setup_database(self):
         """Configure database connection."""
         db_host = os.getenv("DB_HOST", "localhost")
