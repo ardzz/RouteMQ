@@ -1,3 +1,9 @@
+## v0.1.15 (2025-09-13)
+
+### Feat
+
+- enhance interactive REPL with run_async helper and async magic commands
+
 ## v0.1.14 (2025-09-13)
 
 ### Feat
