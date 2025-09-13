@@ -62,7 +62,7 @@ class ExampleController(Controller):
 """)
 
     # Create example middleware
-    middleware_path = "app/middleware/logging_middleware.py"
+    middleware_path = "app/middleware/example_middleware.py"
     if not os.path.exists(middleware_path):
         with open(middleware_path, "w") as f:
             f.write("""from core.middleware import Middleware
@@ -104,12 +104,12 @@ class LoggingMiddleware(Middleware):
             raise
 """)
 
-    router_path = "app/routers/device.py"
+    router_path = "app/routers/example_device.py"
     if not os.path.exists(router_path):
         with open(router_path, "w") as f:
             f.write("""from core.router import Router
 from app.controllers.example_controller import ExampleController
-from app.middleware.logging_middleware import LoggingMiddleware
+from app.middleware.example_middleware import LoggingMiddleware
 
 router = Router()
 
