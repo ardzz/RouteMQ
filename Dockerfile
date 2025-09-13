@@ -22,9 +22,6 @@ RUN useradd --create-home --shell /bin/bash app && \
     chown -R app:app /app
 
 USER app
-
-EXPOSE 8080
-
 RUN uv run python -c "import sys; sys.exit(0)"
 
 CMD ["uv", "run", "python", "main.py", "--run"]
