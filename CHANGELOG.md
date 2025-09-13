@@ -1,3 +1,11 @@
+## v0.1.1 (2025-09-13)
+
+### Feat
+
+- Enhance logging configuration with file rotation support and update example environment file
+
+## v0.3.0 (2025-09-13)
+
 ## v0.1.0 (2025-09-13)
 
 ### Feat
