@@ -14,6 +14,13 @@ on:
       - 'docs/**/*.md'
       - 'docs/**'
 
+permissions:
+  actions: write
+  security-events: write
+  contents: write
+  pull-requests: write
+  repository-projects: write
+
 jobs:
   update-summary:
     runs-on: ubuntu-latest
