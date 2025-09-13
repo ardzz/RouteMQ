@@ -1,3 +1,15 @@
+## v0.1.6 (2025-09-13)
+
+### Feat
+
+- add GitHub Action to auto-update SUMMARY.md based on docs directory structure
+
+## v0.1.5 (2025-09-13)
+
+## v0.1.4 (2025-09-13)
+
+## v0.5.0 (2025-09-13)
+
 ## v0.1.3 (2025-09-13)
 
 ### Feat
