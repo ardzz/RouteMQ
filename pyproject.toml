@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "routemq"
 version = "0.1.0"
 description = "A flexible MQTT routing framework with middleware support"
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 
 authors = [
     {name = "Reky"},
@@ -19,6 +19,7 @@ dependencies = [
     "paho-mqtt>=1.6.1",
     "SQLAlchemy>=2.0.23",
     "aiomysql>=0.2.0",
+    "IPython>=8.20.0",
 ]
 
 [project.optional-dependencies]
