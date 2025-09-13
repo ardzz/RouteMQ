@@ -1,3 +1,11 @@
+## v0.1.7 (2025-09-13)
+
+## v0.6.0 (2025-09-13)
+
+### Fix
+
+- update permissions for GitHub Action to enhance functionality
+
 ## v0.1.6 (2025-09-13)
 
 ### Feat
