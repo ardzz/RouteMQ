@@ -1,0 +1,85 @@
+name: Update Documentation Summary
+
+on:
+  push:
+    paths:
+      - 'docs/**/*.md'
+      - 'docs/**'
+    branches:
+      - main
+      - master
+      - develop
+  pull_request:
+    paths:
+      - 'docs/**/*.md'
+      - 'docs/**'
+
+jobs:
+  update-summary:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        # Install any required dependencies if needed
+        # pip install -r requirements.txt
+
+    - name: Make script executable
+      run: chmod +x scripts/update_summary.py
+
+    - name: Run summary update script
+      run: |
+        cd ${{ github.workspace }}
+        python scripts/update_summary.py --docs-dir docs
+
+    - name: Check for changes
+      id: verify-changed-files
+      run: |
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "changed=true" >> $GITHUB_OUTPUT
+          echo "Files have been modified"
+        else
+          echo "changed=false" >> $GITHUB_OUTPUT
+          echo "No files were modified"
+        fi
+
+    - name: Commit and push changes
+      if: steps.verify-changed-files.outputs.changed == 'true' && github.event_name == 'push'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add docs/SUMMARY.md
+        git commit -m "docs: auto-update SUMMARY.md [skip ci]" || exit 0
+        git push
+
+    - name: Add PR comment (for pull requests)
+      if: steps.verify-changed-files.outputs.changed == 'true' && github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: '📚 **Documentation Summary Update**\n\nThe `docs/SUMMARY.md` file has been automatically updated to reflect the changes in this PR. Please review the updated table of contents.'
+          })
+
+    - name: Show summary preview (for pull requests)
+      if: steps.verify-changed-files.outputs.changed == 'true' && github.event_name == 'pull_request'
+      run: |
+        echo "## Updated SUMMARY.md Preview" >> $GITHUB_STEP_SUMMARY
+        echo '```markdown' >> $GITHUB_STEP_SUMMARY
+        cat docs/SUMMARY.md >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
