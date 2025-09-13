@@ -104,7 +104,7 @@ class LoggingMiddleware(Middleware):
             raise
 """)
 
-    router_path = "app/routers/api.py"
+    router_path = "app/routers/device.py"
     if not os.path.exists(router_path):
         with open(router_path, "w") as f:
             f.write("""from core.router import Router
