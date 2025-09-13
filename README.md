@@ -26,7 +26,37 @@ Clone this repository:
 ```bash
 git clone https://github.com/ardzz/RouteMQ.git
 cd RouteMQ
-pip install -e .
+
+# Install uv if you don't have it
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install dependencies and the project
+uv sync
+
+# Or install with all optional dependencies (including Redis)
+uv sync --extra all
+```
+
+## Development Setup
+
+```bash
+# Install with development dependencies
+uv sync --extra dev
+
+# Add new dependencies
+uv add package-name
+
+# Add optional dependency (e.g., Redis)
+uv add --optional redis redis
+
+# Remove dependency
+uv remove package-name
+
+# Run the application
+uv run python main.py --run
+
+# Run tests
+uv run pytest
 ```
 
 ## Quick Start
@@ -715,7 +745,7 @@ class TestRateLimitMiddleware(unittest.TestCase):
         
         # Third request should be rate limited
         result3 = await rate_limiter.handle(context, next_handler)
-        self.assertIn("rate_limit_exceeded", result3.get("error", ""))
+        self.assertIn "rate_limit_exceeded", result3.get("error", "")
 ```
 
 ## Advanced Configuration

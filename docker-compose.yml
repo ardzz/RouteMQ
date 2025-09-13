@@ -1,7 +1,4 @@
-version: '3.8'
-
 services:
-  # RouteMQ Application - Single Container Setup
   routemq:
     build: .
     container_name: routemq-app

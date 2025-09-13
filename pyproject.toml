@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "routemq"
+version = "0.1.0"
+description = "A flexible MQTT routing framework with middleware support"
+requires-python = ">=3.8"
+authors = [
+    {name = "Naufal Reky Ardhana"}
+]
+
+dependencies = [
+    "python-dotenv>=1.0.0",
+    "paho-mqtt>=1.6.1",
+    "SQLAlchemy>=2.0.23",
+    "aiomysql>=0.2.0",
+]
+
+[project.optional-dependencies]
+redis = ["redis>=5.0.1"]
+dev = [
+    "pytest>=7.4.3",
+    "pytest-asyncio>=0.21.1",
+]
+all = ["redis>=5.0.1"]
+
+[project.scripts]
+routemq = "main:main"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.4.3",
+    "pytest-asyncio>=0.21.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app", "bootstrap", "core", "generators"]
