@@ -45,7 +45,7 @@ uv run python main.py --run
 - **[Routing](./docs/routing/README.md)** - Route definition, parameters, and organization
 - **[Controllers](./docs/controllers/README.md)** - Creating and organizing business logic
 - **[Middleware](./docs/middleware/README.md)** - Request processing and middleware chains
-- **[Queue System](./docs/queue-system.md)** - Background task processing and job queues
+- **[Queue System](./docs/queue/README.md)** - Background task processing and job queues
 - **[Docker Deployment](./docs/docker-deployment.md)** - Production deployment with Docker
 - **[Redis Integration](./docs/redis/README.md)** - Caching, sessions, and distributed features
 - **[Rate Limiting](./docs/rate-limiting/README.md)** - Advanced rate limiting strategies

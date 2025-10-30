@@ -592,5 +592,5 @@ The Docker deployment provides:
 - ✅ Development and production setups
 
 For more information, see:
-- [Queue System Documentation](../docs/queue-system.md)
+- [Queue System Documentation](./queue/README.md)
 - [RouteMQ Documentation](../README.md)
