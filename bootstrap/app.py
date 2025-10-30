@@ -190,6 +190,18 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
             else:
                 self.logger.warning("Redis initialization failed")
 
+    async def _initialize_connections(self):
+        """Initialize database and Redis connections."""
+        await self.initialize_database()
+        await self.initialize_redis()
+
+    async def _cleanup_connections(self):
+        """Cleanup database and Redis connections."""
+        if self.redis_enabled:
+            await redis_manager.disconnect()
+        if self.mysql_enabled:
+            await Model.cleanup()
+
     def _on_connect(self, client, userdata, flags, rc):
         """Callback for when the client receives a CONNACK response from the server."""
         self.logger.info(f"Main client connected with result code {rc}")

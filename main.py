@@ -32,6 +32,12 @@ DB_NAME=mqtt_framework
 DB_USER=root
 DB_PASS=
 
+# Redis Configuration
+ENABLE_REDIS=false
+
+# Queue Configuration
+QUEUE_CONNECTION=redis
+
 # Timezone Configuration
 TIMEZONE=Asia/Jakarta
 
@@ -135,12 +141,62 @@ def tinker():
     from core.tinker import run_tinker
     run_tinker()
 
+def queue_work(queue="default", connection=None, max_jobs=None, max_time=None,
+               sleep=3, max_tries=None, timeout=60):
+    """Start the queue worker to process background jobs."""
+    import asyncio
+    from bootstrap.app import Application
+    from core.queue.queue_worker import QueueWorker
+
+    # Initialize the application to setup database/redis connections
+    create_env_file()
+    app = create_app()
+
+    async def run_worker():
+        """Run the queue worker with proper initialization and cleanup."""
+        # Initialize connections
+        await app._initialize_connections()
+
+        try:
+            # Create and start the worker
+            worker = QueueWorker(
+                queue_name=queue,
+                connection=connection,
+                max_jobs=max_jobs,
+                max_time=max_time,
+                sleep=sleep,
+                max_tries=max_tries,
+                timeout=timeout,
+            )
+
+            print(f"Starting queue worker for queue: {queue}")
+            print(f"Connection: {connection or 'default'}")
+            print(f"Sleep when idle: {sleep}s")
+            print(f"Press Ctrl+C to stop gracefully\n")
+
+            await worker.work()
+
+        finally:
+            # Cleanup connections
+            await app._cleanup_connections()
+
+    # Run the worker
+    asyncio.run(run_worker())
+
 def main():
     """Main entry point for the CLI."""
     parser = argparse.ArgumentParser(description="RouteMQ - MQTT routing framework")
     parser.add_argument('--init', action='store_true', help="Initialize a new RouteMQ project")
     parser.add_argument('--run', action='store_true', help="Run the MQTT application")
     parser.add_argument('--tinker', action='store_true', help="Start interactive REPL for testing ORM and queries")
+    parser.add_argument('--queue-work', action='store_true', help="Start queue worker to process background jobs")
+    parser.add_argument('--queue', type=str, default="default", help="The queue to process (default: default)")
+    parser.add_argument('--connection', type=str, help="Queue connection to use (redis or database)")
+    parser.add_argument('--max-jobs', type=int, help="Maximum number of jobs to process")
+    parser.add_argument('--max-time', type=int, help="Maximum time in seconds to run")
+    parser.add_argument('--sleep', type=int, default=3, help="Seconds to sleep when no job is available (default: 3)")
+    parser.add_argument('--max-tries', type=int, help="Maximum number of times to attempt a job")
+    parser.add_argument('--timeout', type=int, default=60, help="Maximum seconds a job can run (default: 60)")
 
     args = parser.parse_args()
 
@@ -152,6 +208,18 @@ def main():
 
     if args.tinker:
         tinker()
+        return
+
+    if args.queue_work:
+        queue_work(
+            queue=args.queue,
+            connection=args.connection,
+            max_jobs=args.max_jobs,
+            max_time=args.max_time,
+            sleep=args.sleep,
+            max_tries=args.max_tries,
+            timeout=args.timeout,
+        )
         return
 
     if args.run or not sys.argv[1:]:
