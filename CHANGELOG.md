@@ -1,3 +1,9 @@
+## v0.1.21 (2025-10-30)
+
+### Feat
+
+- make repository projectable with clean git initialization
+
 ## v0.1.20 (2025-10-30)
 
 ### Fix
