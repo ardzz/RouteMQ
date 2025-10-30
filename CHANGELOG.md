@@ -1,3 +1,14 @@
+## v0.1.19 (2025-10-30)
+
+### Feat
+
+- add Docker configuration for queue workers and production deployment
+- add background task queue system similar to Laravel's queue:work
+
+## v0.1.18 (2025-09-14)
+
+## v0.10.0 (2025-09-13)
+
 ## v0.1.17 (2025-09-14)
 
 ### Feat
