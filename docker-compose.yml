@@ -1,4 +1,47 @@
 services:
+  # Redis - Fast queue backend
+  redis:
+    image: redis:7-alpine
+    container_name: routemq-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - routemq-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # MySQL - Persistent storage and database queue
+  mysql:
+    image: mysql:8.0
+    container_name: routemq-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASS:-rootpassword}
+      MYSQL_DATABASE: ${DB_NAME:-mqtt_framework}
+      MYSQL_USER: ${DB_USER:-routemq}
+      MYSQL_PASSWORD: ${DB_PASS:-routemq}
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - routemq-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASS:-rootpassword}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    command: --default-authentication-plugin=mysql_native_password
+
+  # Main RouteMQ Application
   routemq:
     build:
       context: .
@@ -12,24 +55,38 @@ services:
       MQTT_PASSWORD: ${MQTT_PASSWORD:-}
       MQTT_GROUP_NAME: ${MQTT_GROUP_NAME:-mqtt_framework_group}
 
-      ENABLE_MYSQL: ${ENABLE_MYSQL:-false}
-      DB_HOST: ${DB_HOST:-localhost}
+      ENABLE_MYSQL: ${ENABLE_MYSQL:-true}
+      DB_HOST: ${DB_HOST:-mysql}
       DB_PORT: ${DB_PORT:-3306}
       DB_NAME: ${DB_NAME:-mqtt_framework}
-      DB_USER: ${DB_USER:-root}
-      DB_PASS: ${DB_PASS:-}
+      DB_USER: ${DB_USER:-routemq}
+      DB_PASS: ${DB_PASS:-routemq}
+
+      ENABLE_REDIS: ${ENABLE_REDIS:-true}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_DB: ${REDIS_DB:-0}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+
+      QUEUE_CONNECTION: ${QUEUE_CONNECTION:-redis}
 
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FORMAT: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
     deploy:
       resources:
         limits:
-          cpus: '1.0'      # Limit to 1 CPU core
-          memory: 512M     # Limit to 512MB RAM
+          cpus: '1.0'
+          memory: 512M
         reservations:
-          cpus: '0.5'      # Reserve 0.5 CPU core
-          memory: 256M     # Reserve 256MB RAM
+          cpus: '0.5'
+          memory: 256M
 
     networks:
       - routemq-network
@@ -47,6 +104,168 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # Queue Worker - Default Queue
+  queue-worker-default:
+    build:
+      context: .
+      args:
+        TIMEZONE: ${TIMEZONE:-Asia/Jakarta}
+    container_name: routemq-queue-default
+    command: ["uv", "run", "python", "main.py", "--queue-work", "--queue", "default", "--sleep", "3"]
+    environment:
+      ENABLE_MYSQL: ${ENABLE_MYSQL:-true}
+      DB_HOST: ${DB_HOST:-mysql}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_NAME: ${DB_NAME:-mqtt_framework}
+      DB_USER: ${DB_USER:-routemq}
+      DB_PASS: ${DB_PASS:-routemq}
+
+      ENABLE_REDIS: ${ENABLE_REDIS:-true}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_DB: ${REDIS_DB:-0}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+
+      QUEUE_CONNECTION: ${QUEUE_CONNECTION:-redis}
+
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+    networks:
+      - routemq-network
+
+    restart: unless-stopped
+
+    volumes:
+      - ./app:/app/app:ro
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
+
+  # Queue Worker - High Priority Queue
+  queue-worker-high:
+    build:
+      context: .
+      args:
+        TIMEZONE: ${TIMEZONE:-Asia/Jakarta}
+    container_name: routemq-queue-high
+    command: ["uv", "run", "python", "main.py", "--queue-work", "--queue", "high-priority", "--sleep", "1"]
+    environment:
+      ENABLE_MYSQL: ${ENABLE_MYSQL:-true}
+      DB_HOST: ${DB_HOST:-mysql}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_NAME: ${DB_NAME:-mqtt_framework}
+      DB_USER: ${DB_USER:-routemq}
+      DB_PASS: ${DB_PASS:-routemq}
+
+      ENABLE_REDIS: ${ENABLE_REDIS:-true}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_DB: ${REDIS_DB:-0}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+
+      QUEUE_CONNECTION: ${QUEUE_CONNECTION:-redis}
+
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+    networks:
+      - routemq-network
+
+    restart: unless-stopped
+
+    volumes:
+      - ./app:/app/app:ro
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
+
+  # Queue Worker - Emails Queue
+  queue-worker-emails:
+    build:
+      context: .
+      args:
+        TIMEZONE: ${TIMEZONE:-Asia/Jakarta}
+    container_name: routemq-queue-emails
+    command: ["uv", "run", "python", "main.py", "--queue-work", "--queue", "emails", "--sleep", "5"]
+    environment:
+      ENABLE_MYSQL: ${ENABLE_MYSQL:-true}
+      DB_HOST: ${DB_HOST:-mysql}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_NAME: ${DB_NAME:-mqtt_framework}
+      DB_USER: ${DB_USER:-routemq}
+      DB_PASS: ${DB_PASS:-routemq}
+
+      ENABLE_REDIS: ${ENABLE_REDIS:-true}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_DB: ${REDIS_DB:-0}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+
+      QUEUE_CONNECTION: ${QUEUE_CONNECTION:-redis}
+
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+    networks:
+      - routemq-network
+
+    restart: unless-stopped
+
+    volumes:
+      - ./app:/app/app:ro
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
+
+volumes:
+  redis-data:
+    driver: local
+  mysql-data:
+    driver: local
 
 networks:
   routemq-network:
