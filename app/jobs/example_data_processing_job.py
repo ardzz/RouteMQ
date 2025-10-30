@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from datetime import datetime
 from core.job import Job
 
 logger = logging.getLogger("RouteMQ.Jobs.ProcessDataJob")
