@@ -6,17 +6,50 @@ A flexible MQTT routing framework with middleware support, dynamic router loadin
 
 ## 🚀 Quick Start
 
+### Option 1: Use as Template (Recommended)
+
+Start your own project with a clean git history:
+
+**Using GitHub (Easiest):**
+1. Click "Use this template" button on GitHub
+2. Create your new repository
+3. Clone your repository:
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git
+   cd YOUR_REPO
+   ```
+
+**Manual Setup:**
 ```bash
-# Clone and install
-git clone https://github.com/ardzz/RouteMQ.git
-cd RouteMQ
+# Download and extract, or clone
+git clone https://github.com/ardzz/RouteMQ.git my-mqtt-project
+cd my-mqtt-project
+
+# Run setup script to initialize fresh repository
+bash setup-project.sh    # Linux/Mac
+# OR
+.\setup-project.ps1      # Windows PowerShell
+
+# Install dependencies
 uv sync
 
-# Initialize project
+# Initialize project structure
 python main.py --init
 
 # Configure .env file with your MQTT broker details
 # Run the application
+uv run python main.py --run
+```
+
+### Option 2: Direct Clone
+
+To explore or contribute to RouteMQ itself:
+
+```bash
+git clone https://github.com/ardzz/RouteMQ.git
+cd RouteMQ
+uv sync
+uv run python main.py --init
 uv run python main.py --run
 ```
 
@@ -37,6 +70,8 @@ uv run python main.py --run
 ## 📚 Documentation
 
 **Complete documentation is available in the [docs](./docs) folder, optimized for GitBook integration.**
+
+📦 **New to RouteMQ?** See the [Installation Guide](./INSTALL.md) for detailed setup instructions.
 
 ### Quick Links
 
