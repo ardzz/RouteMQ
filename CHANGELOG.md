@@ -1,3 +1,9 @@
+## v0.1.20 (2025-10-30)
+
+### Fix
+
+- update CI/CD script to include queue documentation in SUMMARY.md
+
 ## v0.1.19 (2025-10-30)
 
 ### Feat
