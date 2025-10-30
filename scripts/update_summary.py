@@ -30,6 +30,7 @@ class SummaryGenerator:
             "configuration",
             "database",
             "redis",
+            "queue",
             "rate-limiting",
             "monitoring",
             "testing",
@@ -38,7 +39,9 @@ class SummaryGenerator:
             "api-reference",
             "troubleshooting",
             "best-practices.md",
-            "faq.md"
+            "faq.md",
+            "tinker.md",
+            "docker-deployment.md"
         ]
 
     def extract_title_from_markdown(self, file_path: Path) -> str:
