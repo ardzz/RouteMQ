@@ -51,7 +51,7 @@ This is the easiest way to create a new project based on RouteMQ.
 
 8. **Initialize project structure:**
    ```bash
-   python main.py --init
+   uv run python main.py --init
    ```
 
 9. **Configure environment:**
