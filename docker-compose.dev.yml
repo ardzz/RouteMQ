@@ -1,0 +1,88 @@
+# Docker Compose for Development
+# Minimal setup without queue workers for local development
+
+services:
+  # Redis - Fast queue backend
+  redis:
+    image: redis:7-alpine
+    container_name: routemq-redis-dev
+    ports:
+      - "6379:6379"
+    networks:
+      - routemq-network
+    restart: unless-stopped
+
+  # MySQL - Persistent storage
+  mysql:
+    image: mysql:8.0
+    container_name: routemq-mysql-dev
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASS:-rootpassword}
+      MYSQL_DATABASE: ${DB_NAME:-mqtt_framework}
+      MYSQL_USER: ${DB_USER:-routemq}
+      MYSQL_PASSWORD: ${DB_PASS:-routemq}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-dev-data:/var/lib/mysql
+    networks:
+      - routemq-network
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+
+  # Main RouteMQ Application (for development only)
+  # Use `uv run python main.py --run` on host for hot reload
+  # This service is optional for development
+  routemq:
+    build:
+      context: .
+      args:
+        TIMEZONE: ${TIMEZONE:-Asia/Jakarta}
+    container_name: routemq-app-dev
+    environment:
+      MQTT_BROKER: ${MQTT_BROKER:-test.mosquitto.org}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      MQTT_USERNAME: ${MQTT_USERNAME:-}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      MQTT_GROUP_NAME: ${MQTT_GROUP_NAME:-mqtt_framework_group}
+
+      ENABLE_MYSQL: ${ENABLE_MYSQL:-true}
+      DB_HOST: ${DB_HOST:-mysql}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_NAME: ${DB_NAME:-mqtt_framework}
+      DB_USER: ${DB_USER:-routemq}
+      DB_PASS: ${DB_PASS:-routemq}
+
+      ENABLE_REDIS: ${ENABLE_REDIS:-true}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_DB: ${REDIS_DB:-0}
+
+      QUEUE_CONNECTION: ${QUEUE_CONNECTION:-redis}
+
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+
+    depends_on:
+      - mysql
+      - redis
+
+    networks:
+      - routemq-network
+
+    volumes:
+      - ./app:/app/app
+      - ./core:/app/core
+      - ./bootstrap:/app/bootstrap
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
+
+    profiles:
+      - full  # Use `docker compose --profile full up` to include this
+
+volumes:
+  mysql-dev-data:
+    driver: local
+
+networks:
+  routemq-network:
+    driver: bridge
