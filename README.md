@@ -49,7 +49,7 @@ To explore or contribute to RouteMQ itself:
 git clone https://github.com/ardzz/RouteMQ.git
 cd RouteMQ
 uv sync
-python main.py --init
+uv run python main.py --init
 uv run python main.py --run
 ```
 
