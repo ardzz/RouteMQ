@@ -9,9 +9,11 @@ from sqlalchemy.orm import sessionmaker
 Base = declarative_base()
 logger = logging.getLogger("RouteMQ.Model")
 
-class Model:
+class Model(Base):
     """Base model class that all models should extend."""
-    
+
+    __abstract__ = True
+
     # This will be set by the application bootstrap
     _engine = None
     _session_factory = None
