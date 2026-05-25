@@ -4,14 +4,36 @@ build-backend = "hatchling.build"
 
 [project]
 name = "routemq"
-version = "0.1.0"
+version = "0.12.0"
 description = "A flexible MQTT routing framework with middleware support"
+readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.12"
 
 authors = [
-    {name = "Reky"},
-    {name = "GPT5 dari voucher Shopee VIP"},
-    {name = "Claude Sonnet 4 & 3.7 Thinking"},
+    {name = "Naufal Reky Ardhana", email = "rekyardhana029@gmail.com"},
+]
+
+keywords = [
+    "mqtt",
+    "routing",
+    "framework",
+    "middleware",
+    "async",
+    "queue",
+    "redis",
+]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: Communications",
+    "Operating System :: OS Independent",
 ]
 
 dependencies = [
@@ -30,23 +52,103 @@ dev = [
     "pytest>=7.4.3",
     "pytest-asyncio>=0.21.1",
     "commitizen>=3.12.0",
+    "ruff>=0.9.0",
+    "mypy>=1.14.0",
+    "coverage>=7.6.0",
+    "bandit>=1.8.0",
+    "pip-audit>=2.8.0",
+    "pre-commit>=4.0.0",
+    "build>=1.2.0",
+    "cyclonedx-bom>=5.2.0",
 ]
 all = ["redis>=5.0.1"]
 
 [project.scripts]
 routemq = "main:main"
 
-[tool.uv]
-dev-dependencies = [
+[project.urls]
+Homepage = "https://github.com/ardzz/RouteMQ"
+Repository = "https://github.com/ardzz/RouteMQ"
+Documentation = "https://github.com/ardzz/RouteMQ/tree/master/docs"
+Changelog = "https://github.com/ardzz/RouteMQ/blob/master/CHANGELOG.md"
+Issues = "https://github.com/ardzz/RouteMQ/issues"
+
+[dependency-groups]
+dev = [
     "pytest>=7.4.3",
     "pytest-asyncio>=0.21.1",
     "commitizen>=3.12.0",
+    "ruff>=0.9.0",
+    "mypy>=1.14.0",
+    "coverage>=7.6.0",
+    "bandit>=1.8.0",
+    "pip-audit>=2.8.0",
+    "pre-commit>=4.0.0",
+    "build>=1.2.0",
+    "cyclonedx-bom>=5.2.0",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["app", "bootstrap", "core", "generators"]
+packages = ["app", "bootstrap", "core"]
 
 [tool.commitizen]
 name = "cz_conventional_commits"
 version = "0.12.0"
 tag_format = "v$version"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "E731",  # existing lambda baseline; tighten after structural refactor sprint
+    "W291",  # existing whitespace baseline; enforce via future formatting sprint
+    "W292",  # existing newline baseline; enforce via future formatting sprint
+    "W293",  # existing blank-line whitespace baseline; enforce via future formatting sprint
+    "F401",  # existing unused-import baseline; tighten after cleanup sprint
+    "F811",  # existing redefinition baseline in smoke tests; tighten after cleanup sprint
+    "F541",  # existing f-string baseline; tighten after cleanup sprint
+    "F841",  # existing unused-variable baseline; tighten after cleanup sprint
+]
+
+# TODO: tighten baseline ignores and enable isort (I), bugbear (B), comprehensions (C4)
+# after the dedicated formatting/type-cleanup sprint. Sprint 01 only installs gates.
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+disallow_untyped_defs = false
+disallow_any_unimported = false
+warn_return_any = false
+warn_unused_ignores = false
+check_untyped_defs = false
+exclude = ["docs/"]
+explicit_package_bases = true
+namespace_packages = true
+disable_error_code = ["assignment", "union-attr", "valid-type", "misc", "call-overload"]
+
+[tool.coverage.run]
+source = ["app", "bootstrap", "core"]
+command_line = "run_tests.py"
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+
+[tool.bandit]
+exclude_dirs = ["tests", "docs", "scripts", ".venv"]
+skips = ["B101", "B404", "B603", "B607"]
