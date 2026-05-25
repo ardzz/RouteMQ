@@ -105,7 +105,6 @@ jobs:
 
       - name: Dependency audit (pip-audit)
         run: uv run pip-audit
-        continue-on-error: true
 
   coverage:
     name: coverage
