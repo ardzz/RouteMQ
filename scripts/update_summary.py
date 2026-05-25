@@ -10,38 +10,39 @@ import re
 from pathlib import Path
 from typing import List, Dict, Tuple
 
+
 class SummaryGenerator:
-    def __init__(self, docs_dir: str = "docs"):
+    def __init__(self, docs_dir: str = 'docs'):
         self.docs_dir = Path(docs_dir)
         self.base_path = Path.cwd()
-        self.summary_file = self.docs_dir / "SUMMARY.md"
+        self.summary_file = self.docs_dir / 'SUMMARY.md'
 
         # Files to exclude from the summary
-        self.excluded_files = {"SUMMARY.md", ".gitkeep"}
+        self.excluded_files = {'SUMMARY.md', '.gitkeep'}
 
         # Priority order for main sections (will appear first)
         self.priority_sections = [
-            "README.md",
-            "getting-started",
-            "core-concepts",
-            "routing",
-            "controllers",
-            "middleware",
-            "configuration",
-            "database",
-            "redis",
-            "queue",
-            "rate-limiting",
-            "monitoring",
-            "testing",
-            "deployment",
-            "examples",
-            "api-reference",
-            "troubleshooting",
-            "best-practices.md",
-            "faq.md",
-            "tinker.md",
-            "docker-deployment.md"
+            'README.md',
+            'getting-started',
+            'core-concepts',
+            'routing',
+            'controllers',
+            'middleware',
+            'configuration',
+            'database',
+            'redis',
+            'queue',
+            'rate-limiting',
+            'monitoring',
+            'testing',
+            'deployment',
+            'examples',
+            'api-reference',
+            'troubleshooting',
+            'best-practices.md',
+            'faq.md',
+            'tinker.md',
+            'docker-deployment.md',
         ]
 
     def extract_title_from_markdown(self, file_path: Path) -> str:
@@ -59,7 +60,7 @@ class SummaryGenerator:
             return self.filename_to_title(file_path.stem)
 
         except Exception as e:
-            print(f"Warning: Could not read {file_path}: {e}")
+            print(f'Warning: Could not read {file_path}: {e}')
             return self.filename_to_title(file_path.stem)
 
     def filename_to_title(self, filename: str) -> str:
@@ -69,11 +70,11 @@ class SummaryGenerator:
 
         # Handle special cases
         title_mappings = {
-            "README": "Overview",
-            "api reference": "API Reference",
-            "faq": "Frequently Asked Questions (FAQ)",
-            "ci cd": "CI/CD",
-            "config": "Configuration"
+            'README': 'Overview',
+            'api reference': 'API Reference',
+            'faq': 'Frequently Asked Questions (FAQ)',
+            'ci cd': 'CI/CD',
+            'config': 'Configuration',
         }
 
         title_lower = title.lower()
@@ -97,51 +98,61 @@ class SummaryGenerator:
         all_items = list(directory.iterdir())
 
         # Separate files and directories
-        files = [item for item in all_items if item.is_file() and item.suffix == '.md' and item.name not in self.excluded_files]
+        files = [
+            item
+            for item in all_items
+            if item.is_file() and item.suffix == '.md' and item.name not in self.excluded_files
+        ]
         directories = [item for item in all_items if item.is_dir() and not item.name.startswith('.')]
 
         # Process README.md first if it exists
-        readme_file = directory / "README.md"
+        readme_file = directory / 'README.md'
         if readme_file.exists() and readme_file.name not in self.excluded_files:
             relative_path = readme_file.relative_to(relative_to)
             title = self.extract_title_from_markdown(readme_file)
-            items.append({
-                'type': 'file',
-                'title': title,
-                'path': str(relative_path).replace('\\', '/'),
-                'level': len(relative_path.parts) - 1
-            })
-            files = [f for f in files if f.name != "README.md"]
+            items.append(
+                {
+                    'type': 'file',
+                    'title': title,
+                    'path': str(relative_path).replace('\\', '/'),
+                    'level': len(relative_path.parts) - 1,
+                }
+            )
+            files = [f for f in files if f.name != 'README.md']
 
         # Process other markdown files (sorted)
         for file in sorted(files, key=lambda x: x.name.lower()):
             relative_path = file.relative_to(relative_to)
             title = self.extract_title_from_markdown(file)
-            items.append({
-                'type': 'file',
-                'title': title,
-                'path': str(relative_path).replace('\\', '/'),
-                'level': len(relative_path.parts) - 1
-            })
+            items.append(
+                {
+                    'type': 'file',
+                    'title': title,
+                    'path': str(relative_path).replace('\\', '/'),
+                    'level': len(relative_path.parts) - 1,
+                }
+            )
 
         # Process subdirectories
         for subdir in sorted(directories, key=lambda x: x.name.lower()):
             relative_path = subdir.relative_to(relative_to)
 
             # Check if directory has a README.md for the title
-            subdir_readme = subdir / "README.md"
+            subdir_readme = subdir / 'README.md'
             if subdir_readme.exists():
                 title = self.extract_title_from_markdown(subdir_readme)
             else:
                 title = self.filename_to_title(subdir.name)
 
             # Add directory entry
-            items.append({
-                'type': 'directory',
-                'title': title,
-                'path': str(relative_path).replace('\\', '/'),
-                'level': len(relative_path.parts) - 1
-            })
+            items.append(
+                {
+                    'type': 'directory',
+                    'title': title,
+                    'path': str(relative_path).replace('\\', '/'),
+                    'level': len(relative_path.parts) - 1,
+                }
+            )
 
             # Recursively scan subdirectory
             subitems = self.scan_directory(subdir, relative_to)
@@ -151,6 +162,7 @@ class SummaryGenerator:
 
     def sort_items(self, items: List[Dict]) -> List[Dict]:
         """Sort items based on priority and alphabetical order."""
+
         def get_sort_key(item):
             path_parts = item['path'].split('/')
             first_part = path_parts[0]
@@ -167,7 +179,7 @@ class SummaryGenerator:
 
     def generate_summary_content(self) -> str:
         """Generate the complete SUMMARY.md content."""
-        print(f"Scanning documentation directory: {self.docs_dir}")
+        print(f'Scanning documentation directory: {self.docs_dir}')
 
         # Scan all items
         all_items = self.scan_directory(self.docs_dir)
@@ -186,7 +198,7 @@ class SummaryGenerator:
 
             # For directories, check if we already have the README
             if item['type'] == 'directory':
-                readme_path = f"{item['path']}/README.md"
+                readme_path = f'{item["path"]}/README.md'
                 # Remove any existing README entry for this directory
                 filtered_items = [existing for existing in filtered_items if existing['path'] != readme_path]
 
@@ -198,18 +210,18 @@ class SummaryGenerator:
         sorted_items = self.sort_items(filtered_items)
 
         # Generate content
-        lines = ["# Table of contents\n"]
+        lines = ['# Table of contents\n']
 
         for item in sorted_items:
-            indent = "  " * item['level']
+            indent = '  ' * item['level']
 
             if item['type'] == 'file':
-                lines.append(f"{indent}* [{item['title']}]({item['path']})")
+                lines.append(f'{indent}* [{item["title"]}]({item["path"]})')
             else:
                 # Directory entry - only add if it has a README.md
-                readme_path = Path(self.docs_dir) / item['path'] / "README.md"
+                readme_path = Path(self.docs_dir) / item['path'] / 'README.md'
                 if readme_path.exists():
-                    lines.append(f"{indent}* [{item['title']}]({item['path']}/README.md)")
+                    lines.append(f'{indent}* [{item["title"]}]({item["path"]}/README.md)')
 
         return '\n'.join(lines) + '\n'
 
@@ -224,7 +236,7 @@ class SummaryGenerator:
                     current_content = f.read()
 
                 if current_content.strip() == new_content.strip():
-                    print("SUMMARY.md is already up to date.")
+                    print('SUMMARY.md is already up to date.')
                     return False
 
             # Write new content
@@ -232,12 +244,13 @@ class SummaryGenerator:
             with open(self.summary_file, 'w', encoding='utf-8') as f:
                 f.write(new_content)
 
-            print(f"Successfully updated {self.summary_file}")
+            print(f'Successfully updated {self.summary_file}')
             return True
 
         except Exception as e:
-            print(f"Error updating SUMMARY.md: {e}")
+            print(f'Error updating SUMMARY.md: {e}')
             return False
+
 
 def main():
     """Main function to run the summary generator."""
@@ -252,16 +265,17 @@ def main():
     generator = SummaryGenerator(args.docs_dir)
 
     if args.dry_run:
-        print("DRY RUN - Generated content:")
-        print("=" * 50)
+        print('DRY RUN - Generated content:')
+        print('=' * 50)
         print(generator.generate_summary_content())
-        print("=" * 50)
+        print('=' * 50)
     else:
         changed = generator.update_summary()
         if changed:
-            print("SUMMARY.md has been updated!")
+            print('SUMMARY.md has been updated!')
         else:
-            print("No changes needed.")
+            print('No changes needed.')
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
     main()

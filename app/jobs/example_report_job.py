@@ -3,7 +3,7 @@ import logging
 from datetime import datetime
 from core.job import Job
 
-logger = logging.getLogger("RouteMQ.Jobs.GenerateReportJob")
+logger = logging.getLogger('RouteMQ.Jobs.GenerateReportJob')
 
 
 class GenerateReportJob(Job):
@@ -31,7 +31,7 @@ class GenerateReportJob(Job):
     max_tries = 2
     timeout = 300  # 5 minutes for report generation
     retry_after = 60  # Retry after 1 minute
-    queue = "reports"
+    queue = 'reports'
 
     def __init__(self):
         super().__init__()
@@ -42,7 +42,7 @@ class GenerateReportJob(Job):
         """
         Execute the job - generate a report.
         """
-        logger.info(f"Generating {self.report_type} report for user {self.user_id}")
+        logger.info(f'Generating {self.report_type} report for user {self.user_id}')
 
         # Simulate report generation
         await asyncio.sleep(5)
@@ -54,20 +54,19 @@ class GenerateReportJob(Job):
         # - Send email notification with download link
         # - Update user's report history
 
-        report_file = f"{self.report_type}_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        report_file = f'{self.report_type}_report_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'
 
-        logger.info(f"Report generated successfully: {report_file}")
-        logger.info(f"Report available for user {self.user_id}")
+        logger.info(f'Report generated successfully: {report_file}')
+        logger.info(f'Report available for user {self.user_id}')
 
     async def failed(self, exception: Exception) -> None:
         """
         Handle permanent job failure.
         """
         logger.error(
-            f"Failed to generate {self.report_type} report for user {self.user_id} "
-            f"after {self.max_tries} attempts"
+            f'Failed to generate {self.report_type} report for user {self.user_id} after {self.max_tries} attempts'
         )
-        logger.error(f"Error: {str(exception)}")
+        logger.error(f'Error: {str(exception)}')
 
         # In a real application, you might:
         # - Notify the user that report generation failed

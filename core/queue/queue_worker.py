@@ -8,7 +8,7 @@ from core.job import Job
 from core.queue.queue_driver import QueueDriver
 from core.queue.queue_manager import QueueManager
 
-logger = logging.getLogger("RouteMQ.QueueWorker")
+logger = logging.getLogger('RouteMQ.QueueWorker')
 
 
 class QueueWorker:
@@ -19,7 +19,7 @@ class QueueWorker:
 
     def __init__(
         self,
-        queue_name: str = "default",
+        queue_name: str = 'default',
         connection: Optional[str] = None,
         max_jobs: Optional[int] = None,
         max_time: Optional[int] = None,
@@ -61,7 +61,7 @@ class QueueWorker:
 
     def _handle_signal(self, signum, frame):
         """Handle shutdown signals."""
-        logger.info(f"Received signal {signum}, initiating graceful shutdown...")
+        logger.info(f'Received signal {signum}, initiating graceful shutdown...')
         self.should_quit = True
 
     async def work(self) -> None:
@@ -69,10 +69,7 @@ class QueueWorker:
         Start processing jobs from the queue.
         This is the main worker loop.
         """
-        logger.info(
-            f"Queue worker started for queue '{self.queue_name}' "
-            f"(connection: {self.connection or 'default'})"
-        )
+        logger.info(f"Queue worker started for queue '{self.queue_name}' (connection: {self.connection or 'default'})")
 
         self.driver = self.queue_manager.get_driver(self.connection)
         self.start_time = asyncio.get_event_loop().time()
@@ -80,7 +77,7 @@ class QueueWorker:
         while not self.should_quit:
             # Check if we've reached max jobs or max time
             if self._should_stop():
-                logger.info("Worker stopping due to limits")
+                logger.info('Worker stopping due to limits')
                 break
 
             # Check if paused
@@ -97,17 +94,15 @@ class QueueWorker:
                     self.jobs_processed += 1
                 else:
                     # No jobs available, sleep
-                    logger.debug(f"No jobs available, sleeping for {self.sleep}s")
+                    logger.debug(f'No jobs available, sleeping for {self.sleep}s')
                     await asyncio.sleep(self.sleep)
 
             except Exception as e:
-                logger.error(f"Error in worker loop: {str(e)}")
+                logger.error(f'Error in worker loop: {str(e)}')
                 logger.debug(traceback.format_exc())
                 await asyncio.sleep(self.sleep)
 
-        logger.info(
-            f"Queue worker stopped. Processed {self.jobs_processed} jobs."
-        )
+        logger.info(f'Queue worker stopped. Processed {self.jobs_processed} jobs.')
 
     async def _process_job(self, job_data: dict) -> None:
         """
@@ -116,11 +111,11 @@ class QueueWorker:
         Args:
             job_data: Job data from queue (id, payload, attempts)
         """
-        job_id = job_data["id"]
-        payload = job_data["payload"]
-        attempts = job_data["attempts"]
+        job_id = job_data['id']
+        payload = job_data['payload']
+        attempts = job_data['attempts']
 
-        logger.info(f"Processing job {job_id} (attempt {attempts})")
+        logger.info(f'Processing job {job_id} (attempt {attempts})')
 
         try:
             # Unserialize the job
@@ -131,30 +126,25 @@ class QueueWorker:
             # Check if we've exceeded max tries
             max_tries = self.max_tries or job.max_tries
             if attempts > max_tries:
-                logger.warning(
-                    f"Job {job_id} exceeded max tries ({max_tries}), moving to failed queue"
-                )
-                await self._fail_job(job, Exception("Max tries exceeded"))
+                logger.warning(f'Job {job_id} exceeded max tries ({max_tries}), moving to failed queue')
+                await self._fail_job(job, Exception('Max tries exceeded'))
                 await self.driver.delete(job_id, self.queue_name)
                 return
 
             # Execute the job with timeout
             try:
-                await asyncio.wait_for(
-                    job.handle(),
-                    timeout=job.timeout or self.timeout
-                )
+                await asyncio.wait_for(job.handle(), timeout=job.timeout or self.timeout)
 
                 # Job succeeded, delete from queue
                 await self.driver.delete(job_id, self.queue_name)
-                logger.info(f"Job {job_id} completed successfully")
+                logger.info(f'Job {job_id} completed successfully')
 
             except asyncio.TimeoutError:
-                logger.error(f"Job {job_id} timed out after {job.timeout}s")
-                raise Exception(f"Job timed out after {job.timeout} seconds")
+                logger.error(f'Job {job_id} timed out after {job.timeout}s')
+                raise Exception(f'Job timed out after {job.timeout} seconds')
 
         except Exception as e:
-            logger.error(f"Job {job_id} failed: {str(e)}")
+            logger.error(f'Job {job_id} failed: {str(e)}')
             logger.debug(traceback.format_exc())
 
             # Try to get the job object if it wasn't unserialized
@@ -164,7 +154,7 @@ class QueueWorker:
                     job.job_id = job_id
                     job.attempts = attempts
             except Exception as unserialize_error:
-                logger.error(f"Failed to unserialize job: {unserialize_error}")
+                logger.error(f'Failed to unserialize job: {unserialize_error}')
                 # Delete the corrupted job
                 await self.driver.delete(job_id, self.queue_name)
                 return
@@ -175,10 +165,7 @@ class QueueWorker:
                 # Release back to queue for retry
                 delay = job.retry_after
                 await self.driver.release(job_id, self.queue_name, delay)
-                logger.info(
-                    f"Job {job_id} released back to queue "
-                    f"(attempt {attempts}/{max_tries}, delay: {delay}s)"
-                )
+                logger.info(f'Job {job_id} released back to queue (attempt {attempts}/{max_tries}, delay: {delay}s)')
             else:
                 # Max tries exceeded, move to failed queue
                 await self._fail_job(job, e)
@@ -197,20 +184,20 @@ class QueueWorker:
             await job.failed(exception)
 
             # Store in failed jobs table
-            exception_str = f"{exception.__class__.__name__}: {str(exception)}\n"
+            exception_str = f'{exception.__class__.__name__}: {str(exception)}\n'
             exception_str += traceback.format_exc()
 
             await self.driver.failed(
-                connection=self.connection or "default",
+                connection=self.connection or 'default',
                 queue=self.queue_name,
                 payload=job.serialize(),
                 exception=exception_str,
             )
 
-            logger.info(f"Job {job.job_id} moved to failed queue")
+            logger.info(f'Job {job.job_id} moved to failed queue')
 
         except Exception as e:
-            logger.error(f"Error handling failed job: {str(e)}")
+            logger.error(f'Error handling failed job: {str(e)}')
             logger.debug(traceback.format_exc())
 
     def _should_stop(self) -> bool:
@@ -230,14 +217,14 @@ class QueueWorker:
     def pause(self) -> None:
         """Pause the worker."""
         self.paused = True
-        logger.info("Worker paused")
+        logger.info('Worker paused')
 
     def resume(self) -> None:
         """Resume the worker."""
         self.paused = False
-        logger.info("Worker resumed")
+        logger.info('Worker resumed')
 
     def stop(self) -> None:
         """Stop the worker gracefully."""
         self.should_quit = True
-        logger.info("Worker stop requested")
+        logger.info('Worker stop requested')

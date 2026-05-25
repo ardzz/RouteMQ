@@ -2,6 +2,7 @@
 RouteMQ Tinker - Interactive REPL for testing ORM relationships and queries
 Similar to Laravel Artisan Tinker
 """
+
 import asyncio
 import os
 import sys
@@ -28,7 +29,7 @@ class AsyncMagics(Magics):
     @line_magic
     def arun(self, line):
         """Execute async code using line magic."""
-        code = f"await {line}"
+        code = f'await {line}'
         return self.shell.run_cell_async(code)
 
 
@@ -44,9 +45,9 @@ class TinkerEnvironment:
         """Setup database session for the REPL."""
         if Model._is_enabled:
             self.session = await Model.get_session()
-            print(f"✓ Database session established")
+            print(f'✓ Database session established')
         else:
-            print("⚠ Database is disabled in configuration")
+            print('⚠ Database is disabled in configuration')
 
     def _setup_globals(self):
         """Setup global variables for the REPL session."""
@@ -60,6 +61,7 @@ class TinkerEnvironment:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
                     import nest_asyncio
+
                     nest_asyncio.apply()
                     return loop.run_until_complete(coro)
                 else:
@@ -94,11 +96,11 @@ class TinkerEnvironment:
     def _import_models(self):
         """Dynamically import all models from app.models."""
         try:
-            models_path = Path("app/models")
+            models_path = Path('app/models')
             if models_path.exists():
-                for model_file in models_path.glob("*.py"):
-                    if model_file.name != "__init__.py":
-                        module_name = f"app.models.{model_file.stem}"
+                for model_file in models_path.glob('*.py'):
+                    if model_file.name != '__init__.py':
+                        module_name = f'app.models.{model_file.stem}'
                         try:
                             __import__(module_name)
                             module = sys.modules[module_name]
@@ -106,15 +108,13 @@ class TinkerEnvironment:
                             # Add all classes that inherit from Base to globals
                             for attr_name in dir(module):
                                 attr = getattr(module, attr_name)
-                                if (isinstance(attr, type) and
-                                    hasattr(attr, '__tablename__') and
-                                    issubclass(attr, Base)):
+                                if isinstance(attr, type) and hasattr(attr, '__tablename__') and issubclass(attr, Base):
                                     self.globals[attr_name] = attr
-                                    print(f"✓ Imported model: {attr_name}")
+                                    print(f'✓ Imported model: {attr_name}')
                         except ImportError as e:
-                            print(f"⚠ Could not import {module_name}: {e}")
+                            print(f'⚠ Could not import {module_name}: {e}')
         except Exception as e:
-            print(f"⚠ Error importing models: {e}")
+            print(f'⚠ Error importing models: {e}')
 
     async def setup(self):
         """Async setup for the tinker environment."""
@@ -123,59 +123,60 @@ class TinkerEnvironment:
 
         # Setup Redis if enabled
         if self.app.redis_enabled:
-            print(f"✓ Redis manager available")
+            print(f'✓ Redis manager available')
 
-        print("\n" + "="*60)
-        print("🔧 RouteMQ Tinker - Interactive REPL Environment")
-        print("="*60)
-        print("Available objects:")
-        print("  app          - Application instance")
-        print("  Model        - Base Model class")
-        print("  Base         - SQLAlchemy declarative base")
-        print("  session      - Database session (if enabled)")
-        print("  redis_manager- Redis manager (if enabled)")
-        print("  select       - SQLAlchemy select function")
-        print("  and_, or_    - SQLAlchemy logical operators")
-        print("  func         - SQLAlchemy functions")
-        print("  desc, asc    - SQLAlchemy ordering")
-        print("  run_async()  - Helper to run async code")
-        print("\nHelper Functions:")
-        print("  query_devices()      - Get all devices")
-        print("  query_users()        - Get all users")
-        print("  create_sample_device() - Create a sample device")
-        print("\nExample usage:")
+        print('\n' + '=' * 60)
+        print('🔧 RouteMQ Tinker - Interactive REPL Environment')
+        print('=' * 60)
+        print('Available objects:')
+        print('  app          - Application instance')
+        print('  Model        - Base Model class')
+        print('  Base         - SQLAlchemy declarative base')
+        print('  session      - Database session (if enabled)')
+        print('  redis_manager- Redis manager (if enabled)')
+        print('  select       - SQLAlchemy select function')
+        print('  and_, or_    - SQLAlchemy logical operators')
+        print('  func         - SQLAlchemy functions')
+        print('  desc, asc    - SQLAlchemy ordering')
+        print('  run_async()  - Helper to run async code')
+        print('\nHelper Functions:')
+        print('  query_devices()      - Get all devices')
+        print('  query_users()        - Get all users')
+        print('  create_sample_device() - Create a sample device')
+        print('\nExample usage:')
         if Model._is_enabled:
-            print("  # Using run_async helper for queries:")
-            print("  devices = run_async(query_devices())")
-            print("  print(devices)")
-            print("  ")
-            print("  # Direct async queries (use run_async):")
-            print("  result = run_async(session.execute(select(Device)))")
-            print("  devices = result.scalars().all()")
-            print("  ")
-            print("  # Create new record:")
-            print("  device = run_async(create_sample_device())")
-            print("  print(device)")
-            print("  ")
-            print("  # Manual creation:")
+            print('  # Using run_async helper for queries:')
+            print('  devices = run_async(query_devices())')
+            print('  print(devices)')
+            print('  ')
+            print('  # Direct async queries (use run_async):')
+            print('  result = run_async(session.execute(select(Device)))')
+            print('  devices = result.scalars().all()')
+            print('  ')
+            print('  # Create new record:')
+            print('  device = run_async(create_sample_device())')
+            print('  print(device)')
+            print('  ')
+            print('  # Manual creation:')
             print("  device = Device(device_id='test-001', name='Test Device')")
-            print("  session.add(device)")
-            print("  run_async(session.commit())")
+            print('  session.add(device)')
+            print('  run_async(session.commit())')
         else:
-            print("  # Database is disabled. Enable it in .env file:")
-            print("  ENABLE_MYSQL=true")
+            print('  # Database is disabled. Enable it in .env file:')
+            print('  ENABLE_MYSQL=true')
         print("\nTip: Use 'run_async()' to execute async functions.")
         print("Tip: Put a ';' at the end of a line to suppress output.")
         print("Type 'exit()' or Ctrl+D to quit")
-        print("="*60 + "\n")
+        print('=' * 60 + '\n')
 
 
-def start_tinker_sync(env_file=".env"):
+def start_tinker_sync(env_file='.env'):
     """Synchronous wrapper for starting tinker."""
+
     async def _start_tinker():
         try:
             # Create application instance
-            print("Initializing RouteMQ application...")
+            print('Initializing RouteMQ application...')
             app = Application(env_file=env_file)
 
             # Setup tinker environment
@@ -198,16 +199,17 @@ def start_tinker_sync(env_file=".env"):
             # Start the embedding with our custom namespace
             embed(
                 user_ns=tinker_env.globals,
-                banner1="",  # We'll show our own banner
-                exit_msg="Goodbye! 👋",
-                config=shell.config
+                banner1='',  # We'll show our own banner
+                exit_msg='Goodbye! 👋',
+                config=shell.config,
             )
 
         except KeyboardInterrupt:
-            print("\nGoodbye! 👋")
+            print('\nGoodbye! 👋')
         except Exception as e:
-            print(f"Error starting tinker: {e}")
+            print(f'Error starting tinker: {e}')
             import traceback
+
             traceback.print_exc()
         finally:
             # Cleanup
@@ -246,5 +248,5 @@ def run_tinker():
     start_tinker_sync()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     run_tinker()

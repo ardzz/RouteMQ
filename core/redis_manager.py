@@ -5,6 +5,7 @@ import json
 
 try:
     import redis.asyncio as redis
+
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
@@ -35,27 +36,27 @@ class RedisManager:
         if hasattr(self, '_initialized'):
             return
 
-        self.logger = logging.getLogger("RouteMQ.RedisManager")
-        self.enabled = os.getenv("ENABLE_REDIS", "false").lower() == "true"
-        self.host = os.getenv("REDIS_HOST", "localhost")
-        self.port = int(os.getenv("REDIS_PORT", "6379"))
-        self.db = int(os.getenv("REDIS_DB", "0"))
-        self.password = os.getenv("REDIS_PASSWORD", None)
-        self.username = os.getenv("REDIS_USERNAME", None)
-        self.max_connections = int(os.getenv("REDIS_MAX_CONNECTIONS", "10"))
-        self.socket_timeout = float(os.getenv("REDIS_SOCKET_TIMEOUT", "5.0"))
-        self.socket_connect_timeout = float(os.getenv("REDIS_SOCKET_CONNECT_TIMEOUT", "5.0"))
+        self.logger = logging.getLogger('RouteMQ.RedisManager')
+        self.enabled = os.getenv('ENABLE_REDIS', 'false').lower() == 'true'
+        self.host = os.getenv('REDIS_HOST', 'localhost')
+        self.port = int(os.getenv('REDIS_PORT', '6379'))
+        self.db = int(os.getenv('REDIS_DB', '0'))
+        self.password = os.getenv('REDIS_PASSWORD', None)
+        self.username = os.getenv('REDIS_USERNAME', None)
+        self.max_connections = int(os.getenv('REDIS_MAX_CONNECTIONS', '10'))
+        self.socket_timeout = float(os.getenv('REDIS_SOCKET_TIMEOUT', '5.0'))
+        self.socket_connect_timeout = float(os.getenv('REDIS_SOCKET_CONNECT_TIMEOUT', '5.0'))
 
         self._initialized = True
 
         if self.enabled and not REDIS_AVAILABLE:
-            self.logger.error("Redis is enabled but redis package is not installed. Install with: uv add redis")
+            self.logger.error('Redis is enabled but redis package is not installed. Install with: uv add redis')
             self.enabled = False
 
         if self.enabled:
-            self.logger.info(f"Redis integration enabled - connecting to {self.host}:{self.port}")
+            self.logger.info(f'Redis integration enabled - connecting to {self.host}:{self.port}')
         else:
-            self.logger.info("Redis integration is disabled")
+            self.logger.info('Redis integration is disabled')
 
     async def initialize(self) -> bool:
         """
@@ -79,7 +80,7 @@ class RedisManager:
                 socket_timeout=self.socket_timeout,
                 socket_connect_timeout=self.socket_connect_timeout,
                 decode_responses=True,
-                health_check_interval=30
+                health_check_interval=30,
             )
 
             # Create Redis client
@@ -87,11 +88,11 @@ class RedisManager:
 
             # Test connection
             await self._redis_client.ping()
-            self.logger.info("Successfully connected to Redis")
+            self.logger.info('Successfully connected to Redis')
             return True
 
         except Exception as e:
-            self.logger.error(f"Failed to connect to Redis: {e}")
+            self.logger.error(f'Failed to connect to Redis: {e}')
             self.enabled = False
             return False
 
@@ -105,7 +106,7 @@ class RedisManager:
             await self._redis_pool.aclose()
             self._redis_pool = None
 
-        self.logger.info("Redis connections closed")
+        self.logger.info('Redis connections closed')
 
     def get_client(self) -> Optional['Redis']:
         """
@@ -141,8 +142,15 @@ class RedisManager:
             self.logger.error(f"Redis GET error for key '{key}': {e}")
             return None
 
-    async def set(self, key: str, value: Union[str, int, float], ex: Optional[int] = None,
-                  px: Optional[int] = None, nx: bool = False, xx: bool = False) -> bool:
+    async def set(
+        self,
+        key: str,
+        value: Union[str, int, float],
+        ex: Optional[int] = None,
+        px: Optional[int] = None,
+        nx: bool = False,
+        xx: bool = False,
+    ) -> bool:
         """
         Set key-value pair.
 
@@ -224,7 +232,7 @@ class RedisManager:
         try:
             return await self._redis_client.delete(*keys)
         except Exception as e:
-            self.logger.error(f"Redis DELETE error for keys {keys}: {e}")
+            self.logger.error(f'Redis DELETE error for keys {keys}: {e}')
             return 0
 
     async def exists(self, key: str) -> bool:
@@ -286,8 +294,7 @@ class RedisManager:
             self.logger.error(f"Redis HGET error for hash '{name}', key '{key}': {e}")
             return None
 
-    async def hset(self, name: str, key: str = None, value: str = None,
-                   mapping: Dict[str, Any] = None) -> int:
+    async def hset(self, name: str, key: str = None, value: str = None, mapping: Dict[str, Any] = None) -> int:
         """
         Set hash field(s).
 
@@ -334,8 +341,15 @@ class RedisManager:
             self.logger.error(f"JSON decode error for key '{key}': {e}")
             return None
 
-    async def set_json(self, key: str, value: Any, ex: Optional[int] = None,
-                       px: Optional[int] = None, nx: bool = False, xx: bool = False) -> bool:
+    async def set_json(
+        self,
+        key: str,
+        value: Any,
+        ex: Optional[int] = None,
+        px: Optional[int] = None,
+        nx: bool = False,
+        xx: bool = False,
+    ) -> bool:
         """
         Serialize and set JSON value.
 
