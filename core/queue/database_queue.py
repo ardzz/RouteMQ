@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Union
 from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -111,7 +111,7 @@ class DatabaseQueue(QueueDriver):
 
     async def release(
         self,
-        job_id: int,
+        job_id: Union[int, str],
         queue: str,
         delay: int = 0,
     ) -> None:
@@ -143,7 +143,7 @@ class DatabaseQueue(QueueDriver):
         finally:
             await session.close()
 
-    async def delete(self, job_id: int, queue: str) -> None:
+    async def delete(self, job_id: Union[int, str], queue: str) -> None:
         """Delete a job from the queue."""
         if not Model._is_enabled:
             logger.error("Cannot delete job - MySQL is disabled")

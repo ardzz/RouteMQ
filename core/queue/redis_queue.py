@@ -1,7 +1,7 @@
 import json
 import logging
 import time
-from typing import Optional
+from typing import Optional, Union
 from datetime import datetime
 
 from core.queue.queue_driver import QueueDriver
@@ -142,7 +142,7 @@ class RedisQueue(QueueDriver):
 
     async def release(
         self,
-        job_id: str,
+        job_id: Union[int, str],
         queue: str,
         delay: int = 0,
     ) -> None:
@@ -188,7 +188,7 @@ class RedisQueue(QueueDriver):
             logger.error(f"Failed to release job: {str(e)}")
             raise
 
-    async def delete(self, job_id: str, queue: str) -> None:
+    async def delete(self, job_id: Union[int, str], queue: str) -> None:
         """Delete a job from the queue."""
         if not self.redis.is_enabled():
             logger.error("Cannot delete job - Redis is disabled")
