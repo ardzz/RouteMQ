@@ -1,0 +1,117 @@
+# Branch Protection Policy for RouteMQ Sprint 02
+# ==============================================
+# This file documents the required branch protection settings.
+# 
+# IMPORTANT: This is a REFERENCE configuration. GitHub branch protection
+# rules must be applied via GitHub UI or API. This file is not
+# automatically enforced by GitHub.
+#
+# To apply these settings:
+# 1. Use GitHub UI: Settings > Branches > Add rule
+# 2. Or use GitHub CLI: gh api repos/{owner}/{repo}/branches/{branch}/protection
+# 3. Or use Probot Settings app (if configured)
+
+# Target branches for protection
+branches:
+  - master
+  - develop
+
+# Protection rules
+protection:
+  # Require pull request reviews before merging
+  required_pull_request_reviews:
+    required_approving_review_count: 1
+    dismiss_stale_reviews: true
+    require_code_owner_reviews: false
+    # Require review from code owners (optional, set to true if CODEOWNERS exists)
+    require_last_push_approval: false
+
+  # Require status checks to pass before merging
+  required_status_checks:
+    # Require branches to be up to date before merging
+    strict: true
+    # Status checks that are required (must match exact job names in .github/workflows/ci.yml)
+    contexts:
+      - test
+      - lint
+      - type-check
+      - security
+      - coverage
+      - build
+    # Note: All jobs depend on 'test', so requiring all ensures full CI passes
+
+  # Require conversation resolution before merging
+  required_conversation_resolution: true
+
+  # Require signed commits (optional - enable for high-security requirements)
+  required_signatures: false
+
+  # Include administrators (apply rules to admins too)
+  enforce_admins: true
+
+  # Restrict who can push to matching branches
+  restrictions: null  # null = no restrictions beyond the rules above
+
+  # Require linear history (no merge commits)
+  required_linear_history: true
+
+  # Allow force pushes (MUST be false for protection)
+  allow_force_pushes: false
+
+  # Allow deletions
+  allow_deletions: false
+
+  # Require deployments to succeed before merging (optional)
+  required_deployments: null
+
+# Sprint 02 Additional Requirements
+# ---------------------------------
+sprint_02:
+  effective_date: "2026-05-25"
+  rationale: |
+    Branch protection ensures code quality and prevents accidental
+    changes to protected branches. Required checks enforce:
+    - All tests pass (test)
+    - Code style compliance (lint)
+    - Type safety (type-check)
+    - Security scanning (security)
+    - Coverage thresholds (coverage)
+    - Package build success (build)
+  
+  notes: |
+    - The 'test' job is the base dependency for all other CI jobs
+    - 'lint' includes both ruff lint and format checks
+    - 'security' includes Bandit SAST and pip-audit dependency scan
+    - 'coverage' generates test coverage reports
+    - 'build' verifies the package builds correctly
+    
+  exemptions: |
+    Emergency hotfixes may bypass review requirements via admin override,
+    but this should be documented and reviewed post-merge.
+
+# GitHub CLI Commands for Reference
+# ---------------------------------
+# To apply these settings via GitHub CLI, run:
+#
+# gh api repos/{owner}/{repo}/branches/master/protection \
+#   --method PUT \
+#   --input - <<EOF
+# {
+#   "required_status_checks": {
+#     "strict": true,
+#     "contexts": ["test", "lint", "type-check", "security", "coverage", "build"]
+#   },
+#   "enforce_admins": true,
+#   "required_pull_request_reviews": {
+#     "required_approving_review_count": 1,
+#     "dismiss_stale_reviews": true
+#   },
+#   "restrictions": null,
+#   "required_linear_history": true,
+#   "allow_force_pushes": false,
+#   "allow_deletions": false,
+#   "required_conversation_resolution": true
+# }
+# EOF
+#
+# Repeat for 'develop' branch.
