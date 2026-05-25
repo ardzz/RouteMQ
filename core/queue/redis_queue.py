@@ -7,7 +7,7 @@ from datetime import datetime
 from core.queue.queue_driver import QueueDriver
 from core.redis_manager import RedisManager
 from core.model import Model
-from app.models.queue_failed_job import QueueFailedJob
+from core.queue.models import QueueFailedJob
 
 logger = logging.getLogger("RouteMQ.RedisQueue")
 

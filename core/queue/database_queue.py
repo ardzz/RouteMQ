@@ -6,8 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.queue.queue_driver import QueueDriver
 from core.model import Model
-from app.models.queue_job import QueueJob
-from app.models.queue_failed_job import QueueFailedJob
+from core.queue.models import QueueJob, QueueFailedJob
 
 logger = logging.getLogger("RouteMQ.DatabaseQueue")
 
