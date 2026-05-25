@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Union
 from datetime import datetime
 
 
@@ -42,7 +42,7 @@ class QueueDriver(ABC):
     @abstractmethod
     async def release(
         self,
-        job_id: int,
+        job_id: Union[int, str],
         queue: str,
         delay: int = 0,
     ) -> None:
@@ -50,19 +50,19 @@ class QueueDriver(ABC):
         Release a job back to the queue (for retry).
 
         Args:
-            job_id: Job identifier
+            job_id: Job identifier (int for database driver, str for redis driver)
             queue: Queue name
             delay: Delay in seconds before the job becomes available again
         """
         pass
 
     @abstractmethod
-    async def delete(self, job_id: int, queue: str) -> None:
+    async def delete(self, job_id: Union[int, str], queue: str) -> None:
         """
         Delete a job from the queue.
 
         Args:
-            job_id: Job identifier
+            job_id: Job identifier (int for database driver, str for redis driver)
             queue: Queue name
         """
         pass
