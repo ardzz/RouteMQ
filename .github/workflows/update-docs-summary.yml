@@ -15,25 +15,24 @@ on:
       - 'docs/**'
 
 permissions:
-  actions: write
-  security-events: write
-  contents: write
-  pull-requests: write
-  repository-projects: write
+  contents: read
 
 jobs:
   update-summary:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         fetch-depth: 0
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # v4
       with:
         python-version: '3.11'
 
@@ -73,7 +72,7 @@ jobs:
 
     - name: Add PR comment (for pull requests)
       if: steps.verify-changed-files.outputs.changed == 'true' && github.event_name == 'pull_request'
-      uses: actions/github-script@v6
+      uses: actions/github-script@00f12e3e20659f42342b1c0226afda7f7c042325 # v6
       with:
         script: |
           github.rest.issues.createComment({
