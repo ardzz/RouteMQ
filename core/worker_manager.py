@@ -148,14 +148,18 @@ class WorkerManager:
         return shared_routes
 
     def start_workers(self, num_workers: int = None):
-        """Start worker processes for shared subscriptions."""
+        """Start one process per shared route worker slot and skip failed starts."""
         shared_routes = self.get_shared_routes_info()
         if not shared_routes:
             self.logger.info("No shared routes found, workers not needed")
             return
 
+        required_workers = sum(route_info['worker_count'] for route_info in shared_routes)
+
         if num_workers is None:
-            num_workers = self.router.get_total_workers_needed()
+            num_workers = required_workers
+        elif num_workers == self.router.get_total_workers_needed() and num_workers < required_workers:
+            num_workers = required_workers
 
         if num_workers <= 0:
             return
@@ -170,12 +174,26 @@ class WorkerManager:
 
         self.logger.info(f"Starting {num_workers} workers for shared subscriptions")
 
+        worker_topics = [
+            route_info['topic']
+            for route_info in shared_routes
+            for _ in range(route_info['worker_count'])
+        ]
+
         for worker_id in range(num_workers):
             process = multiprocessing.Process(
                 target=worker_process_main,
                 args=(worker_id, self.router_directory, shared_routes, broker_config, self.group_name)
             )
-            process.start()
+            try:
+                process.start()
+            except (OSError, RuntimeError) as exc:
+                route_topic = worker_topics[worker_id] if worker_id < len(worker_topics) else "unknown"
+                self.logger.warning(
+                    f"Failed to start worker {worker_id} for route {route_topic}: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+                continue
             self.workers.append(process)
             self.logger.info(f"Started worker {worker_id} (PID: {process.pid})")
 

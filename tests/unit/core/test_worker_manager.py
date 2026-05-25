@@ -112,7 +112,6 @@ class TestWorkerManager(unittest.TestCase):
         self.assertIs(second_kwargs["target"], worker_process_main)
         self.assertEqual(second_kwargs["args"], (1, "custom.routers", expected_shared_routes, expected_broker_config, "workers"))
 
-    @unittest.expectedFailure
     def test_default_worker_count_is_sum_of_shared_route_worker_counts(self) -> None:
         manager = WorkerManager(self.make_router(), group_name="workers", router_directory="app.routers")
         processes = [self.make_process(pid=300 + index) for index in range(5)]
@@ -175,21 +174,24 @@ class TestWorkerManager(unittest.TestCase):
         self.assertEqual(process.join.call_args_list, [unittest.mock.call(timeout=5), unittest.mock.call()])
         self.assertEqual(manager.workers, [])
 
-    @unittest.expectedFailure
     def test_spawn_failure_does_not_crash_manager_and_remaining_workers_start(self) -> None:
         manager = WorkerManager(self.make_router(), group_name="workers", router_directory="app.routers")
         first = self.make_process(pid=600)
         failed = self.make_process(pid=601)
         failed.start.side_effect = OSError("cannot spawn")
         third = self.make_process(pid=602)
+        fourth = self.make_process(pid=603)
+        fifth = self.make_process(pid=604)
 
-        with patch("core.worker_manager.multiprocessing.Process", side_effect=[first, failed, third]):
+        with patch("core.worker_manager.multiprocessing.Process", side_effect=[first, failed, third, fourth, fifth]):
             manager.start_workers(num_workers=3)
 
         first.start.assert_called_once_with()
         failed.start.assert_called_once_with()
         third.start.assert_called_once_with()
-        self.assertEqual(manager.workers, [first, third])
+        fourth.start.assert_called_once_with()
+        fifth.start.assert_called_once_with()
+        self.assertEqual(manager.workers, [first, third, fourth, fifth])
 
 
 if __name__ == "__main__":
