@@ -2,15 +2,15 @@
 
 # RouteMQ Framework
 
-A flexible MQTT routing framework with middleware support, dynamic router loading, Redis integration, and horizontal scaling capabilities, inspired by web frameworks.
+An MQTT routing framework with middleware support, dynamic router loading, Redis integration, and horizontal scaling capabilities, inspired by web frameworks.
 
-## 🚀 Quick Start
+## Quick Start
 
-### Option 1: Use as Template (Recommended)
+### Option 1: Use as Template
 
 Start your own project with a clean git history:
 
-**Using GitHub (Easiest):**
+**Using GitHub:**
 1. Click "Use this template" button on GitHub
 2. Create your new repository
 3. Clone your repository:
@@ -53,10 +53,10 @@ uv run python main.py --init
 uv run python main.py --run
 ```
 
-## ✨ Features
+## Features
 
 - **Dynamic Router Loading** - Automatically discover and load routes from multiple files
-- **Route-based MQTT topic handling** - Define routes using a clean, expressive syntax
+- **Route-based MQTT topic handling** - Define routes for MQTT topics
 - **Middleware support** - Process messages through middleware chains
 - **Parameter extraction** - Extract variables from MQTT topics using Laravel-style syntax
 - **Background Task Queue** - Laravel-style queue system for async job processing
@@ -65,13 +65,13 @@ uv run python main.py --run
 - **Advanced Rate Limiting** - Multiple rate limiting strategies with Redis backend
 - **Optional MySQL integration** - Use with or without a database
 - **Docker Support** - Production-ready Docker Compose setup with queue workers
-- **Environment-based configuration** - Flexible configuration through .env files
+- **Environment-based configuration** - Configuration through .env files
 
-## 📚 Documentation
+## Documentation
 
-**Complete documentation is available in the [docs](./docs) folder, optimized for GitBook integration.**
+**Documentation is available in the [docs](./docs) folder, optimized for GitBook integration.**
 
-📦 **New to RouteMQ?** See the [Installation Guide](./INSTALL.md) for detailed setup instructions.
+See the [Installation Guide](./INSTALL.md) for detailed setup instructions.
 
 ### Quick Links
 
@@ -88,27 +88,27 @@ uv run python main.py --run
 - **[API Reference](./docs/api-reference/README.md)** - Complete API documentation
 - **[FAQ](./docs/faq.md)** - Frequently asked questions
 
-## 🏗️ Project Structure
+## Project Structure
 
 ```
 RouteMQ/
-├── docs/                   # 📖 Complete documentation
-├── app/                    # 🚀 Your application code
-│   ├── controllers/        # 🎮 Route handlers
-│   ├── middleware/         # 🔧 Custom middleware
-│   ├── models/            # 🗄️ Database models
-│   ├── jobs/              # 📋 Background jobs
-│   └── routers/           # 🛣️ Route definitions
-├── core/                  # ⚡ Framework core
-│   ├── queue/             # 🔄 Queue system
-│   ├── job.py             # 📝 Base job class
+├── docs/                   # Documentation
+├── app/                    # Your application code
+│   ├── controllers/        # Route handlers
+│   ├── middleware/         # Custom middleware
+│   ├── models/            # Database models
+│   ├── jobs/              # Background jobs
+│   └── routers/           # Route definitions
+├── core/                  # Framework core
+│   ├── queue/             # Queue system
+│   ├── job.py             # Base job class
 │   └── ...                # Other core components
-├── bootstrap/             # 🌟 Application bootstrap
-├── docker-compose.yml     # 🐳 Production Docker setup
-└── tests/                 # 🧪 Test files
+├── bootstrap/             # Application bootstrap
+├── docker-compose.yml     # Production Docker setup
+└── tests/                 # Test files
 ```
 
-## 🐳 Docker Deployment
+## Docker Deployment
 
 RouteMQ includes production-ready Docker Compose configuration with Redis, MySQL, and queue workers:
 
@@ -130,7 +130,7 @@ make ps      # Show status
 
 See [Docker Deployment Guide](./docs/docker-deployment.md) for detailed instructions.
 
-## 📋 Background Task Queue
+## Background Task Queue
 
 Process time-consuming tasks asynchronously with the built-in queue system:
 
@@ -159,14 +159,10 @@ python main.py --queue-work --queue emails
 
 See [Queue System Documentation](./docs/queue-system.md) for complete guide.
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Please see our documentation for development setup and contribution guidelines.
 
-## 📄 License
+## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
-
----
-
-**📖 For detailed documentation, examples, and guides, visit the [docs](./docs) folder.**
