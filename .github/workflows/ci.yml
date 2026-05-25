@@ -129,7 +129,7 @@ jobs:
         run: uv run coverage run run_tests.py
 
       - name: Coverage report
-        run: uv run coverage report -m
+        run: uv run coverage report -m --fail-under=55
 
   build:
     name: build

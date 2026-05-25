@@ -141,11 +141,13 @@ namespace_packages = true
 disable_error_code = ["assignment", "union-attr", "valid-type", "misc", "call-overload"]
 
 [tool.coverage.run]
-source = ["app", "bootstrap", "core"]
+source = ["core", "app", "bootstrap"]
 command_line = "run_tests.py"
 branch = true
+omit = ["tests/*", "*/__init__.py", "core/tinker.py"]
 
 [tool.coverage.report]
+fail_under = 55
 show_missing = true
 skip_covered = false
 
