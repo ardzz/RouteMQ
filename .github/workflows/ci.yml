@@ -60,7 +60,6 @@ jobs:
 
       - name: Ruff format check
         run: uv run ruff format --check .
-        continue-on-error: true
 
   type-check:
     name: type-check

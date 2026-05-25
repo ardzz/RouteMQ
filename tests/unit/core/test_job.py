@@ -8,12 +8,12 @@ from core.job import Job
 
 
 class SerializableJob(Job):
-    queue = "serialization"
+    queue = 'serialization'
 
     def __init__(self) -> None:
         super().__init__()
-        self.name = "alpha"
-        self.payload = {"count": 1}
+        self.name = 'alpha'
+        self.payload = {'count': 1}
 
     async def handle(self) -> None:
         return None
@@ -21,7 +21,7 @@ class SerializableJob(Job):
 
 class OverrideDefaultsJob(Job):
     max_tries = 5
-    queue = "critical"
+    queue = 'critical'
     retry_after = 30
 
     async def handle(self) -> None:
@@ -38,7 +38,7 @@ class MutableStateJob(Job):
 
 
 class EmptyQueueJob(Job):
-    queue = ""
+    queue = ''
 
     async def handle(self) -> None:
         return None
@@ -65,13 +65,13 @@ class MissingHandleJob(Job):
 class TestJobDefaults(unittest.TestCase):
     def test_base_class_defaults_are_stable(self) -> None:
         """Base Job defaults remain the queue worker contract."""
-        self.assertEqual((Job.max_tries, Job.queue, Job.retry_after), (3, "default", 0))
+        self.assertEqual((Job.max_tries, Job.queue, Job.retry_after), (3, 'default', 0))
 
     def test_subclass_defaults_override_base_values(self) -> None:
         """Subclass class attributes override base dispatch defaults."""
         self.assertEqual(
             (OverrideDefaultsJob.max_tries, OverrideDefaultsJob.queue, OverrideDefaultsJob.retry_after),
-            (5, "critical", 30),
+            (5, 'critical', 30),
         )
 
     def test_constructor_initializes_runtime_state(self) -> None:
@@ -85,14 +85,14 @@ class TestJobDefaults(unittest.TestCase):
         job_class = cast(Any, SerializableJob)
 
         with self.assertRaises(TypeError):
-            job_class({"name": "alpha"})
+            job_class({'name': 'alpha'})
 
     def test_constructor_rejects_keyword_payload(self) -> None:
         """Base constructor does not accept keyword payload data."""
         job_class = cast(Any, SerializableJob)
 
         with self.assertRaises(TypeError):
-            job_class(name="alpha")
+            job_class(name='alpha')
 
 
 class TestJobAbstractContract(unittest.TestCase):
@@ -140,7 +140,9 @@ class TestJobSerialization(unittest.TestCase):
 
         self.assertIsInstance(restored, SerializableJob)
         restored_job = cast(SerializableJob, restored)
-        self.assertEqual((restored_job.name, restored_job.payload, restored_job.queue), ("alpha", {"count": 1}, "serialization"))
+        self.assertEqual(
+            (restored_job.name, restored_job.payload, restored_job.queue), ('alpha', {'count': 1}, 'serialization')
+        )
 
     def test_empty_queue_name_survives_serialization(self) -> None:
         """Empty queue class attributes are preserved, not defaulted."""
@@ -148,7 +150,7 @@ class TestJobSerialization(unittest.TestCase):
 
         restored = Job.unserialize(EmptyQueueJob().serialize())
 
-        self.assertEqual(restored.queue, "")
+        self.assertEqual(restored.queue, '')
 
     def test_zero_max_tries_survives_serialization(self) -> None:
         """Zero max_tries is preserved for edge-case retry policy tests."""
@@ -172,13 +174,15 @@ class TestJobSerialization(unittest.TestCase):
         job.job_id = 7
         job.attempts = 2
 
-        self.assertEqual(job.get_data(), {"name": "alpha", "payload": {"count": 1}})
+        self.assertEqual(job.get_data(), {'name': 'alpha', 'payload': {'count': 1}})
 
     def test_serialize_emits_expected_metadata(self) -> None:
         """Serialized JSON includes dispatch metadata beside job data."""
         data: dict[str, Any] = json.loads(SerializableJob().serialize())
 
-        self.assertEqual((data["max_tries"], data["timeout"], data["retry_after"], data["queue"]), (3, 60, 0, "serialization"))
+        self.assertEqual(
+            (data['max_tries'], data['timeout'], data['retry_after'], data['queue']), (3, 60, 0, 'serialization')
+        )
 
 
 class TestJobInstanceState(unittest.TestCase):
@@ -186,7 +190,7 @@ class TestJobInstanceState(unittest.TestCase):
         """Mutable payload belongs to each instance, not the Job class."""
         first = MutableStateJob()
         second = MutableStateJob()
-        first.items.append("first")
+        first.items.append('first')
 
         self.assertEqual(second.items, [])
 
@@ -194,7 +198,7 @@ class TestJobInstanceState(unittest.TestCase):
         """Mutable state is stored on the instance where get_data can serialize it."""
         job = MutableStateJob()
 
-        self.assertIsInstance(job.__dict__["items"], MutableSequence)
+        self.assertIsInstance(job.__dict__['items'], MutableSequence)
 
 
 class TestJobRegistry(unittest.TestCase):
@@ -214,12 +218,12 @@ class TestJobRegistry(unittest.TestCase):
         """Registry stores the import path used by unserialize lookup."""
         Job.register(SerializableJob)
 
-        self.assertIn(f"{__name__}.SerializableJob", Job._allowed_classes)
+        self.assertIn(f'{__name__}.SerializableJob', Job._allowed_classes)
 
     def test_registered_class_path_can_be_looked_up(self) -> None:
         """Allow-list membership is the registry lookup mechanism."""
         Job.register(SerializableJob)
-        class_path = f"{SerializableJob.__module__}.{SerializableJob.__name__}"
+        class_path = f'{SerializableJob.__module__}.{SerializableJob.__name__}'
 
         self.assertTrue(class_path in Job._allowed_classes)
 
@@ -231,5 +235,5 @@ class TestJobRegistry(unittest.TestCase):
         self.assertEqual(len(Job._allowed_classes), 1)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

@@ -11,11 +11,12 @@ class TestMiddleware(unittest.TestCase):
             'topic': 'test/topic',
             'payload': {'test': 'data'},
             'params': {'id': '123'},
-            'client': MagicMock()
+            'client': MagicMock(),
         }
 
     def test_middleware_chain(self):
         """Test that middleware correctly chains and processes context."""
+
         # Create a test middleware class
         class TestMiddleware(Middleware):
             async def handle(self, context, next_handler):
@@ -35,9 +36,7 @@ class TestMiddleware(unittest.TestCase):
 
         # Run the middleware chain
         loop = asyncio.get_event_loop()
-        result = loop.run_until_complete(
-            middleware.handle(self.test_context, mock_handler)
-        )
+        result = loop.run_until_complete(middleware.handle(self.test_context, mock_handler))
 
         # Check that the handler was called with the modified context
         mock_handler.assert_called_once()
@@ -50,6 +49,7 @@ class TestMiddleware(unittest.TestCase):
 
     def test_multiple_middleware_chain(self):
         """Test that multiple middleware components correctly chain together."""
+
         # Create test middleware classes
         class FirstMiddleware(Middleware):
             async def handle(self, context, next_handler):
@@ -74,9 +74,7 @@ class TestMiddleware(unittest.TestCase):
 
         # Create the nested middleware chain manually
         async def chain(context):
-            return await first_middleware.handle(context,
-                lambda ctx: second_middleware.handle(ctx, mock_handler)
-            )
+            return await first_middleware.handle(context, lambda ctx: second_middleware.handle(ctx, mock_handler))
 
         # Run the middleware chain
         loop = asyncio.get_event_loop()
@@ -95,6 +93,7 @@ class TestMiddleware(unittest.TestCase):
 
     def test_middleware_error_handling(self):
         """Test that middleware can handle errors from handlers."""
+
         # Create a middleware that catches exceptions
         class ErrorHandlingMiddleware(Middleware):
             async def handle(self, context, next_handler):
@@ -105,21 +104,19 @@ class TestMiddleware(unittest.TestCase):
 
         # Create a mock handler that raises an exception
         async def failing_handler(context):
-            raise ValueError("Test error")
+            raise ValueError('Test error')
 
         # Create and execute the middleware
         middleware = ErrorHandlingMiddleware()
 
         # Run the middleware with the failing handler
         loop = asyncio.get_event_loop()
-        result = loop.run_until_complete(
-            middleware.handle(self.test_context, failing_handler)
-        )
+        result = loop.run_until_complete(middleware.handle(self.test_context, failing_handler))
 
         # Check that the middleware caught the exception and returned an error response
         self.assertEqual(result['status'], 'error')
         self.assertEqual(result['error'], 'Test error')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

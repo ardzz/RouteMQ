@@ -13,7 +13,7 @@ class QueueDriver(ABC):
     async def push(
         self,
         payload: str,
-        queue: str = "default",
+        queue: str = 'default',
         delay: int = 0,
     ) -> None:
         """
@@ -27,7 +27,7 @@ class QueueDriver(ABC):
         pass
 
     @abstractmethod
-    async def pop(self, queue: str = "default") -> Optional[dict]:
+    async def pop(self, queue: str = 'default') -> Optional[dict]:
         """
         Pop the next available job from the queue.
 
@@ -87,7 +87,7 @@ class QueueDriver(ABC):
         pass
 
     @abstractmethod
-    async def size(self, queue: str = "default") -> int:
+    async def size(self, queue: str = 'default') -> int:
         """
         Get the size of the queue.
 

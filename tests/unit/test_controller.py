@@ -17,34 +17,31 @@ class TestController(unittest.TestCase):
 
     def test_controller_extension(self):
         """Test that controllers can be extended."""
+
         # Create a controller subclass
         class TestController(Controller):
             @staticmethod
             async def handle_message(device_id, payload, client):
-                return {"status": "processed", "device_id": device_id}
+                return {'status': 'processed', 'device_id': device_id}
 
             @classmethod
             async def process_data(cls, payload):
-                cls.logger.info("Processing data")
-                return {"processed": True}
+                cls.logger.info('Processing data')
+                return {'processed': True}
 
         # Test the static handler method
         loop = asyncio.get_event_loop()
-        result = loop.run_until_complete(
-            TestController.handle_message("123", {"value": 25}, self.client)
-        )
+        result = loop.run_until_complete(TestController.handle_message('123', {'value': 25}, self.client))
 
         # Check the result
-        self.assertEqual(result["status"], "processed")
-        self.assertEqual(result["device_id"], "123")
+        self.assertEqual(result['status'], 'processed')
+        self.assertEqual(result['device_id'], '123')
 
         # Test the class method
-        result = loop.run_until_complete(
-            TestController.process_data({"value": 25})
-        )
+        result = loop.run_until_complete(TestController.process_data({'value': 25}))
 
         # Check the result
-        self.assertTrue(result["processed"])
+        self.assertTrue(result['processed'])
 
     def test_controller_integration_with_router(self):
         """Test that controllers work with the router."""
@@ -54,22 +51,20 @@ class TestController(unittest.TestCase):
         class TestController(Controller):
             @staticmethod
             async def handle_message(device_id, payload, client):
-                return {"status": "processed", "device_id": device_id}
+                return {'status': 'processed', 'device_id': device_id}
 
         # Create a router and register the controller method
         router = Router()
-        router.on("devices/{device_id}/status", TestController.handle_message)
+        router.on('devices/{device_id}/status', TestController.handle_message)
 
         # Test dispatching a message
         loop = asyncio.get_event_loop()
-        result = loop.run_until_complete(
-            router.dispatch("devices/123/status", {"value": 25}, self.client)
-        )
+        result = loop.run_until_complete(router.dispatch('devices/123/status', {'value': 25}, self.client))
 
         # Check the result
-        self.assertEqual(result["status"], "processed")
-        self.assertEqual(result["device_id"], "123")
+        self.assertEqual(result['status'], 'processed')
+        self.assertEqual(result['device_id'], '123')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

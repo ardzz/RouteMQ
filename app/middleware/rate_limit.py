@@ -11,17 +11,19 @@ class RateLimitMiddleware(Middleware):
     Supports multiple rate limiting strategies including sliding window and token bucket.
     """
 
-    def __init__(self,
-                 max_requests: int = 100,
-                 window_seconds: int = 60,
-                 strategy: str = "sliding_window",
-                 key_generator: Optional[callable] = None,
-                 burst_allowance: Optional[int] = None,
-                 redis_key_prefix: str = "rate_limit",
-                 fallback_enabled: bool = True,
-                 block_duration: Optional[int] = None,
-                 whitelist: Optional[List[str]] = None,
-                 custom_error_message: Optional[str] = None):
+    def __init__(
+        self,
+        max_requests: int = 100,
+        window_seconds: int = 60,
+        strategy: str = 'sliding_window',
+        key_generator: Optional[callable] = None,
+        burst_allowance: Optional[int] = None,
+        redis_key_prefix: str = 'rate_limit',
+        fallback_enabled: bool = True,
+        block_duration: Optional[int] = None,
+        whitelist: Optional[List[str]] = None,
+        custom_error_message: Optional[str] = None,
+    ):
         """
         Initialize rate limiting middleware.
 
@@ -57,9 +59,11 @@ class RateLimitMiddleware(Middleware):
 
         # Validate strategy
         if self.strategy not in ['sliding_window', 'fixed_window', 'token_bucket']:
-            raise ValueError(f"Invalid strategy: {self.strategy}")
+            raise ValueError(f'Invalid strategy: {self.strategy}')
 
-        self.logger.info(f"Rate limit middleware initialized: {max_requests} req/{window_seconds}s, strategy: {strategy}")
+        self.logger.info(
+            f'Rate limit middleware initialized: {max_requests} req/{window_seconds}s, strategy: {strategy}'
+        )
 
     def _default_key_generator(self, context: Dict) -> str:
         """
@@ -73,7 +77,7 @@ class RateLimitMiddleware(Middleware):
         """
         topic = context.get('topic', 'unknown')
         # Use topic as the key - you can customize this for client-based limiting
-        return f"topic:{topic}"
+        return f'topic:{topic}'
 
     def _is_whitelisted(self, key: str) -> bool:
         """
@@ -106,15 +110,15 @@ class RateLimitMiddleware(Middleware):
 
         # Check whitelist
         if self._is_whitelisted(rate_limit_key):
-            self.logger.debug(f"Whitelisted key: {rate_limit_key}")
+            self.logger.debug(f'Whitelisted key: {rate_limit_key}')
             return await next_handler(context)
 
         # Apply rate limiting
         allowed, remaining, reset_time = await self._check_rate_limit(rate_limit_key)
 
         if not allowed:
-            error_message = self.custom_error_message or f"Rate limit exceeded. Try again in {reset_time} seconds."
-            self.logger.warning(f"Rate limit exceeded for key: {rate_limit_key}")
+            error_message = self.custom_error_message or f'Rate limit exceeded. Try again in {reset_time} seconds.'
+            self.logger.warning(f'Rate limit exceeded for key: {rate_limit_key}')
 
             # Add rate limit info to context for potential custom handling
             context['rate_limit'] = {
@@ -123,18 +127,18 @@ class RateLimitMiddleware(Middleware):
                 'remaining': remaining,
                 'reset_time': reset_time,
                 'max_requests': self.max_requests,
-                'window_seconds': self.window_seconds
+                'window_seconds': self.window_seconds,
             }
 
             return {
-                "error": "rate_limit_exceeded",
-                "message": error_message,
-                "rate_limit": {
-                    "max_requests": self.max_requests,
-                    "window_seconds": self.window_seconds,
-                    "remaining": remaining,
-                    "reset_time": reset_time
-                }
+                'error': 'rate_limit_exceeded',
+                'message': error_message,
+                'rate_limit': {
+                    'max_requests': self.max_requests,
+                    'window_seconds': self.window_seconds,
+                    'remaining': remaining,
+                    'reset_time': reset_time,
+                },
             }
 
         # Add rate limit info to context
@@ -144,10 +148,10 @@ class RateLimitMiddleware(Middleware):
             'remaining': remaining,
             'reset_time': reset_time,
             'max_requests': self.max_requests,
-            'window_seconds': self.window_seconds
+            'window_seconds': self.window_seconds,
         }
 
-        self.logger.debug(f"Rate limit check passed for key: {rate_limit_key}, remaining: {remaining}")
+        self.logger.debug(f'Rate limit check passed for key: {rate_limit_key}, remaining: {remaining}')
 
         # Continue to next handler
         return await next_handler(context)
@@ -162,14 +166,14 @@ class RateLimitMiddleware(Middleware):
         Returns:
             Tuple of (allowed, remaining_requests, reset_time_seconds)
         """
-        redis_key = f"{self.redis_key_prefix}:{key}"
+        redis_key = f'{self.redis_key_prefix}:{key}'
 
         # Try Redis first
         if redis_manager.is_enabled():
             try:
                 return await self._check_rate_limit_redis(redis_key)
             except Exception as e:
-                self.logger.error(f"Redis rate limit check failed: {e}")
+                self.logger.error(f'Redis rate limit check failed: {e}')
                 if not self.fallback_enabled:
                     # If fallback is disabled, allow the request
                     return True, self.max_requests - 1, self.window_seconds
@@ -193,14 +197,14 @@ class RateLimitMiddleware(Middleware):
         """
         current_time = int(time.time())
 
-        if self.strategy == "sliding_window":
+        if self.strategy == 'sliding_window':
             return await self._sliding_window_redis(redis_key, current_time)
-        elif self.strategy == "fixed_window":
+        elif self.strategy == 'fixed_window':
             return await self._fixed_window_redis(redis_key, current_time)
-        elif self.strategy == "token_bucket":
+        elif self.strategy == 'token_bucket':
             return await self._token_bucket_redis(redis_key, current_time)
         else:
-            raise ValueError(f"Unknown strategy: {self.strategy}")
+            raise ValueError(f'Unknown strategy: {self.strategy}')
 
     async def _sliding_window_redis(self, redis_key: str, current_time: int) -> tuple[bool, int, int]:
         """
@@ -245,7 +249,7 @@ class RateLimitMiddleware(Middleware):
         """
         Fixed window rate limiting using Redis.
         """
-        window_key = f"{redis_key}:{current_time // self.window_seconds}"
+        window_key = f'{redis_key}:{current_time // self.window_seconds}'
 
         # Increment counter
         current_count = await redis_manager.get_client().incr(window_key)
@@ -270,8 +274,8 @@ class RateLimitMiddleware(Middleware):
         """
         Token bucket rate limiting using Redis.
         """
-        bucket_key = f"{redis_key}:bucket"
-        last_refill_key = f"{redis_key}:last_refill"
+        bucket_key = f'{redis_key}:bucket'
+        last_refill_key = f'{redis_key}:last_refill'
 
         # Get current bucket state
         pipe = redis_manager.get_client().pipeline()
@@ -318,21 +322,20 @@ class RateLimitMiddleware(Middleware):
             await self._cleanup_memory_cache(current_time)
 
         if key not in self._memory_cache:
-            self._memory_cache[key] = {
-                'requests': [],
-                'created': current_time
-            }
+            self._memory_cache[key] = {'requests': [], 'created': current_time}
 
         cache_entry = self._memory_cache[key]
 
-        if self.strategy == "sliding_window":
+        if self.strategy == 'sliding_window':
             return self._sliding_window_memory(cache_entry, current_time)
-        elif self.strategy == "fixed_window":
+        elif self.strategy == 'fixed_window':
             return self._fixed_window_memory(cache_entry, current_time)
-        elif self.strategy == "token_bucket":
+        elif self.strategy == 'token_bucket':
             return self._token_bucket_memory(cache_entry, current_time)
         else:
-            raise ValueError(f"Unknown strategy: {self.strategy}, pick from sliding_window, fixed_window, token_bucket!")
+            raise ValueError(
+                f'Unknown strategy: {self.strategy}, pick from sliding_window, fixed_window, token_bucket!'
+            )
 
     def _sliding_window_memory(self, cache_entry: Dict, current_time: float) -> tuple[bool, int, int]:
         """Sliding window rate limiting in memory."""
@@ -411,7 +414,7 @@ class RateLimitMiddleware(Middleware):
         self._last_cleanup = current_time
 
         if keys_to_remove:
-            self.logger.debug(f"Cleaned up {len(keys_to_remove)} old rate limit entries from memory")
+            self.logger.debug(f'Cleaned up {len(keys_to_remove)} old rate limit entries from memory')
 
 
 class TopicRateLimitMiddleware(RateLimitMiddleware):
@@ -429,13 +432,13 @@ class TopicRateLimitMiddleware(RateLimitMiddleware):
             **kwargs: Additional arguments passed to RateLimitMiddleware
         """
         # Use default limit or fallback values
-        default_config = default_limit or {"max_requests": 100, "window_seconds": 60}
+        default_config = default_limit or {'max_requests': 100, 'window_seconds': 60}
         super().__init__(**{**default_config, **kwargs})
 
         self.topic_limits = topic_limits or {}
         self.default_limit = default_config
 
-        self.logger.info(f"Topic rate limit middleware initialized with {len(self.topic_limits)} topic-specific limits")
+        self.logger.info(f'Topic rate limit middleware initialized with {len(self.topic_limits)} topic-specific limits')
 
     async def handle(self, context: Dict, next_handler):
         """Handle topic-specific rate limiting."""
@@ -459,7 +462,7 @@ class TopicRateLimitMiddleware(RateLimitMiddleware):
                 fallback_enabled=self.fallback_enabled,
                 block_duration=topic_config.get('block_duration', self.block_duration),
                 whitelist=topic_config.get('whitelist', []),
-                custom_error_message=topic_config.get('custom_error_message', self.custom_error_message)
+                custom_error_message=topic_config.get('custom_error_message', self.custom_error_message),
             )
 
             return await temp_middleware.handle(context, next_handler)
@@ -470,6 +473,7 @@ class TopicRateLimitMiddleware(RateLimitMiddleware):
     def _topic_matches_pattern(self, topic: str, pattern: str) -> bool:
         """Check if topic matches pattern (supports wildcards)."""
         import fnmatch
+
         return fnmatch.fnmatch(topic, pattern)
 
 
@@ -479,7 +483,7 @@ class ClientRateLimitMiddleware(RateLimitMiddleware):
     Requires client information in the message payload or context.
     """
 
-    def __init__(self, client_id_field: str = "client_id", **kwargs):
+    def __init__(self, client_id_field: str = 'client_id', **kwargs):
         """
         Initialize client-based rate limiting.
 
@@ -505,6 +509,6 @@ class ClientRateLimitMiddleware(RateLimitMiddleware):
         if not client_id:
             # Fallback to topic-based limiting
             topic = context.get('topic', 'unknown')
-            return f"topic:{topic}"
+            return f'topic:{topic}'
 
-        return f"client:{client_id}"
+        return f'client:{client_id}'

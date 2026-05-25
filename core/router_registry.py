@@ -13,9 +13,9 @@ class RouterRegistry:
     Dynamically discovers and loads routers from multiple files.
     """
 
-    def __init__(self, router_directory: str = "app.routers"):
+    def __init__(self, router_directory: str = 'app.routers'):
         self.router_directory = router_directory
-        self.logger = logging.getLogger("RouteMQ.RouterRegistry")
+        self.logger = logging.getLogger('RouteMQ.RouterRegistry')
         self.main_router = Router()
 
     def discover_and_load_routers(self) -> Router:
@@ -34,23 +34,25 @@ class RouterRegistry:
             router_modules = []
             for finder, name, ispkg in pkgutil.iter_modules(package_path):
                 if not ispkg and not name.startswith('_'):  # Skip packages and private modules
-                    module_name = f"{self.router_directory}.{name}"
+                    module_name = f'{self.router_directory}.{name}'
                     router_modules.append(module_name)
 
-            self.logger.info(f"Discovered router modules: {router_modules}")
+            self.logger.info(f'Discovered router modules: {router_modules}')
 
             # Load each router module and merge routes
             for module_name in router_modules:
                 self._load_router_module(module_name)
 
-            self.logger.info(f"Successfully loaded {len(self.main_router.routes)} total routes from {len(router_modules)} modules")
+            self.logger.info(
+                f'Successfully loaded {len(self.main_router.routes)} total routes from {len(router_modules)} modules'
+            )
 
         except ImportError as e:
             self.logger.error(f"Could not import router directory '{self.router_directory}': {e}")
-            self.logger.info("Using empty router")
+            self.logger.info('Using empty router')
         except Exception as e:
-            self.logger.error(f"Error during router discovery: {e}")
-            self.logger.info("Using empty router")
+            self.logger.error(f'Error during router discovery: {e}')
+            self.logger.info('Using empty router')
 
         return self.main_router
 
@@ -92,7 +94,7 @@ class RouterRegistry:
             self.main_router.routes.append(route)
             routes_added += 1
 
-        self.logger.info(f"Merged {routes_added} routes from {module_name}")
+        self.logger.info(f'Merged {routes_added} routes from {module_name}')
 
     def get_router_module_path_for_workers(self) -> str:
         """
@@ -105,7 +107,7 @@ class RouterRegistry:
         return self.router_directory
 
 
-def create_dynamic_router(router_directory: str = "app.routers") -> Router:
+def create_dynamic_router(router_directory: str = 'app.routers') -> Router:
     """
     Convenience function to create a router with dynamic loading.
 

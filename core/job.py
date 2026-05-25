@@ -4,9 +4,9 @@ import os
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, Set, Type
 
-logger = logging.getLogger("RouteMQ.Job")
+logger = logging.getLogger('RouteMQ.Job')
 
-_DENY_SETATTR: Set[str] = {"_allowed_classes"}
+_DENY_SETATTR: Set[str] = {'_allowed_classes'}
 
 
 class Job(ABC):
@@ -25,7 +25,7 @@ class Job(ABC):
     retry_after: int = 0
 
     # The name of the queue the job should be sent to
-    queue: str = "default"
+    queue: str = 'default'
 
     # Registry of classes approved for deserialization via unserialize().
     # Use @Job.register on each concrete Job subclass, or set the
@@ -39,7 +39,7 @@ class Job(ABC):
         self.attempts: int = 0
 
     @classmethod
-    def register(cls, klass: Type["Job"]) -> Type["Job"]:
+    def register(cls, klass: Type['Job']) -> Type['Job']:
         """
         Register a Job subclass for safe deserialization.
 
@@ -49,7 +49,7 @@ class Job(ABC):
             class MyJob(Job):
                 ...
         """
-        cls._allowed_classes.add(f"{klass.__module__}.{klass.__name__}")
+        cls._allowed_classes.add(f'{klass.__module__}.{klass.__name__}')
         return klass
 
     @abstractmethod
@@ -68,9 +68,7 @@ class Job(ABC):
         Args:
             exception: The exception that caused the job to fail
         """
-        logger.error(
-            f"Job {self.__class__.__name__} failed permanently: {str(exception)}"
-        )
+        logger.error(f'Job {self.__class__.__name__} failed permanently: {str(exception)}')
 
     def serialize(self) -> str:
         """
@@ -80,12 +78,12 @@ class Job(ABC):
             JSON string representation of the job
         """
         job_data = {
-            "class": f"{self.__class__.__module__}.{self.__class__.__name__}",
-            "data": self.get_data(),
-            "max_tries": self.max_tries,
-            "timeout": self.timeout,
-            "retry_after": self.retry_after,
-            "queue": self.queue,
+            'class': f'{self.__class__.__module__}.{self.__class__.__name__}',
+            'data': self.get_data(),
+            'max_tries': self.max_tries,
+            'timeout': self.timeout,
+            'retry_after': self.retry_after,
+            'queue': self.queue,
         }
         return json.dumps(job_data)
 
@@ -99,19 +97,19 @@ class Job(ABC):
         """
         data = {}
         for key, value in self.__dict__.items():
-            if not key.startswith("_") and key not in [
-                "job_id",
-                "attempts",
-                "max_tries",
-                "timeout",
-                "retry_after",
-                "queue",
+            if not key.startswith('_') and key not in [
+                'job_id',
+                'attempts',
+                'max_tries',
+                'timeout',
+                'retry_after',
+                'queue',
             ]:
                 data[key] = value
         return data
 
     @classmethod
-    def unserialize(cls, payload: str) -> "Job":
+    def unserialize(cls, payload: str) -> 'Job':
         """
         Unserialize a job from a JSON string.
 
@@ -127,32 +125,32 @@ class Job(ABC):
         """
         job_data = json.loads(payload)
 
-        if os.getenv("ROUTEMQ_JOB_ALLOWLIST_DISABLED") != "1":
-            if job_data["class"] not in cls._allowed_classes:
+        if os.getenv('ROUTEMQ_JOB_ALLOWLIST_DISABLED') != '1':
+            if job_data['class'] not in cls._allowed_classes:
                 raise ValueError(
-                    f"Refusing to load unregistered job class: {job_data['class']}. "
-                    "Decorate the class with @Job.register or set "
-                    "ROUTEMQ_JOB_ALLOWLIST_DISABLED=1 for migration only."
+                    f'Refusing to load unregistered job class: {job_data["class"]}. '
+                    'Decorate the class with @Job.register or set '
+                    'ROUTEMQ_JOB_ALLOWLIST_DISABLED=1 for migration only.'
                 )
 
-        module_name, class_name = job_data["class"].rsplit(".", 1)
+        module_name, class_name = job_data['class'].rsplit('.', 1)
         module = __import__(module_name, fromlist=[class_name])
         job_class = getattr(module, class_name)
 
         job = job_class()
 
-        job.max_tries = job_data.get("max_tries", 3)
-        job.timeout = job_data.get("timeout", 60)
-        job.retry_after = job_data.get("retry_after", 0)
-        job.queue = job_data.get("queue", "default")
+        job.max_tries = job_data.get('max_tries', 3)
+        job.timeout = job_data.get('timeout', 60)
+        job.retry_after = job_data.get('retry_after', 0)
+        job.queue = job_data.get('queue', 'default')
 
-        data = job_data.get("data", {})
+        data = job_data.get('data', {})
         for key, value in data.items():
-            if key.startswith("_") or key in _DENY_SETATTR:
+            if key.startswith('_') or key in _DENY_SETATTR:
                 continue
             setattr(job, key, value)
 
         return job
 
     def __repr__(self):
-        return f"<{self.__class__.__name__}(attempts={self.attempts}, max_tries={self.max_tries})>"
+        return f'<{self.__class__.__name__}(attempts={self.attempts}, max_tries={self.max_tries})>'

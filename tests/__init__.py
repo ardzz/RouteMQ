@@ -6,7 +6,8 @@ import unittest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Set environment variable to avoid real database connections during tests
-os.environ["ENABLE_MYSQL"] = "false"
+os.environ['ENABLE_MYSQL'] = 'false'
+
 
 def load_tests(loader, tests, pattern):
     """Discovery function for unittest to find all tests."""

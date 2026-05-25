@@ -9,11 +9,11 @@ from core.queue.redis_queue import RedisQueue
 from core.queue.database_queue import DatabaseQueue
 
 __all__ = [
-    "QueueManager",
-    "queue",
-    "dispatch",
-    "QueueWorker",
-    "QueueDriver",
-    "RedisQueue",
-    "DatabaseQueue",
+    'QueueManager',
+    'queue',
+    'dispatch',
+    'QueueWorker',
+    'QueueDriver',
+    'RedisQueue',
+    'DatabaseQueue',
 ]

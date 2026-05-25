@@ -9,7 +9,7 @@ from core.queue.database_queue import DatabaseQueue
 from core.redis_manager import RedisManager
 from core.model import Model
 
-logger = logging.getLogger("RouteMQ.QueueManager")
+logger = logging.getLogger('RouteMQ.QueueManager')
 
 
 class QueueManager:
@@ -18,11 +18,11 @@ class QueueManager:
     Similar to Laravel's Queue facade.
     """
 
-    _instance: Optional["QueueManager"] = None
+    _instance: Optional['QueueManager'] = None
     _driver: Optional[QueueDriver] = None
-    _default_connection: str = "redis"
+    _default_connection: str = 'redis'
 
-    def __new__(cls) -> "QueueManager":
+    def __new__(cls) -> 'QueueManager':
         """Singleton pattern to ensure one queue manager instance."""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
@@ -30,12 +30,12 @@ class QueueManager:
 
     def __init__(self):
         """Initialize the queue manager."""
-        if hasattr(self, "_initialized"):
+        if hasattr(self, '_initialized'):
             return
 
         self._initialized = True
-        self._default_connection = os.getenv("QUEUE_CONNECTION", "redis")
-        logger.info(f"QueueManager initialized with default connection: {self._default_connection}")
+        self._default_connection = os.getenv('QUEUE_CONNECTION', 'redis')
+        logger.info(f'QueueManager initialized with default connection: {self._default_connection}')
 
     def get_driver(self, connection: Optional[str] = None) -> QueueDriver:
         """
@@ -52,24 +52,24 @@ class QueueManager:
         """
         connection = connection or self._default_connection
 
-        if connection == "redis":
+        if connection == 'redis':
             redis_manager = RedisManager()
             if not redis_manager.is_enabled():
                 # Fallback to database if Redis is not available
-                logger.warning("Redis is not available, falling back to database queue")
-                connection = "database"
+                logger.warning('Redis is not available, falling back to database queue')
+                connection = 'database'
             else:
                 return RedisQueue()
 
-        if connection == "database":
+        if connection == 'database':
             if not Model._is_enabled:
                 raise RuntimeError(
-                    "Cannot use database queue - MySQL is disabled. "
-                    "Enable MySQL or configure Redis as queue connection."
+                    'Cannot use database queue - MySQL is disabled. '
+                    'Enable MySQL or configure Redis as queue connection.'
                 )
             return DatabaseQueue()
 
-        raise RuntimeError(f"Unknown queue connection: {connection}")
+        raise RuntimeError(f'Unknown queue connection: {connection}')
 
     async def push(
         self,
@@ -115,9 +115,7 @@ class QueueManager:
         payload = job.serialize()
         await driver.push(payload, queue, delay)
 
-        logger.info(
-            f"Job {job.__class__.__name__} scheduled to queue '{queue}' with {delay}s delay"
-        )
+        logger.info(f"Job {job.__class__.__name__} scheduled to queue '{queue}' with {delay}s delay")
 
     async def bulk(
         self,
@@ -140,11 +138,11 @@ class QueueManager:
             payload = job.serialize()
             await driver.push(payload, q)
 
-        logger.info(f"Bulk dispatched {len(jobs)} jobs to queue")
+        logger.info(f'Bulk dispatched {len(jobs)} jobs to queue')
 
     async def size(
         self,
-        queue: str = "default",
+        queue: str = 'default',
         connection: Optional[str] = None,
     ) -> int:
         """
