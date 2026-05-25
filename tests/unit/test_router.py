@@ -6,10 +6,33 @@ from core.router import Router, Route
 from core.middleware import Middleware
 
 
+_original_get_event_loop = asyncio.get_event_loop
+
+
+def _get_event_loop_compat():
+    try:
+        return _original_get_event_loop()
+    except RuntimeError as exc:
+        if "There is no current event loop" not in str(exc):
+            raise
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop
+
+
+asyncio.get_event_loop = _get_event_loop_compat
+
+
 class TestRouter(unittest.TestCase):
     def setUp(self):
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
         self.router = Router()
         self.test_client = MagicMock()
+
+    def tearDown(self):
+        self.loop.close()
+        asyncio.set_event_loop(asyncio.new_event_loop())
 
     def test_route_creation(self):
         """Test that routes are correctly created and added to the router."""
@@ -77,8 +100,7 @@ class TestRouter(unittest.TestCase):
         self.router.on("devices/{device_id}/status", handler_mock)
 
         # Dispatch a message
-        loop = asyncio.get_event_loop()
-        result = loop.run_until_complete(
+        result = self.loop.run_until_complete(
             self.router.dispatch("devices/123/status", {"value": 25}, self.test_client)
         )
 
