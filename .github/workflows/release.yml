@@ -28,9 +28,16 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v3
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: uv sync --all-extras --dev
       - name: Run tests
         run: uv run python run_tests.py
+      - name: Generate SBOM (CycloneDX)
+        run: uv run cyclonedx-py environment --outfile sbom.json --format json
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.json
       - name: Commitizen release
         uses: commitizen-tools/commitizen-action@0.24.0
         with:
