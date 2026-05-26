@@ -157,7 +157,7 @@ await dispatch(job)
 python main.py --queue-work --queue emails
 ```
 
-See [Queue System Documentation](./docs/queue-system.md) for complete guide.
+See [Queue System Documentation](./docs/queue/README.md) for complete guide.
 
 ## Contributing
 
