@@ -15,6 +15,7 @@ jobs:
     permissions:
       contents: write
       id-token: write
+      pull-requests: write
     outputs:
       hashes: ${{ steps.hash.outputs.hashes }}
     steps:
@@ -56,12 +57,49 @@ jobs:
           path: |
             sbom.json
             sbom.json.sigstore.json
-      - name: Commitizen release
+      - name: Commitizen release (no push)
         uses: commitizen-tools/commitizen-action@338bbd841b75aaee6bf5340e1fa12f6ab58ff9ff # 0.27.1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           changelog: true
-          push: true
+          push: false
+      - name: Detect Commitizen bump
+        id: bump_detect
+        run: |
+          NEW_COMMITS=$(git rev-list --count origin/master..HEAD)
+          if [ "$NEW_COMMITS" -gt 0 ]; then
+            VERSION=$(grep -E '^version = ' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+            BRANCH="release/auto-bump-v${VERSION}"
+            echo "bumped=true" >> "$GITHUB_OUTPUT"
+            echo "version=v${VERSION}" >> "$GITHUB_OUTPUT"
+            echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+            echo "Commitizen produced a bump: ${BRANCH} (tag v${VERSION})"
+          else
+            echo "bumped=false" >> "$GITHUB_OUTPUT"
+            echo "No bump produced by Commitizen (no fix:/feat: commits since last release)"
+          fi
+      - name: Push bump branch and tag
+        if: steps.bump_detect.outputs.bumped == 'true'
+        run: |
+          BRANCH="${{ steps.bump_detect.outputs.branch }}"
+          VERSION="${{ steps.bump_detect.outputs.version }}"
+          git checkout -b "$BRANCH"
+          git push origin "$BRANCH"
+          git push origin "refs/tags/${VERSION}"
+      - name: Open auto-merge PR for bump
+        if: steps.bump_detect.outputs.bumped == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${{ steps.bump_detect.outputs.branch }}"
+          VERSION="${{ steps.bump_detect.outputs.version }}"
+          PR_URL=$(gh pr create \
+            --base master \
+            --head "$BRANCH" \
+            --title "chore(release): version bump to ${VERSION}" \
+            --body "Automated version bump by Commitizen. Tag \`${VERSION}\` already published. Auto-merge enabled; will land on master once CI passes.")
+          echo "Opened PR: ${PR_URL}"
+          gh pr merge "$BRANCH" --squash --auto --delete-branch
 
   provenance:
     needs: release
