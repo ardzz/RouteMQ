@@ -48,7 +48,10 @@ class RouterRegistryWorkerPathTests(unittest.TestCase):
 
 class RouterRegistryDiscoveryHappyPathTests(unittest.TestCase):
     def setUp(self) -> None:
-        logging.getLogger('RouteMQ.RouterRegistry').setLevel(logging.CRITICAL)
+        logger = logging.getLogger('RouteMQ.RouterRegistry')
+        original_level = logger.level
+        logger.setLevel(logging.CRITICAL)
+        self.addCleanup(logger.setLevel, original_level)
 
     def test_discovers_valid_modules_and_merges_routes(self) -> None:
         fake_package = SimpleNamespace(__path__=['/fake/path'])
@@ -136,7 +139,10 @@ class RouterRegistryDiscoveryHappyPathTests(unittest.TestCase):
 
 class RouterRegistryDiscoveryErrorPathTests(unittest.TestCase):
     def setUp(self) -> None:
-        logging.getLogger('RouteMQ.RouterRegistry').setLevel(logging.CRITICAL)
+        logger = logging.getLogger('RouteMQ.RouterRegistry')
+        original_level = logger.level
+        logger.setLevel(logging.CRITICAL)
+        self.addCleanup(logger.setLevel, original_level)
 
     def test_import_error_on_root_package_returns_empty_router(self) -> None:
         with patch(
@@ -283,7 +289,10 @@ class RouterRegistryMergeTests(unittest.TestCase):
 
 class CreateDynamicRouterTests(unittest.TestCase):
     def setUp(self) -> None:
-        logging.getLogger('RouteMQ.RouterRegistry').setLevel(logging.CRITICAL)
+        logger = logging.getLogger('RouteMQ.RouterRegistry')
+        original_level = logger.level
+        logger.setLevel(logging.CRITICAL)
+        self.addCleanup(logger.setLevel, original_level)
 
     def test_uses_default_directory(self) -> None:
         with patch('core.router_registry.RouterRegistry') as mock_registry_cls:
