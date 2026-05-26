@@ -93,7 +93,7 @@ packages = ["app", "bootstrap", "core"]
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.12.1"
+version = "0.12.2"
 tag_format = "v$version"
 
 [tool.ruff]

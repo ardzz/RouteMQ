@@ -1,3 +1,15 @@
+## v0.1.27 (2026-05-27)
+
+### Fix
+
+- **middleware**: handle max_requests=None in RateLimit middleware (#16)
+
+## v0.1.26 (2026-05-27)
+
+## v0.1.25 (2026-05-26)
+
+## v0.12.1 (2026-05-26)
+
 ## v0.1.24 (2026-05-26)
 
 ### Fix
