@@ -1,3 +1,29 @@
+## v0.1.24 (2026-05-26)
+
+### Fix
+
+- **ci**: update cyclonedx-py CLI flags to modern syntax
+
+## v0.1.23 (2026-05-26)
+
+## v0.1.22 (2026-05-26)
+
+### Fix
+
+- **ci**: grant contents:write to SLSA provenance job to fix startup_failure
+- **ci**: pin SLSA generator to tag ref to fix release.yml startup_failure
+- **ci**: repair release.yml startup_failure on master push
+- **worker_manager**: sum worker_count across routes and isolate spawn failures
+- **job**: require explicit allow-list for Job.unserialize to prevent arbitrary import RCE
+- **queue**: align job_id type across QueueDriver subclasses
+- **model**: connect Model base class to declarative Base so create_tables actually works
+
+### Refactor
+
+- **queue**: move QueueJob and QueueFailedJob models into core/queue to fix core->app import inversion
+
+## v0.12.0 (2025-10-30)
+
 ## v0.1.21 (2025-10-30)
 
 ### Feat
