@@ -44,7 +44,7 @@ jobs:
           name: python-package-dist
           path: dist/
       - name: Generate SBOM (CycloneDX)
-        run: uv run cyclonedx-py environment --outfile sbom.json --format json
+        run: uv run cyclonedx-py environment --output-file sbom.json --output-format JSON
       - name: Sign SBOM with Sigstore
         uses: sigstore/gh-action-sigstore-python@04cffa1d795717b140764e8b640de88853c92acc # v3.3.0
         with:
