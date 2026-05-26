@@ -2,7 +2,7 @@
 python-dotenv==1.2.2
 paho-mqtt==1.6.1
 SQLAlchemy==2.0.23
-aiomysql==0.2.0
+aiomysql==0.3.2
 
 # System information
 psutil==7.2.2
