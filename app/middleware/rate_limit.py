@@ -28,7 +28,8 @@ class RateLimitMiddleware(Middleware):
         Initialize rate limiting middleware.
 
         Args:
-            max_requests: Maximum requests allowed in the window
+            max_requests: Maximum requests allowed in the window. Must be a non-negative integer;
+                passing None raises ValueError at construction.
             window_seconds: Time window in seconds
             strategy: Rate limiting strategy ('sliding_window', 'fixed_window', 'token_bucket')
             key_generator: Custom function to generate rate limit keys
@@ -40,6 +41,9 @@ class RateLimitMiddleware(Middleware):
             custom_error_message: Custom error message for rate limit exceeded
         """
         super().__init__()
+
+        if max_requests is None:
+            raise ValueError('max_requests must be a non-negative integer, got None')
 
         self.max_requests = max_requests
         self.window_seconds = window_seconds

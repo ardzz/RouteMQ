@@ -66,12 +66,10 @@ class TestRateLimitMiddleware(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await middleware.handle({'topic': 'devices/1'}, AsyncMock(return_value='ok'))
 
-    async def test_none_limit_raises_type_error_on_check(self) -> None:
-        """None max_requests currently fails during comparison rather than validation."""
-        middleware = RateLimitMiddleware(max_requests=cast(Any, None))
-
-        with self.assertRaises(TypeError):
-            await middleware._check_rate_limit_memory('topic:devices/1')
+    async def test_none_limit_raises_value_error_at_construction(self) -> None:
+        """None max_requests is rejected before request-time rate-limit checks."""
+        with self.assertRaises(ValueError):
+            RateLimitMiddleware(max_requests=cast(Any, None))
 
     async def test_negative_limit_raises_value_error_on_first_request(self) -> None:
         """Negative max_requests currently fails on an empty limiter window."""
