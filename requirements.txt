@@ -5,7 +5,7 @@ SQLAlchemy==2.0.23
 aiomysql==0.2.0
 
 # System information
-psutil==5.9.6
+psutil==7.2.2
 
 # Redis integration (optional)
 redis==5.0.1
