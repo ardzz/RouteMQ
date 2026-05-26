@@ -8,7 +8,7 @@ aiomysql==0.3.2
 psutil==7.2.2
 
 # Redis integration (optional)
-redis==5.0.1
+redis==7.4.0
 
 # REPL/Tinker functionality
 IPython==8.16.1
