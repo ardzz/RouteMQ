@@ -35,6 +35,8 @@ jobs:
         run: uv sync --all-extras --dev
 
       - name: Run tests
+        env:
+          RUN_INTEGRATION_TESTS: "1"
         run: uv run python run_tests.py
 
   lint:
