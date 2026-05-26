@@ -20,7 +20,8 @@ branches:
 protection:
   # Require pull request reviews before merging
   required_pull_request_reviews:
-    required_approving_review_count: 1
+    # 0 = solo-dev mode; status checks still required
+    required_approving_review_count: 0
     dismiss_stale_reviews: true
     require_code_owner_reviews: false
     # Require review from code owners (optional, set to true if CODEOWNERS exists)
