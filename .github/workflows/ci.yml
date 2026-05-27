@@ -167,3 +167,32 @@ jobs:
         with:
           name: python-package-dist
           path: dist/
+
+  install-test:
+    name: clean-venv install test
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Build wheel
+        run: rm -rf dist && uv build --wheel
+      - name: Install wheel in clean venv + scaffold + smoke
+        run: |
+          python -m venv /tmp/install-test/.venv
+          source /tmp/install-test/.venv/bin/activate
+          WHEEL=$(python -c "from pathlib import Path; print(max(Path('dist').glob('routemq-*.whl'), key=lambda p: p.stat().st_mtime))")
+          pip install --quiet "${WHEEL}[cli]"
+          routemq --help
+          python -c "from routemq.router import Router; from routemq.model import Model; print('imports OK')"
+          cd /tmp/install-test
+          routemq new demo --yes --with-redis
+          test -f demo/app/__init__.py
+          test -f demo/pyproject.toml
+          grep -q 'name = "demo"' demo/pyproject.toml
+          grep -q 'ENABLE_REDIS=true' demo/.env
+          deactivate
+          echo "install-test PASSED"

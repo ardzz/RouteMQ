@@ -1,3 +1,5 @@
+> **DEPRECATED (since v0.14.0):** The canonical install path is now `pip install routemq[cli]` + `routemq new my-app`. See [README.md](./README.md) for the recommended workflow. This template path is retained for users who want to fork and modify the framework itself; will be removed in v0.16.0.
+
 # Making RouteMQ a GitHub Template Repository
 
 This guide is for repository maintainers who want to enable the "Use this template" feature on GitHub.
