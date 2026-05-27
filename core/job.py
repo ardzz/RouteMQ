@@ -58,7 +58,7 @@ class Job(ABC):
         Execute the job.
         This method must be implemented by all job classes.
         """
-        pass
+        pass  # pragma: no cover - abstract method body, never invoked directly
 
     async def failed(self, exception: Exception) -> None:
         """

@@ -71,6 +71,74 @@ class TestRouter(unittest.IsolatedAsyncioTestCase):
         route = self.router.routes[0]
         self.assertEqual(route.get_subscription_topic('test_group'), '$share/test_group/devices/+/status')
 
+    def test_subscription_topic_without_shared_group_returns_plain_topic(self):
+        async def test_handler(payload, client):
+            return {'status': 'success'}
+
+        self.router.on('devices/status', test_handler, shared=False)
+        route = self.router.routes[0]
+        result = route.get_subscription_topic()
+        self.assertEqual(result, 'devices/status')
+
+    def test_group_combines_group_and_route_middleware(self):
+        from core.middleware import Middleware
+
+        class _GroupMW(Middleware):
+            async def handle(self, context, next_handler):
+                return await next_handler(context)
+
+        class _RouteMW(Middleware):
+            async def handle(self, context, next_handler):
+                return await next_handler(context)
+
+        g = self.router.group(prefix='api', middleware=[_GroupMW()])
+        g.on('test', AsyncMock(), middleware=[_RouteMW()])
+        route = self.router.routes[0]
+        self.assertEqual(len(route.middleware), 2)
+        self.assertIsInstance(route.middleware[0], _GroupMW)
+        self.assertIsInstance(route.middleware[1], _RouteMW)
+
+    async def test_dispatch_skips_non_matching_route_then_matches_later(self):
+        handler_first = AsyncMock(return_value={'status': 'ok'})
+        handler_second = AsyncMock(return_value={'status': 'ok'})
+        self.router.on('devices/create', handler_first)
+        self.router.on('devices/{device_id}/status', handler_second)
+
+        await self.router.dispatch('devices/42/status', {'value': 99}, self.test_client)
+
+        handler_first.assert_not_called()
+        handler_second.assert_called_once()
+        args, kwargs = handler_second.call_args
+        self.assertEqual(kwargs['device_id'], '42')
+
+    async def test_dispatch_runs_route_middleware_chain(self):
+        from core.middleware import Middleware
+
+        call_order = []
+
+        class _OrderMW(Middleware):
+            def __init__(self, tag):
+                self.tag = tag
+
+            async def handle(self, context, next_handler):
+                call_order.append(f'{self.tag}_enter')
+                result = await next_handler(context)
+                call_order.append(f'{self.tag}_exit')
+                return result
+
+        handler_mock = AsyncMock(return_value={'status': 'ok'})
+        self.router.on('test/chain', handler_mock, middleware=[_OrderMW('first'), _OrderMW('second')])
+
+        await self.router.dispatch('test/chain', {}, self.test_client)
+
+        self.assertEqual(call_order, ['first_enter', 'second_enter', 'second_exit', 'first_exit'])
+
+    async def test_dispatch_raises_when_no_route_matches(self):
+        self.router.on('devices/{id}/status', AsyncMock())
+
+        with self.assertRaisesRegex(ValueError, 'No route found for topic'):
+            await self.router.dispatch('unknown/topic', {}, self.test_client)
+
 
 if __name__ == '__main__':
     unittest.main()

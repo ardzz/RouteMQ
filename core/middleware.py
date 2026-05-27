@@ -21,4 +21,4 @@ class Middleware(ABC):
         Returns:
             The result of the request handling
         """
-        pass
+        pass  # pragma: no cover - abstract method body, never invoked directly
