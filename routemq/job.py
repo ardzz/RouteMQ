@@ -4,6 +4,8 @@ import os
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, Set, Type
 
+from .observability import snapshot_context
+
 logger = logging.getLogger('RouteMQ.Job')
 
 _DENY_SETATTR: Set[str] = {'_allowed_classes'}
@@ -80,12 +82,26 @@ class Job(ABC):
         job_data = {
             'class': f'{self.__class__.__module__}.{self.__class__.__name__}',
             'data': self.get_data(),
+            'observability': self.get_observability_context(),
             'max_tries': self.max_tries,
             'timeout': self.timeout,
             'retry_after': self.retry_after,
             'queue': self.queue,
         }
         return json.dumps(job_data)
+
+    def capture_observability_context(self, extra: Dict[str, Any] | None = None) -> None:
+        """Attach the current observability context to this job envelope."""
+
+        self._observability_context = snapshot_context(extra)
+
+    def get_observability_context(self) -> Dict[str, Any]:
+        """Return context metadata that should travel with this job."""
+
+        context = getattr(self, '_observability_context', None)
+        if isinstance(context, dict):
+            return dict(context)
+        return snapshot_context()
 
     def get_data(self) -> Dict[str, Any]:
         """
@@ -149,6 +165,9 @@ class Job(ABC):
             if key.startswith('_') or key in _DENY_SETATTR:
                 continue
             setattr(job, key, value)
+
+        observability_context = job_data.get('observability', {})
+        job._observability_context = observability_context if isinstance(observability_context, dict) else {}
 
         return job
 

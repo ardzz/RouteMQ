@@ -30,6 +30,12 @@ class QueueManagerExtraTestCase(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(RuntimeError, 'Unknown queue connection'):
             manager.get_driver('nonexistent')
 
+    def test_resolve_connection_raises_for_unknown_connection(self) -> None:
+        manager = QueueManager()
+
+        with self.assertRaisesRegex(RuntimeError, 'Unknown queue connection: nonexistent'):
+            manager._resolve_connection('nonexistent')
+
     async def test_size_delegates_to_driver(self) -> None:
         manager = QueueManager()
         driver = MagicMock(spec=QueueDriver)

@@ -86,6 +86,17 @@ class TestQueueManager(QueueTestCase):
 
         self.assertIsInstance(driver, DatabaseQueue)
 
+    def test_resolve_connection_falls_back_to_database_when_redis_disabled(self) -> None:
+        manager = QueueManager()
+        redis_manager = MagicMock()
+        redis_manager.is_enabled.return_value = False
+
+        with patch('routemq.queue.queue_manager.RedisManager', return_value=redis_manager):
+            with patch.object(Model, '_is_enabled', True):
+                connection = manager._resolve_connection('redis')
+
+        self.assertEqual(connection, 'database')
+
     def test_get_driver_selects_database_when_configured(self) -> None:
         manager = QueueManager()
 
@@ -100,6 +111,16 @@ class TestQueueManager(QueueTestCase):
         with patch.object(Model, '_is_enabled', False):
             with self.assertRaisesRegex(RuntimeError, 'MySQL is disabled'):
                 manager.get_driver('database')
+
+    def test_resolve_connection_raises_when_redis_and_database_disabled(self) -> None:
+        manager = QueueManager()
+        redis_manager = MagicMock()
+        redis_manager.is_enabled.return_value = False
+
+        with patch('routemq.queue.queue_manager.RedisManager', return_value=redis_manager):
+            with patch.object(Model, '_is_enabled', False):
+                with self.assertRaisesRegex(RuntimeError, 'MySQL is disabled'):
+                    manager._resolve_connection('redis')
 
     async def test_push_serializes_job_to_expected_backend(self) -> None:
         manager = QueueManager()
