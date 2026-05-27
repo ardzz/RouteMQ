@@ -11,7 +11,7 @@ psutil==7.2.2
 redis==7.4.0
 
 # REPL/Tinker functionality
-IPython==8.16.1
+IPython==9.13.0
 nest-asyncio==1.6.0
 
 # Optional: For development and testing
