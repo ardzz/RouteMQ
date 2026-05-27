@@ -1,0 +1,251 @@
+import logging
+import unittest
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from core.queue.database_queue import DatabaseQueue
+
+
+def _mock_session() -> MagicMock:
+    session = MagicMock()
+    session.add = MagicMock()
+    session.commit = AsyncMock()
+    session.rollback = AsyncMock()
+    session.close = AsyncMock()
+    session.execute = AsyncMock()
+    session.refresh = AsyncMock()
+    return session
+
+
+class DatabaseQueueBase(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        logger = logging.getLogger('RouteMQ.DatabaseQueue')
+        original_level = logger.level
+        logger.setLevel(logging.CRITICAL)
+        self.addCleanup(logger.setLevel, original_level)
+
+
+class DatabaseQueuePushTests(DatabaseQueueBase):
+    async def test_disabled_mysql_raises(self) -> None:
+        driver = DatabaseQueue()
+        with patch('core.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = False
+            with self.assertRaises(RuntimeError):
+                await driver.push('p', 'q', 0)
+
+    async def test_push_inserts_and_commits(self) -> None:
+        driver = DatabaseQueue()
+        session = _mock_session()
+        with (
+            patch('core.queue.database_queue.Model') as mock_model,
+            patch('core.queue.database_queue.QueueJob') as mock_job_cls,
+        ):
+            mock_model._is_enabled = True
+            mock_model.get_session = AsyncMock(return_value=session)
+            mock_job_cls.return_value = MagicMock()
+
+            await driver.push('p', 'q', 0)
+
+        session.add.assert_called_once()
+        session.commit.assert_awaited_once()
+        session.close.assert_awaited_once()
+
+    async def test_push_rolls_back_on_error(self) -> None:
+        driver = DatabaseQueue()
+        session = _mock_session()
+        session.commit.side_effect = RuntimeError('db fail')
+        with patch('core.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = True
+            mock_model.get_session = AsyncMock(return_value=session)
+
+            with self.assertRaises(RuntimeError):
+                await driver.push('p', 'q', 0)
+
+        session.rollback.assert_awaited_once()
+        session.close.assert_awaited_once()
+
+
+class DatabaseQueuePopTests(DatabaseQueueBase):
+    async def test_disabled_returns_none(self) -> None:
+        driver = DatabaseQueue()
+        with patch('core.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = False
+            self.assertIsNone(await driver.pop('q'))
+
+    async def test_no_jobs_returns_none(self) -> None:
+        driver = DatabaseQueue()
+        session = _mock_session()
+        scalars = MagicMock()
+        scalars.first.return_value = None
+        result = MagicMock()
+        result.scalars.return_value = scalars
+        session.execute.return_value = result
+
+        with patch('core.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = True
+            mock_model.get_session = AsyncMock(return_value=session)
+            self.assertIsNone(await driver.pop('q'))
+
+    async def test_pop_returns_job_payload(self) -> None:
+        driver = DatabaseQueue()
+        session = _mock_session()
+
+        job = MagicMock()
+        job.id = 42
+        job.payload = 'serialized'
+        job.attempts = 0
+        scalars = MagicMock()
+        scalars.first.return_value = job
+        result = MagicMock()
+        result.scalars.return_value = scalars
+        session.execute.return_value = result
+
+        with patch('core.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = True
+            mock_model.get_session = AsyncMock(return_value=session)
+            popped = await driver.pop('q')
+
+        self.assertIsNotNone(popped)
+        assert popped is not None
+        self.assertEqual(popped['id'], 42)
+        self.assertEqual(popped['attempts'], 1)
+
+    async def test_pop_returns_none_on_db_error(self) -> None:
+        driver = DatabaseQueue()
+        session = _mock_session()
+        session.execute.side_effect = RuntimeError('db error')
+
+        with patch('core.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = True
+            mock_model.get_session = AsyncMock(return_value=session)
+            self.assertIsNone(await driver.pop('q'))
+
+        session.rollback.assert_awaited_once()
+
+
+class DatabaseQueueReleaseTests(DatabaseQueueBase):
+    async def test_release_when_disabled_is_noop(self) -> None:
+        driver = DatabaseQueue()
+        with patch('core.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = False
+            await driver.release(1, 'q', 0)
+
+    async def test_release_updates_record(self) -> None:
+        driver = DatabaseQueue()
+        session = _mock_session()
+        with patch('core.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = True
+            mock_model.get_session = AsyncMock(return_value=session)
+            await driver.release(1, 'q', 5)
+        session.execute.assert_awaited_once()
+        session.commit.assert_awaited_once()
+        session.close.assert_awaited_once()
+
+    async def test_release_rolls_back_on_error(self) -> None:
+        driver = DatabaseQueue()
+        session = _mock_session()
+        session.commit.side_effect = RuntimeError('db fail')
+        with patch('core.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = True
+            mock_model.get_session = AsyncMock(return_value=session)
+            with self.assertRaises(RuntimeError):
+                await driver.release(1, 'q', 0)
+        session.rollback.assert_awaited_once()
+
+
+class DatabaseQueueDeleteTests(DatabaseQueueBase):
+    async def test_delete_when_disabled_is_noop(self) -> None:
+        driver = DatabaseQueue()
+        with patch('core.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = False
+            await driver.delete(1, 'q')
+
+    async def test_delete_executes_and_commits(self) -> None:
+        driver = DatabaseQueue()
+        session = _mock_session()
+        with patch('core.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = True
+            mock_model.get_session = AsyncMock(return_value=session)
+            await driver.delete(1, 'q')
+        session.execute.assert_awaited_once()
+        session.commit.assert_awaited_once()
+
+    async def test_delete_rolls_back_on_error(self) -> None:
+        driver = DatabaseQueue()
+        session = _mock_session()
+        session.execute.side_effect = RuntimeError('db fail')
+        with patch('core.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = True
+            mock_model.get_session = AsyncMock(return_value=session)
+            with self.assertRaises(RuntimeError):
+                await driver.delete(1, 'q')
+        session.rollback.assert_awaited_once()
+
+
+class DatabaseQueueFailedTests(DatabaseQueueBase):
+    async def test_failed_when_disabled_is_noop(self) -> None:
+        driver = DatabaseQueue()
+        with patch('core.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = False
+            await driver.failed('c', 'q', 'p', 'e')
+
+    async def test_failed_stores_record(self) -> None:
+        driver = DatabaseQueue()
+        session = _mock_session()
+        with (
+            patch('core.queue.database_queue.Model') as mock_model,
+            patch('core.queue.database_queue.QueueFailedJob') as mock_failed_cls,
+        ):
+            mock_model._is_enabled = True
+            mock_model.get_session = AsyncMock(return_value=session)
+            mock_failed_cls.return_value = MagicMock()
+            await driver.failed('c', 'q', 'p', 'e')
+        session.add.assert_called_once()
+        session.commit.assert_awaited_once()
+
+    async def test_failed_rolls_back_on_error(self) -> None:
+        driver = DatabaseQueue()
+        session = _mock_session()
+        session.commit.side_effect = RuntimeError('db fail')
+        with patch('core.queue.database_queue.Model') as mock_model, patch('core.queue.database_queue.QueueFailedJob'):
+            mock_model._is_enabled = True
+            mock_model.get_session = AsyncMock(return_value=session)
+            with self.assertRaises(RuntimeError):
+                await driver.failed('c', 'q', 'p', 'e')
+        session.rollback.assert_awaited_once()
+
+
+class DatabaseQueueSizeTests(DatabaseQueueBase):
+    async def test_size_when_disabled_returns_zero(self) -> None:
+        driver = DatabaseQueue()
+        with patch('core.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = False
+            self.assertEqual(await driver.size('q'), 0)
+
+    async def test_size_returns_count(self) -> None:
+        driver = DatabaseQueue()
+        session = _mock_session()
+        scalars = MagicMock()
+        scalars.all.return_value = ['a', 'b', 'c']
+        result = MagicMock()
+        result.scalars.return_value = scalars
+        session.execute.return_value = result
+
+        with patch('core.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = True
+            mock_model.get_session = AsyncMock(return_value=session)
+            self.assertEqual(await driver.size('q'), 3)
+
+    async def test_size_returns_zero_on_error(self) -> None:
+        driver = DatabaseQueue()
+        session = _mock_session()
+        session.execute.side_effect = RuntimeError('db fail')
+
+        with patch('core.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = True
+            mock_model.get_session = AsyncMock(return_value=session)
+            self.assertEqual(await driver.size('q'), 0)
+
+
+if __name__ == '__main__':
+    unittest.main()
