@@ -2,6 +2,8 @@
 
 # RouteMQ Framework
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ardzz/RouteMQ/badge)](https://scorecard.dev/viewer/?uri=github.com/ardzz/RouteMQ)
+
 An MQTT routing framework with middleware support, dynamic router loading, Redis integration, and horizontal scaling capabilities, inspired by web frameworks.
 
 ## Quick Start
