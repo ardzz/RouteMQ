@@ -1,4 +1,3 @@
-import asyncio
 import time
 import unittest
 from typing import Any
@@ -9,10 +8,6 @@ from app.middleware.rate_limit import (
     RateLimitMiddleware,
     TopicRateLimitMiddleware,
 )
-
-
-def _silence_logger() -> Any:
-    return patch('app.middleware.rate_limit.RateLimitMiddleware.logger', new=MagicMock())
 
 
 class RateLimitConstructionTests(unittest.TestCase):
