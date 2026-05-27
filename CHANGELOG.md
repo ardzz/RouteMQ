@@ -1,3 +1,9 @@
+## v0.13.3 (2026-05-27)
+
+### Fix
+
+- **ci**: use RELEASE_TOKEN PAT for bump PR creation to trigger CI
+
 ## v0.13.2 (2026-05-27)
 
 ### Fix
