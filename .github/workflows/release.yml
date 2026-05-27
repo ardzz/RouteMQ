@@ -93,7 +93,11 @@ jobs:
       - name: Open auto-merge PR for bump
         if: steps.bump_detect.outputs.bumped == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Use fine-grained PAT (RELEASE_TOKEN) instead of GITHUB_TOKEN so the
+          # created PR triggers downstream CI. GitHub deliberately suppresses CI
+          # workflows on PRs created by GITHUB_TOKEN to prevent runaway loops.
+          # See: https://docs.github.com/en/actions/security-guides/automatic-token-authentication
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           BRANCH="${{ steps.bump_detect.outputs.branch }}"
           VERSION="${{ steps.bump_detect.outputs.version }}"
