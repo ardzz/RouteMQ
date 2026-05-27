@@ -7,6 +7,7 @@ from typing import Optional
 from routemq.job import Job
 from routemq.queue.queue_driver import QueueDriver
 from routemq.queue.queue_manager import QueueManager
+from ..observability import lifecycle, reset_context, set_context
 
 logger = logging.getLogger('RouteMQ.QueueWorker')
 
@@ -114,33 +115,50 @@ class QueueWorker:
         job_id = job_data['id']
         payload = job_data['payload']
         attempts = job_data['attempts']
+        driver = self.driver
+        if driver is None:
+            raise RuntimeError('Queue worker driver is not initialized')
 
         logger.info(f'Processing job {job_id} (attempt {attempts})')
 
+        token = None
+        job: Job | None = None
         try:
             # Unserialize the job
             job = Job.unserialize(payload)
             job.job_id = job_id
             job.attempts = attempts
+            attributes = {
+                'job_id': job_id,
+                'job_class': job.__class__.__name__,
+                'queue': self.queue_name,
+                'attempts': attempts,
+            }
+            job_context = job.get_observability_context() if hasattr(job, 'get_observability_context') else {}
+            token = set_context(job_context, **attributes)
 
             # Check if we've exceeded max tries
             max_tries = self.max_tries or job.max_tries
             if attempts > max_tries:
                 logger.warning(f'Job {job_id} exceeded max tries ({max_tries}), moving to failed queue')
+                lifecycle('queue.job.dead_lettered', {**attributes, 'reason': 'max_tries_exceeded'})
                 await self._fail_job(job, Exception('Max tries exceeded'))
-                await self.driver.delete(job_id, self.queue_name)
+                await driver.delete(job_id, self.queue_name)
                 return
 
             # Execute the job with timeout
             try:
+                lifecycle('queue.job.started', attributes)
                 await asyncio.wait_for(job.handle(), timeout=job.timeout or self.timeout)
 
                 # Job succeeded, delete from queue
-                await self.driver.delete(job_id, self.queue_name)
+                await driver.delete(job_id, self.queue_name)
+                lifecycle('queue.job.succeeded', attributes)
                 logger.info(f'Job {job_id} completed successfully')
 
             except asyncio.TimeoutError:
                 logger.error(f'Job {job_id} timed out after {job.timeout}s')
+                lifecycle('queue.job.timed_out', attributes)
                 raise Exception(f'Job timed out after {job.timeout} seconds')
 
         except Exception as e:
@@ -149,14 +167,25 @@ class QueueWorker:
 
             # Try to get the job object if it wasn't unserialized
             try:
-                if 'job' not in locals():
+                if job is None:
                     job = Job.unserialize(payload)
                     job.job_id = job_id
                     job.attempts = attempts
+                    if token is None:
+                        attributes = {
+                            'job_id': job_id,
+                            'job_class': job.__class__.__name__,
+                            'queue': self.queue_name,
+                            'attempts': attempts,
+                        }
+                        job_context = (
+                            job.get_observability_context() if hasattr(job, 'get_observability_context') else {}
+                        )
+                        token = set_context(job_context, **attributes)
             except Exception as unserialize_error:
                 logger.error(f'Failed to unserialize job: {unserialize_error}')
                 # Delete the corrupted job
-                await self.driver.delete(job_id, self.queue_name)
+                await driver.delete(job_id, self.queue_name)
                 return
 
             # Check if we should retry
@@ -164,12 +193,35 @@ class QueueWorker:
             if attempts < max_tries:
                 # Release back to queue for retry
                 delay = job.retry_after
-                await self.driver.release(job_id, self.queue_name, delay)
+                await driver.release(job_id, self.queue_name, delay)
+                lifecycle(
+                    'queue.job.retried',
+                    {
+                        'job_id': job_id,
+                        'job_class': job.__class__.__name__,
+                        'queue': self.queue_name,
+                        'attempts': attempts,
+                        'delay': delay,
+                    },
+                )
                 logger.info(f'Job {job_id} released back to queue (attempt {attempts}/{max_tries}, delay: {delay}s)')
             else:
                 # Max tries exceeded, move to failed queue
+                lifecycle(
+                    'queue.job.failed',
+                    {
+                        'job_id': job_id,
+                        'job_class': job.__class__.__name__,
+                        'queue': self.queue_name,
+                        'attempts': attempts,
+                        'error': e.__class__.__name__,
+                    },
+                )
                 await self._fail_job(job, e)
-                await self.driver.delete(job_id, self.queue_name)
+                await driver.delete(job_id, self.queue_name)
+        finally:
+            if token is not None:
+                reset_context(token)
 
     async def _fail_job(self, job: Job, exception: Exception) -> None:
         """
@@ -179,6 +231,10 @@ class QueueWorker:
             job: The job that failed
             exception: The exception that caused the failure
         """
+        driver = self.driver
+        if driver is None:
+            raise RuntimeError('Queue worker driver is not initialized')
+
         try:
             # Call the job's failed handler
             await job.failed(exception)
@@ -187,7 +243,7 @@ class QueueWorker:
             exception_str = f'{exception.__class__.__name__}: {str(exception)}\n'
             exception_str += traceback.format_exc()
 
-            await self.driver.failed(
+            await driver.failed(
                 connection=self.connection or 'default',
                 queue=self.queue_name,
                 payload=job.serialize(),

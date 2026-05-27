@@ -8,6 +8,7 @@ from routemq.queue.redis_queue import RedisQueue
 from routemq.queue.database_queue import DatabaseQueue
 from routemq.redis_manager import RedisManager
 from routemq.model import Model
+from ..observability import lifecycle
 
 logger = logging.getLogger('RouteMQ.QueueManager')
 
@@ -50,26 +51,37 @@ class QueueManager:
         Raises:
             RuntimeError: If the requested driver is not available
         """
-        connection = connection or self._default_connection
+        connection = self._resolve_connection(connection)
 
         if connection == 'redis':
-            redis_manager = RedisManager()
-            if not redis_manager.is_enabled():
-                # Fallback to database if Redis is not available
-                logger.warning('Redis is not available, falling back to database queue')
-                connection = 'database'
-            else:
-                return RedisQueue()
+            return RedisQueue()
 
         if connection == 'database':
+            return DatabaseQueue()
+
+        raise RuntimeError(f'Unknown queue connection: {connection}')
+
+    def _resolve_connection(self, connection: Optional[str] = None) -> str:
+        """Resolve the requested queue connection, including Redis-to-database fallback."""
+        resolved = connection or self._default_connection
+
+        if resolved == 'redis':
+            redis_manager = RedisManager()
+            if redis_manager.is_enabled():
+                return 'redis'
+
+            logger.warning('Redis is not available, falling back to database queue')
+            resolved = 'database'
+
+        if resolved == 'database':
             if not Model._is_enabled:
                 raise RuntimeError(
                     'Cannot use database queue - MySQL is disabled. '
                     'Enable MySQL or configure Redis as queue connection.'
                 )
-            return DatabaseQueue()
+            return 'database'
 
-        raise RuntimeError(f'Unknown queue connection: {connection}')
+        raise RuntimeError(f'Unknown queue connection: {resolved}')
 
     async def push(
         self,
@@ -88,8 +100,21 @@ class QueueManager:
         queue = queue or job.queue
         driver = self.get_driver(connection)
 
+        attributes = {
+            'job_class': job.__class__.__name__,
+            'queue': queue,
+            'connection': connection or self._default_connection,
+        }
+        job.capture_observability_context(attributes)
         payload = job.serialize()
-        await driver.push(payload, queue)
+        lifecycle('queue.enqueue.started', attributes)
+        try:
+            await driver.push(payload, queue)
+        except Exception as exc:
+            lifecycle('queue.enqueue.failed', {**attributes, 'error': exc.__class__.__name__})
+            raise
+        else:
+            lifecycle('queue.enqueue.succeeded', attributes)
 
         logger.info(f"Job {job.__class__.__name__} dispatched to queue '{queue}'")
 
@@ -112,8 +137,22 @@ class QueueManager:
         queue = queue or job.queue
         driver = self.get_driver(connection)
 
+        attributes = {
+            'job_class': job.__class__.__name__,
+            'queue': queue,
+            'connection': connection or self._default_connection,
+            'delay': delay,
+        }
+        job.capture_observability_context(attributes)
         payload = job.serialize()
-        await driver.push(payload, queue, delay)
+        lifecycle('queue.enqueue.started', attributes)
+        try:
+            await driver.push(payload, queue, delay)
+        except Exception as exc:
+            lifecycle('queue.enqueue.failed', {**attributes, 'error': exc.__class__.__name__})
+            raise
+        else:
+            lifecycle('queue.enqueue.succeeded', attributes)
 
         logger.info(f"Job {job.__class__.__name__} scheduled to queue '{queue}' with {delay}s delay")
 
@@ -135,8 +174,22 @@ class QueueManager:
 
         for job in jobs:
             q = queue or job.queue
+            attributes = {
+                'job_class': job.__class__.__name__,
+                'queue': q,
+                'connection': connection or self._default_connection,
+                'bulk': True,
+            }
+            job.capture_observability_context(attributes)
             payload = job.serialize()
-            await driver.push(payload, q)
+            lifecycle('queue.enqueue.started', attributes)
+            try:
+                await driver.push(payload, q)
+            except Exception as exc:
+                lifecycle('queue.enqueue.failed', {**attributes, 'error': exc.__class__.__name__})
+                raise
+            else:
+                lifecycle('queue.enqueue.succeeded', attributes)
 
         logger.info(f'Bulk dispatched {len(jobs)} jobs to queue')
 

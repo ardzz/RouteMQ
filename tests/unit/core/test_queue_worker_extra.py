@@ -129,14 +129,15 @@ class QueueWorkerProcessJobTests(_WorkerSignalGuard):
         async def slow_handle() -> None:
             await asyncio.sleep(10)
 
+        async def timeout_wait_for(coro: Any, timeout: float | None = None) -> None:
+            coro.close()
+            raise asyncio.TimeoutError
+
         job = _DummyJob(timeout=0)
         job.handle = slow_handle  # type: ignore[method-assign]
         with (
             patch('routemq.queue.queue_worker.Job') as mock_job_cls,
-            patch(
-                'routemq.queue.queue_worker.asyncio.wait_for',
-                AsyncMock(side_effect=asyncio.TimeoutError()),
-            ),
+            patch('routemq.queue.queue_worker.asyncio.wait_for', side_effect=timeout_wait_for),
         ):
             mock_job_cls.unserialize.return_value = job
             await worker._process_job({'id': 'j1', 'payload': 'p', 'attempts': 1})
