@@ -255,6 +255,18 @@ wheels = [
 ]
 
 [[package]]
+name = "click"
+version = "8.4.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9b/98/518d8e5081007684232226f475082b30087d0f585e8457db087298259f49/click-8.4.1.tar.gz", hash = "sha256:918b5633eddf6b41c32d4f454bf0de810065c74e3f7dbf8ee5452f8be88d3e96", size = 353007, upload-time = "2026-05-22T04:08:37.769Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c7/0d/67e5b4109ea4a837e80daa87c2c696711955e40449a97e8926672534def2/click-8.4.1-py3-none-any.whl", hash = "sha256:482be17c6991b8c19c5429a1e995d9b0efdbb63172824c41f99965dc0ade8ec2", size = 116639, upload-time = "2026-05-22T04:08:35.26Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -1288,6 +1300,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pyfiglet"
+version = "1.0.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c8/e3/0a86276ad2c383ce08d76110a8eec2fe22e7051c4b8ba3fa163a0b08c428/pyfiglet-1.0.4.tar.gz", hash = "sha256:db9c9940ed1bf3048deff534ed52ff2dafbbc2cd7610b17bb5eca1df6d4278ef", size = 1560615, upload-time = "2025-08-15T18:32:47.302Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9f/5c/fe9f95abd5eaedfa69f31e450f7e2768bef121dbdf25bcddee2cd3087a16/pyfiglet-1.0.4-py3-none-any.whl", hash = "sha256:65b57b7a8e1dff8a67dc8e940a117238661d5e14c3e49121032bd404d9b2b39f", size = 1806118, upload-time = "2025-08-15T18:32:45.556Z" },
+]
+
+[[package]]
 name = "pygments"
 version = "2.20.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1545,6 +1566,34 @@ wheels = [
 ]
 
 [[package]]
+name = "rich-click"
+version = "1.9.7"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "rich" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/04/27/091e140ea834272188e63f8dd6faac1f5c687582b687197b3e0ec3c78ebf/rich_click-1.9.7.tar.gz", hash = "sha256:022997c1e30731995bdbc8ec2f82819340d42543237f033a003c7b1f843fc5dc", size = 74838, upload-time = "2026-01-31T04:29:27.707Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ca/e5/d708d262b600a352abe01c2ae360d8ff75b0af819b78e9af293191d928e6/rich_click-1.9.7-py3-none-any.whl", hash = "sha256:2f99120fca78f536e07b114d3b60333bc4bb2a0969053b1250869bcdc1b5351b", size = 71491, upload-time = "2026-01-31T04:29:26.777Z" },
+]
+
+[[package]]
+name = "rich-pyfiglet"
+version = "2.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyfiglet" },
+    { name = "rich" },
+    { name = "rich-click" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/dd/4c/34c491a2c4668a18638235344e0b8a26c829918faabfb96358fa485c42a5/rich_pyfiglet-2.0.1.tar.gz", hash = "sha256:0e146ade2b8b41395dc0d48f4a6b5596e638c5d91d963d3bc6d6b054fe9d2c96", size = 19720, upload-time = "2026-05-23T10:08:16.973Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/50/b9/508c72fc38cc1f470643b2ea8dad72020b6313ce844d7170e1f06889090c/rich_pyfiglet-2.0.1-py3-none-any.whl", hash = "sha256:c98256d3735810447a7f7b19f645832d5574b37929390e84b5c8b747b1a97a29", size = 22121, upload-time = "2026-05-23T10:08:15.431Z" },
+]
+
+[[package]]
 name = "routemq"
 version = "0.15.0"
 source = { editable = "." }
@@ -1564,11 +1613,13 @@ all = [
     { name = "questionary" },
     { name = "redis" },
     { name = "rich" },
+    { name = "rich-pyfiglet" },
 ]
 cli = [
     { name = "jinja2" },
     { name = "questionary" },
     { name = "rich" },
+    { name = "rich-pyfiglet" },
 ]
 dev = [
     { name = "bandit" },
@@ -1584,6 +1635,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "questionary" },
     { name = "rich" },
+    { name = "rich-pyfiglet" },
     { name = "ruff" },
     { name = "testcontainers" },
 ]
@@ -1606,6 +1658,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "questionary" },
     { name = "rich" },
+    { name = "rich-pyfiglet" },
     { name = "ruff" },
     { name = "testcontainers" },
 ]
@@ -1639,6 +1692,9 @@ requires-dist = [
     { name = "rich", marker = "extra == 'all'", specifier = ">=14.0.0" },
     { name = "rich", marker = "extra == 'cli'", specifier = ">=14.0.0" },
     { name = "rich", marker = "extra == 'dev'", specifier = ">=14.0.0" },
+    { name = "rich-pyfiglet", marker = "extra == 'all'", specifier = ">=1.0.0" },
+    { name = "rich-pyfiglet", marker = "extra == 'cli'", specifier = ">=1.0.0" },
+    { name = "rich-pyfiglet", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9.0" },
     { name = "sqlalchemy", specifier = ">=2.0.23" },
     { name = "testcontainers", marker = "extra == 'dev'", specifier = ">=4.0.0" },
@@ -1660,6 +1716,7 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.21.1" },
     { name = "questionary", specifier = ">=2.0.0" },
     { name = "rich", specifier = ">=14.0.0" },
+    { name = "rich-pyfiglet", specifier = ">=1.0.0" },
     { name = "ruff", specifier = ">=0.9.0" },
     { name = "testcontainers", specifier = ">=4.0.0" },
 ]

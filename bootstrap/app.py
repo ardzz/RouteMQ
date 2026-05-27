@@ -50,7 +50,14 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
 """
         print(banner)
 
-    def __init__(self, router=None, env_file='.env', router_directory='app.routers'):
+    def __init__(
+        self,
+        router=None,
+        env_file='.env',
+        router_directory='app.routers',
+        show_banner: bool = True,
+        log_to_console: bool = True,
+    ):
         """
         Initialize a new RouteMQ application.
 
@@ -58,13 +65,15 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
             router: A Router instance to use. If None, dynamically loads from router_directory
             env_file: The environment file to load configuration from
             router_directory: Directory containing router modules (default: "app.routers")
+            show_banner: Whether to print the standard RouteMQ startup banner
+            log_to_console: Whether startup logging should include a console handler
         """
-        # Print banner first
-        self.print_banner()
+        if show_banner:
+            self.print_banner()
 
         load_dotenv(env_file)
 
-        self._setup_logging()
+        self._setup_logging(log_to_console=log_to_console)
 
         self.router_directory = router_directory
         self.router = router
@@ -97,7 +106,7 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
 
         self.worker_manager = WorkerManager(self.router, self.group_name, self.router_directory)
 
-    def _setup_logging(self):
+    def _setup_logging(self, log_to_console: bool = True):
         """Configure logging based on environment variables with file rotation support."""
         log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
         log_format = os.getenv('LOG_FORMAT', '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -115,7 +124,9 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
 
         date_format = os.getenv('LOG_DATE_FORMAT', '%Y-%m-%d')
 
-        handlers = [logging.StreamHandler()]
+        handlers: list[logging.Handler] = []
+        if log_to_console:
+            handlers.append(logging.StreamHandler())
 
         if log_to_file:
             log_path = Path(log_file)
@@ -140,8 +151,12 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
                 handlers.append(file_handler)
 
             except Exception as e:
-                print(f'Warning: Could not setup file logging: {e}')
-                print('Falling back to console logging only')
+                if log_to_console:
+                    print(f'Warning: Could not setup file logging: {e}')
+                    print('Falling back to console logging only')
+
+        if not handlers:
+            handlers.append(logging.NullHandler())
 
         logging.basicConfig(level=getattr(logging, log_level), format=log_format, handlers=handlers, force=True)
 

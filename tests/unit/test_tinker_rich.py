@@ -1,4 +1,6 @@
+import asyncio
 import unittest
+from collections import namedtuple
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -19,6 +21,16 @@ class TestRichHelpers(unittest.TestCase):
 
         self.console = MagicMock()
         self.helpers = _make_repl_helpers(self.console)
+
+    def _printed_table(self):
+        from rich.table import Table
+
+        args, _ = self.console.print.call_args
+        self.assertIsInstance(args[0], Table)
+        return args[0]
+
+    def _table_cells(self, table):
+        return [list(column.cells) for column in table.columns]
 
     def test_helpers_dict_has_four_callables(self):
         self.assertEqual(set(self.helpers), {'print_rich', 'print_sql', 'print_json', 'print_rows'})
@@ -50,24 +62,52 @@ class TestRichHelpers(unittest.TestCase):
         self.assertIn('No rows in Empty Test', args[0])
 
     def test_print_rows_with_dicts_renders_table(self):
-        from rich.table import Table
-
         rows = [{'id': 1, 'name': 'a'}, {'id': 2, 'name': 'b'}]
         self.helpers['print_rows'](rows, title='Test Table')
-        args, _ = self.console.print.call_args
-        self.assertIsInstance(args[0], Table)
+        self._printed_table()
 
     def test_print_rows_with_objects_renders_table(self):
-        from rich.table import Table
-
         class Row:
             def __init__(self, row_id, name):
                 self.id = row_id
                 self.name = name
 
         self.helpers['print_rows']([Row(1, 'alpha')], title='Object Rows')
-        args, _ = self.console.print.call_args
-        self.assertIsInstance(args[0], Table)
+        self._printed_table()
+
+    def test_print_rows_with_mapping_rows_uses_mapping_keys_and_values(self):
+        class Row:
+            def __init__(self, mapping):
+                self._mapping = mapping
+
+        self.helpers['print_rows']([Row({'id': 1, 'name': 'alpha'})], title='Mapping Rows')
+
+        table = self._printed_table()
+        self.assertEqual([column.header for column in table.columns], ['id', 'name'])
+        self.assertEqual(self._table_cells(table), [['1'], ['alpha']])
+
+    def test_print_rows_with_namedtuple_rows_uses_asdict_keys_and_values(self):
+        Row = namedtuple('Row', ['id', 'name'])
+
+        self.helpers['print_rows']([Row(1, 'alpha')], title='Namedtuple Rows')
+
+        table = self._printed_table()
+        self.assertEqual([column.header for column in table.columns], ['id', 'name'])
+        self.assertEqual(self._table_cells(table), [['1'], ['alpha']])
+
+    def test_print_rows_with_sequence_rows_uses_index_columns_and_values(self):
+        self.helpers['print_rows']([(1, 'alpha')], title='Sequence Rows')
+
+        table = self._printed_table()
+        self.assertEqual([column.header for column in table.columns], ['0', '1'])
+        self.assertEqual(self._table_cells(table), [['1'], ['alpha']])
+
+    def test_print_rows_with_scalar_rows_uses_value_column(self):
+        self.helpers['print_rows']([42], title='Scalar Rows')
+
+        table = self._printed_table()
+        self.assertEqual([column.header for column in table.columns], ['value'])
+        self.assertEqual(self._table_cells(table), [['42']])
 
 
 @unittest.skipUnless(_rich_available(), 'rich not installed')
@@ -80,7 +120,67 @@ class TestBannerHelpers(unittest.TestCase):
         app.mysql_enabled = True
         app.redis_enabled = False
         _print_banner_rich(console, app)
+        self.assertGreaterEqual(console.print.call_count, 1)
+
+    def test_print_banner_rich_uses_figlet_when_available(self):
+        import rich.box
+        from rich.panel import Panel
+        from rich.table import Table
+        from routemq.tinker import _print_banner_rich
+
+        class FakeFiglet:
+            def __init__(self, *args, **kwargs):
+                self.args = args
+                self.kwargs = kwargs
+
+        console = MagicMock()
+        app = MagicMock()
+        app.mysql_enabled = True
+        app.redis_enabled = False
+
+        with (
+            patch('routemq.tinker._load_rich', return_value=True),
+            patch('routemq.tinker.Panel', Panel),
+            patch('routemq.tinker.Table', Table),
+            patch('routemq.tinker.box', rich.box),
+            patch('routemq.tinker.RichFiglet', FakeFiglet),
+            patch('routemq.tinker._RICH_FIGLET_AVAILABLE', True),
+        ):
+            _print_banner_rich(console, app)
+
+        self.assertEqual(console.print.call_count, 2)
+        figlet = console.print.call_args_list[0].args[0]
+        summary = console.print.call_args_list[1].args[0]
+        self.assertIsInstance(figlet, FakeFiglet)
+        self.assertIsInstance(summary, Table)
+        self.assertEqual(figlet.args, ('RouteMQ',))
+        self.assertEqual(figlet.kwargs['font'], 'standard')
+        self.assertEqual(figlet.kwargs['justify'], 'left')
+        self.assertNotIn('border', figlet.kwargs)
+
+    def test_print_banner_rich_falls_back_without_figlet(self):
+        import rich.box
+        from rich.panel import Panel
+        from rich.table import Table
+        from routemq.tinker import _print_banner_rich
+
+        console = MagicMock()
+        app = MagicMock()
+        app.mysql_enabled = True
+        app.redis_enabled = False
+
+        with (
+            patch('routemq.tinker._load_rich', return_value=True),
+            patch('routemq.tinker.Panel', Panel),
+            patch('routemq.tinker.Table', Table),
+            patch('routemq.tinker.box', rich.box),
+            patch('routemq.tinker.RichFiglet', None),
+            patch('routemq.tinker._RICH_FIGLET_AVAILABLE', False),
+        ):
+            _print_banner_rich(console, app)
+
         console.print.assert_called_once()
+        self.assertIsInstance(console.print.call_args.args[0], Panel)
 
     def test_print_helpers_table_rich_calls_console_for_enabled_db(self):
         from routemq.tinker import _print_helpers_table_rich
@@ -97,12 +197,32 @@ class TestBannerHelpers(unittest.TestCase):
         self.assertEqual(console.print.call_count, 3)
 
     def test_install_tracebacks_calls_rich_install(self):
-        with patch('routemq.tinker._rich_install_traceback') as mock_install:
-            from routemq.tinker import _install_tracebacks
+        from routemq.tinker import _install_tracebacks
 
+        with (
+            patch('routemq.tinker._load_rich', return_value=True),
+            patch('routemq.tinker._rich_install_traceback') as mock_install,
+        ):
             _install_tracebacks()
 
         mock_install.assert_called_once_with(show_locals=True)
+
+    def test_load_rich_initializes_cached_console(self):
+        import routemq.tinker as tinker
+
+        with (
+            patch('routemq.tinker._console', None),
+            patch('routemq.tinker.Console', None),
+            patch('routemq.tinker.Panel', None),
+            patch('routemq.tinker.Table', None),
+            patch('routemq.tinker.Syntax', None),
+            patch('routemq.tinker._rich_install_traceback', None),
+            patch('routemq.tinker.box', None),
+            patch('routemq.tinker._RICH_AVAILABLE', False),
+        ):
+            self.assertTrue(tinker._load_rich())
+            self.assertTrue(tinker._RICH_AVAILABLE)
+            self.assertIsNotNone(tinker._console)
 
 
 @unittest.skipUnless(_rich_available(), 'rich not installed')
@@ -190,7 +310,7 @@ class TestTinkerEnvironmentSetup(unittest.IsolatedAsyncioTestCase):
             env = TinkerEnvironment(app)
 
         with (
-            patch('routemq.tinker._RICH_AVAILABLE', False),
+            patch('routemq.tinker._load_rich', return_value=False),
             patch.object(env, '_setup_database_session', new=AsyncMock()),
             patch.object(env, '_print_banner_plain') as mock_plain,
         ):
@@ -250,6 +370,32 @@ class TestRichFallback(unittest.TestCase):
         printed = '\n'.join(str(call.args[0]) for call in mock_print.call_args_list)
         self.assertIn('Device(device_id', printed)
         self.assertIn('run_async(session.commit())', printed)
+
+
+class TestTinkerStartup(unittest.TestCase):
+    def test_start_tinker_sync_suppresses_standard_application_banner(self):
+        from routemq.tinker import start_tinker_sync
+
+        original_run = asyncio.run
+        app = MagicMock()
+        env = MagicMock()
+        env.globals = {}
+        env.session = None
+        env.setup = AsyncMock()
+        shell = MagicMock()
+
+        with (
+            patch('routemq.tinker.Application', return_value=app) as application,
+            patch('routemq.tinker.TinkerEnvironment', return_value=env),
+            patch('routemq.tinker.TerminalInteractiveShell.instance', return_value=shell),
+            patch('routemq.tinker.embed'),
+            patch('routemq.tinker.asyncio.run', side_effect=original_run),
+            patch('builtins.print'),
+        ):
+            start_tinker_sync(env_file='custom.env')
+
+        application.assert_called_once_with(env_file='custom.env', show_banner=False, log_to_console=False)
+        env.setup.assert_awaited_once()
 
 
 if __name__ == '__main__':

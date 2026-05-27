@@ -22,10 +22,11 @@ class ConstructorRouterAutoLoadTests(unittest.TestCase):
         fake_router = MagicMock(name='router')
         with (
             patch.object(Application, 'print_banner'),
-            patch.object(Application, '_setup_logging', lambda app: setattr(app, 'logger', MagicMock())),
+            patch.object(Application, '_setup_logging', lambda app, **_: setattr(app, 'logger', MagicMock())),
             patch.object(Application, '_setup_database'),
             patch('bootstrap.app.RouterRegistry') as registry_cls,
-            patch('bootstrap.app.asyncio.get_event_loop', return_value=MagicMock()),
+            patch('bootstrap.app.asyncio.new_event_loop', return_value=MagicMock()),
+            patch('bootstrap.app.asyncio.set_event_loop'),
             patch('bootstrap.app.WorkerManager'),
             patch.dict(os.environ, {'ENABLE_MYSQL': 'false', 'ENABLE_REDIS': 'false'}, clear=True),
         ):
@@ -39,10 +40,11 @@ class ConstructorRouterAutoLoadTests(unittest.TestCase):
     def test_constructor_falls_back_to_empty_router_on_load_failure(self) -> None:
         with (
             patch.object(Application, 'print_banner'),
-            patch.object(Application, '_setup_logging', lambda app: setattr(app, 'logger', MagicMock())),
+            patch.object(Application, '_setup_logging', lambda app, **_: setattr(app, 'logger', MagicMock())),
             patch.object(Application, '_setup_database'),
             patch('bootstrap.app.RouterRegistry', side_effect=RuntimeError('registry boom')),
-            patch('bootstrap.app.asyncio.get_event_loop', return_value=MagicMock()),
+            patch('bootstrap.app.asyncio.new_event_loop', return_value=MagicMock()),
+            patch('bootstrap.app.asyncio.set_event_loop'),
             patch('bootstrap.app.WorkerManager'),
             patch.dict(os.environ, {'ENABLE_MYSQL': 'false', 'ENABLE_REDIS': 'false'}, clear=True),
         ):

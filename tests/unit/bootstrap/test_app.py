@@ -16,28 +16,68 @@ class TestApplicationInitialization(unittest.TestCase):
         router = MagicMock(name='router')
 
         with (
-            patch.object(Application, 'print_banner'),
-            patch.object(Application, '_setup_logging', lambda app: setattr(app, 'logger', MagicMock())),
+            patch.object(Application, 'print_banner') as print_banner,
+            patch.object(Application, '_setup_logging', lambda app, **_: setattr(app, 'logger', MagicMock())),
             patch.object(Application, '_setup_database') as setup_database,
             patch('bootstrap.app.load_dotenv') as load_dotenv,
-            patch('bootstrap.app.asyncio.get_event_loop', return_value=MagicMock(name='loop')),
+            patch('bootstrap.app.asyncio.new_event_loop', return_value=MagicMock(name='loop')),
+            patch('bootstrap.app.asyncio.set_event_loop'),
             patch('bootstrap.app.WorkerManager') as worker_manager,
             patch.dict(os.environ, {'ENABLE_MYSQL': 'false', 'ENABLE_REDIS': 'false'}, clear=True),
         ):
             app = Application(router=router, env_file='custom.env', router_directory='custom.routers')
 
         self.assertIs(app.router, router)
+        print_banner.assert_called_once_with()
         load_dotenv.assert_called_once_with('custom.env')
         setup_database.assert_not_called()
         worker_manager.assert_called_once_with(router, 'mqtt_framework_group', 'custom.routers')
+
+    def test_constructor_skips_banner_when_disabled(self) -> None:
+        """show_banner=False lets callers own their startup output."""
+        router = MagicMock(name='router')
+
+        with (
+            patch.object(Application, 'print_banner') as print_banner,
+            patch.object(Application, '_setup_logging', lambda app, **_: setattr(app, 'logger', MagicMock())),
+            patch.object(Application, '_setup_database') as setup_database,
+            patch('bootstrap.app.asyncio.new_event_loop', return_value=MagicMock()),
+            patch('bootstrap.app.asyncio.set_event_loop'),
+            patch('bootstrap.app.WorkerManager'),
+            patch.dict(os.environ, {'ENABLE_MYSQL': 'false', 'ENABLE_REDIS': 'false'}, clear=True),
+        ):
+            Application(router=router, show_banner=False)
+
+        print_banner.assert_not_called()
+        setup_database.assert_not_called()
+
+    def test_constructor_can_disable_console_logging(self) -> None:
+        """Embedded callers can keep app logs out of their console."""
+        router = MagicMock(name='router')
+
+        with (
+            patch.object(Application, 'print_banner'),
+            patch.object(Application, '_setup_logging', autospec=True) as setup_logging,
+            patch.object(Application, '_setup_database') as setup_database,
+            patch('bootstrap.app.asyncio.new_event_loop', return_value=MagicMock()),
+            patch('bootstrap.app.asyncio.set_event_loop'),
+            patch('bootstrap.app.WorkerManager'),
+            patch.dict(os.environ, {'ENABLE_MYSQL': 'false', 'ENABLE_REDIS': 'false'}, clear=True),
+        ):
+            setup_logging.side_effect = lambda app, **_: setattr(app, 'logger', MagicMock())
+            Application(router=router, show_banner=False, log_to_console=False)
+
+        self.assertFalse(setup_logging.call_args.kwargs['log_to_console'])
+        setup_database.assert_not_called()
 
     def test_constructor_sets_up_database_when_mysql_enabled(self) -> None:
         """ENABLE_MYSQL=true keeps database setup in the boot path."""
         with (
             patch.object(Application, 'print_banner'),
-            patch.object(Application, '_setup_logging', lambda app: setattr(app, 'logger', MagicMock())),
+            patch.object(Application, '_setup_logging', lambda app, **_: setattr(app, 'logger', MagicMock())),
             patch.object(Application, '_setup_database') as setup_database,
-            patch('bootstrap.app.asyncio.get_event_loop', return_value=MagicMock()),
+            patch('bootstrap.app.asyncio.new_event_loop', return_value=MagicMock()),
+            patch('bootstrap.app.asyncio.set_event_loop'),
             patch('bootstrap.app.WorkerManager'),
             patch.dict(os.environ, {'ENABLE_MYSQL': 'true', 'ENABLE_REDIS': 'false'}, clear=True),
         ):
@@ -49,9 +89,10 @@ class TestApplicationInitialization(unittest.TestCase):
         """ENABLE_REDIS=true is stored without opening Redis during construction."""
         with (
             patch.object(Application, 'print_banner'),
-            patch.object(Application, '_setup_logging', lambda app: setattr(app, 'logger', MagicMock())),
+            patch.object(Application, '_setup_logging', lambda app, **_: setattr(app, 'logger', MagicMock())),
             patch.object(Application, '_setup_database'),
-            patch('bootstrap.app.asyncio.get_event_loop', return_value=MagicMock()),
+            patch('bootstrap.app.asyncio.new_event_loop', return_value=MagicMock()),
+            patch('bootstrap.app.asyncio.set_event_loop'),
             patch('bootstrap.app.WorkerManager'),
             patch.dict(os.environ, {'ENABLE_MYSQL': 'false', 'ENABLE_REDIS': 'true'}, clear=True),
         ):
@@ -110,6 +151,40 @@ class TestApplicationLogging(unittest.TestCase):
         basic_config.assert_called_once()
         self.assertEqual(basic_config.call_args.kwargs['level'], logging.DEBUG)
         self.assertEqual(basic_config.call_args.kwargs['format'], '%(levelname)s:%(message)s')
+        handlers = basic_config.call_args.kwargs['handlers']
+        self.assertTrue(any(type(handler) is logging.StreamHandler for handler in handlers))
+
+    def test_setup_logging_can_omit_console_handler(self) -> None:
+        """Quiet embedded startup keeps file logging without a console stream."""
+        app = object.__new__(Application)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_file = str(Path(tmpdir) / 'app.log')
+            with (
+                patch('bootstrap.app.logging.basicConfig') as basic_config,
+                patch.dict(os.environ, {'LOG_FILE': log_file, 'LOG_TO_FILE': 'true'}, clear=True),
+            ):
+                app._setup_logging(log_to_console=False)
+
+        handlers = basic_config.call_args.kwargs['handlers']
+        self.assertFalse(any(type(handler) is logging.StreamHandler for handler in handlers))
+        self.assertTrue(any(isinstance(handler, logging.handlers.RotatingFileHandler) for handler in handlers))
+        for handler in handlers:
+            handler.close()
+
+    def test_setup_logging_uses_null_handler_when_fully_quiet(self) -> None:
+        """basicConfig must not synthesize a console handler when no outputs are enabled."""
+        app = object.__new__(Application)
+
+        with (
+            patch('bootstrap.app.logging.basicConfig') as basic_config,
+            patch.dict(os.environ, {'LOG_TO_FILE': 'false'}, clear=True),
+        ):
+            app._setup_logging(log_to_console=False)
+
+        handlers = basic_config.call_args.kwargs['handlers']
+        self.assertEqual(len(handlers), 1)
+        self.assertIsInstance(handlers[0], logging.NullHandler)
 
     def test_setup_logging_uses_log_file_environment(self) -> None:
         """File logging uses LOG_FILE when rotation is enabled."""

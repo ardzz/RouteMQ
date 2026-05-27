@@ -2,46 +2,76 @@
 RouteMQ Tinker - Interactive REPL for testing ORM relationships and queries
 Similar to Laravel Artisan Tinker
 """
-# pyright: reportMissingImports=false
 
 import asyncio
 import os
 import sys
 from pathlib import Path
-import nest_asyncio
+import nest_asyncio  # pyright: ignore[reportMissingImports]
 
-from IPython import embed
-from IPython.terminal.interactiveshell import TerminalInteractiveShell
-from IPython.core.magic import Magics, magics_class, line_magic
+from IPython import embed  # pyright: ignore[reportMissingImports]
+from IPython.terminal.interactiveshell import TerminalInteractiveShell  # pyright: ignore[reportMissingImports]
+from IPython.core.magic import Magics, magics_class, line_magic  # pyright: ignore[reportMissingImports]
 
 from bootstrap.app import Application
 from routemq.model import Model, Base
 from routemq.redis_manager import redis_manager
 
-try:
-    from rich.console import Console
-    from rich.panel import Panel
-    from rich.table import Table
-    from rich.syntax import Syntax
-    from rich.traceback import install as _rich_install_traceback
-    from rich import box
+Console = None
+Panel = None
+Table = None
+Syntax = None
+RichFiglet = None
+_rich_install_traceback = None
+box = None
+_RICH_AVAILABLE = False
+_RICH_FIGLET_AVAILABLE = False
+_console = None
+
+
+def _load_rich():
+    """Lazy-load Rich primitives used only by the tinker REPL."""
+    global Console, Panel, Table, Syntax, RichFiglet, _rich_install_traceback
+    global box, _RICH_AVAILABLE, _RICH_FIGLET_AVAILABLE, _console
+
+    if _console is not None:
+        return True
+
+    try:
+        from rich.console import Console as _Console  # pyright: ignore[reportMissingImports]
+        from rich.panel import Panel as _Panel  # pyright: ignore[reportMissingImports]
+        from rich.table import Table as _Table  # pyright: ignore[reportMissingImports]
+        from rich.syntax import Syntax as _Syntax  # pyright: ignore[reportMissingImports]
+        from rich.traceback import install as _install  # pyright: ignore[reportMissingImports]
+        from rich import box as _box  # pyright: ignore[reportMissingImports]
+    except ImportError:
+        _RICH_AVAILABLE = False
+        return False
+
+    Console = _Console
+    Panel = _Panel
+    Table = _Table
+    Syntax = _Syntax
+    _rich_install_traceback = _install
+    box = _box
+
+    try:
+        from rich_pyfiglet import RichFiglet as _RichFiglet  # pyright: ignore[reportMissingImports]
+    except ImportError:
+        RichFiglet = None
+        _RICH_FIGLET_AVAILABLE = False
+    else:
+        RichFiglet = _RichFiglet
+        _RICH_FIGLET_AVAILABLE = True
 
     _RICH_AVAILABLE = True
     _console = Console()
-except ImportError:
-    Console = None
-    Panel = None
-    Table = None
-    Syntax = None
-    _rich_install_traceback = None
-    box = None
-    _RICH_AVAILABLE = False
-    _console = None
+    return True
 
 
 def _install_tracebacks():
     """Install Rich's traceback handler with locals visible."""
-    if _RICH_AVAILABLE and _rich_install_traceback is not None:
+    if _load_rich() and _rich_install_traceback is not None:
         _rich_install_traceback(show_locals=True)
 
 
@@ -53,7 +83,7 @@ def _make_repl_helpers(console):
     """Return REPL helper functions that use Rich for styled output."""
     import json as _json
 
-    if Syntax is None or Table is None or box is None:
+    if not _load_rich() or Syntax is None or Table is None or box is None:
         raise RuntimeError('Rich helpers require rich to be installed')
 
     syntax_cls = Syntax
@@ -89,6 +119,14 @@ def _make_repl_helpers(console):
 
             get = get_dict
 
+        elif hasattr(first, '_mapping'):
+            cols = list(first._mapping.keys())
+
+            def get_mapping(row, col):
+                return row._mapping[col]
+
+            get = get_mapping
+
         elif hasattr(first, '__table__'):
             cols = [c.name for c in first.__table__.columns]
 
@@ -98,12 +136,37 @@ def _make_repl_helpers(console):
             get = get_table_attr
 
         else:
-            cols = list(vars(first).keys())
+            if hasattr(first, '_asdict'):
+                cols = list(first._asdict().keys())
 
-            def get_object_attr(row, col):
-                return getattr(row, col)
+                def get_namedtuple(row, col):
+                    return row._asdict()[col]
 
-            get = get_object_attr
+                get = get_namedtuple
+            elif isinstance(first, (list, tuple)):
+                cols = [str(index) for index in range(len(first))]
+
+                def get_sequence(row, col):
+                    return row[int(col)]
+
+                get = get_sequence
+            else:
+                try:
+                    attrs = vars(first)
+                except TypeError:
+                    cols = ['value']
+
+                    def get_value(row, col):
+                        return row
+
+                    get = get_value
+                else:
+                    cols = list(attrs.keys())
+
+                    def get_object_attr(row, col):
+                        return getattr(row, col)
+
+                    get = get_object_attr
 
         table = table_cls(title=title, box=box_module.SIMPLE_HEAVY)
         for col in cols:
@@ -121,37 +184,52 @@ def _make_repl_helpers(console):
 
 
 def _print_banner_rich(console, app):
-    """Render the styled startup banner with system info table."""
+    """Render the styled startup banner with compact system info."""
     import platform
     import psutil
-    from datetime import datetime
 
-    if Panel is None or Table is None or box is None:
+    if not _load_rich() or Panel is None or Table is None or box is None:
         raise RuntimeError('Rich banner requires rich to be installed')
 
     panel_cls = Panel
     table_cls = Table
     box_module = box
+    figlet_cls = RichFiglet
 
-    tbl = table_cls(show_header=False, box=box_module.SIMPLE)
-    tbl.add_column('Field', style='dim', width=18)
-    tbl.add_column('Value', style='bold')
-    tbl.add_row('Host', platform.node())
-    tbl.add_row('OS', f'{platform.system()} {platform.release()}')
-    tbl.add_row('Python', platform.python_version())
-    tbl.add_row('RouteMQ', Application.get_version())
-    tbl.add_row('MySQL enabled', '✓' if app.mysql_enabled else '—')
-    tbl.add_row('Redis enabled', '✓' if app.redis_enabled else '—')
-    tbl.add_row('CPU cores', str(psutil.cpu_count(logical=True)))
+    summary = table_cls.grid(padding=(0, 2))
+    summary.add_column(style='dim')
+    summary.add_column(style='bold cyan')
+    summary.add_column(style='dim')
+    summary.add_column(style='bold')
+
     mem_gb = round(psutil.virtual_memory().total / (1024**3), 1)
-    tbl.add_row('RAM', f'{mem_gb} GB')
-    tbl.add_row('Time', datetime.now().isoformat(timespec='seconds'))
-    console.print(panel_cls(tbl, title='🔧 RouteMQ Tinker', border_style='cyan', padding=(0, 1)))
+    summary.add_row('RouteMQ', Application.get_version(), 'Host', platform.node() or 'localhost')
+    summary.add_row('OS', f'{platform.system()} {platform.release()}', 'Python', platform.python_version())
+    summary.add_row(
+        'Services',
+        f'MySQL {"on" if app.mysql_enabled else "off"} / Redis {"on" if app.redis_enabled else "off"}',
+        'Machine',
+        f'{psutil.cpu_count(logical=True)} cores / {mem_gb} GB RAM',
+    )
+
+    if _RICH_FIGLET_AVAILABLE and figlet_cls is not None:
+        console.print(
+            figlet_cls(
+                'RouteMQ',
+                font='standard',
+                colors=['cyan', 'bright_blue'],
+                justify='left',
+                remove_blank_lines=True,
+            )
+        )
+        console.print(summary)
+    else:
+        console.print(panel_cls(summary, title='RouteMQ Tinker', border_style='cyan', padding=(0, 1)))
 
 
 def _print_helpers_table_rich(console, db_enabled: bool):
     """Render the available objects + helper functions as Rich tables."""
-    if Table is None or box is None:
+    if not _load_rich() or Table is None or box is None:
         raise RuntimeError('Rich helper tables require rich to be installed')
 
     table_cls = Table
@@ -224,7 +302,7 @@ class TinkerEnvironment:
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
-                    import nest_asyncio
+                    import nest_asyncio  # pyright: ignore[reportMissingImports]
 
                     nest_asyncio.apply()
                     return loop.run_until_complete(coro)
@@ -254,7 +332,7 @@ class TinkerEnvironment:
             'run_async': run_async,
         }
 
-        if _RICH_AVAILABLE:
+        if _load_rich():
             self.globals.update(_make_repl_helpers(_console))
 
         # Import all models dynamically
@@ -277,7 +355,8 @@ class TinkerEnvironment:
                                 attr = getattr(module, attr_name)
                                 if isinstance(attr, type) and hasattr(attr, '__tablename__') and issubclass(attr, Base):
                                     self.globals[attr_name] = attr
-                                    print(f'✓ Imported model: {attr_name}')
+                                    if not _RICH_AVAILABLE:
+                                        print(f'✓ Imported model: {attr_name}')
                         except ImportError as e:
                             print(f'⚠ Could not import {module_name}: {e}')
         except Exception as e:
@@ -285,6 +364,11 @@ class TinkerEnvironment:
 
     async def setup(self):
         """Async setup for the tinker environment."""
+        rich_loaded = _load_rich()
+        if rich_loaded:
+            _install_tracebacks()
+            _print_banner_rich(_console, self.app)
+
         await self._setup_database_session()
         self.globals['session'] = self.session
 
@@ -292,9 +376,7 @@ class TinkerEnvironment:
         if self.app.redis_enabled:
             print(f'✓ Redis manager available')
 
-        if _RICH_AVAILABLE:
-            _install_tracebacks()
-            _print_banner_rich(_console, self.app)
+        if rich_loaded:
             _print_helpers_table_rich(_console, Model._is_enabled)
         else:
             self._print_banner_plain()
@@ -353,16 +435,15 @@ def start_tinker_sync(env_file='.env'):  # pragma: no cover - interactive IPytho
         tinker_env = None
         try:
             # Create application instance
-            print('Initializing RouteMQ application...')
-            app = Application(env_file=env_file)
+            app = Application(env_file=env_file, show_banner=False, log_to_console=False)
 
             # Setup tinker environment
             tinker_env = TinkerEnvironment(app)
             await tinker_env.setup()
 
             # Configure IPython for better async support
-            from IPython.terminal.interactiveshell import TerminalInteractiveShell
-            from IPython import get_ipython
+            from IPython.terminal.interactiveshell import TerminalInteractiveShell  # pyright: ignore[reportMissingImports]
+            from IPython import get_ipython  # pyright: ignore[reportMissingImports]
 
             # Get or create IPython instance
             shell = TerminalInteractiveShell.instance()
