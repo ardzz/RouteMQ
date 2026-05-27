@@ -1,3 +1,9 @@
+## v0.13.0 (2026-05-27)
+
+### Feat
+
+- **ci**: add OpenSSF Scorecard workflow and badge
+
 ## v0.12.3 (2026-05-27)
 
 ### Fix
