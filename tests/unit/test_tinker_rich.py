@@ -119,7 +119,64 @@ class TestBannerHelpers(unittest.TestCase):
         app.mysql_enabled = True
         app.redis_enabled = False
         _print_banner_rich(console, app)
+        self.assertGreaterEqual(console.print.call_count, 1)
+
+    def test_print_banner_rich_uses_figlet_when_available(self):
+        import rich.box
+        from rich.panel import Panel
+        from rich.table import Table
+        from routemq.tinker import _print_banner_rich
+
+        class FakeFiglet:
+            def __init__(self, *args, **kwargs):
+                self.args = args
+                self.kwargs = kwargs
+
+        console = MagicMock()
+        app = MagicMock()
+        app.mysql_enabled = True
+        app.redis_enabled = False
+
+        with (
+            patch('routemq.tinker._load_rich', return_value=True),
+            patch('routemq.tinker.Panel', Panel),
+            patch('routemq.tinker.Table', Table),
+            patch('routemq.tinker.box', rich.box),
+            patch('routemq.tinker.RichFiglet', FakeFiglet),
+            patch('routemq.tinker._RICH_FIGLET_AVAILABLE', True),
+        ):
+            _print_banner_rich(console, app)
+
+        self.assertEqual(console.print.call_count, 2)
+        figlet = console.print.call_args_list[0].args[0]
+        self.assertIsInstance(figlet, FakeFiglet)
+        self.assertEqual(figlet.args, ('RouteMQ',))
+        self.assertEqual(figlet.kwargs['border'], 'ROUNDED')
+        self.assertEqual(figlet.kwargs['font'], 'standard')
+
+    def test_print_banner_rich_falls_back_without_figlet(self):
+        import rich.box
+        from rich.panel import Panel
+        from rich.table import Table
+        from routemq.tinker import _print_banner_rich
+
+        console = MagicMock()
+        app = MagicMock()
+        app.mysql_enabled = True
+        app.redis_enabled = False
+
+        with (
+            patch('routemq.tinker._load_rich', return_value=True),
+            patch('routemq.tinker.Panel', Panel),
+            patch('routemq.tinker.Table', Table),
+            patch('routemq.tinker.box', rich.box),
+            patch('routemq.tinker.RichFiglet', None),
+            patch('routemq.tinker._RICH_FIGLET_AVAILABLE', False),
+        ):
+            _print_banner_rich(console, app)
+
         console.print.assert_called_once()
+        self.assertIsInstance(console.print.call_args.args[0], Panel)
 
     def test_print_helpers_table_rich_calls_console_for_enabled_db(self):
         from routemq.tinker import _print_helpers_table_rich

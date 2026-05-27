@@ -51,6 +51,7 @@ redis = ["redis>=5.0.1"]
 cli = [
     "questionary>=2.0.0",
     "rich>=14.0.0",
+    "rich-pyfiglet>=1.0.0",
     "jinja2>=3.1.0",
 ]
 dev = [
@@ -68,12 +69,14 @@ dev = [
     "testcontainers>=4.0.0",
     "questionary>=2.0.0",
     "rich>=14.0.0",
+    "rich-pyfiglet>=1.0.0",
     "jinja2>=3.1.0",
 ]
 all = [
     "redis>=5.0.1",
     "questionary>=2.0.0",
     "rich>=14.0.0",
+    "rich-pyfiglet>=1.0.0",
     "jinja2>=3.1.0",
 ]
 
@@ -103,6 +106,7 @@ dev = [
     "testcontainers>=4.0.0",
     "questionary>=2.0.0",
     "rich>=14.0.0",
+    "rich-pyfiglet>=1.0.0",
     "jinja2>=3.1.0",
 ]
 

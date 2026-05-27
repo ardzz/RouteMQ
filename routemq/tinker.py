@@ -21,15 +21,18 @@ Console = None
 Panel = None
 Table = None
 Syntax = None
+RichFiglet = None
 _rich_install_traceback = None
 box = None
 _RICH_AVAILABLE = False
+_RICH_FIGLET_AVAILABLE = False
 _console = None
 
 
 def _load_rich():
     """Lazy-load Rich primitives used only by the tinker REPL."""
-    global Console, Panel, Table, Syntax, _rich_install_traceback, box, _RICH_AVAILABLE, _console
+    global Console, Panel, Table, Syntax, RichFiglet, _rich_install_traceback
+    global box, _RICH_AVAILABLE, _RICH_FIGLET_AVAILABLE, _console
 
     if _console is not None:
         return True
@@ -51,6 +54,16 @@ def _load_rich():
     Syntax = _Syntax
     _rich_install_traceback = _install
     box = _box
+
+    try:
+        from rich_pyfiglet import RichFiglet as _RichFiglet  # pyright: ignore[reportMissingImports]
+    except ImportError:
+        RichFiglet = None
+        _RICH_FIGLET_AVAILABLE = False
+    else:
+        RichFiglet = _RichFiglet
+        _RICH_FIGLET_AVAILABLE = True
+
     _RICH_AVAILABLE = True
     _console = Console()
     return True
@@ -182,6 +195,7 @@ def _print_banner_rich(console, app):
     panel_cls = Panel
     table_cls = Table
     box_module = box
+    figlet_cls = RichFiglet
 
     tbl = table_cls(show_header=False, box=box_module.SIMPLE)
     tbl.add_column('Field', style='dim', width=18)
@@ -196,7 +210,23 @@ def _print_banner_rich(console, app):
     mem_gb = round(psutil.virtual_memory().total / (1024**3), 1)
     tbl.add_row('RAM', f'{mem_gb} GB')
     tbl.add_row('Time', datetime.now().isoformat(timespec='seconds'))
-    console.print(panel_cls(tbl, title='🔧 RouteMQ Tinker', border_style='cyan', padding=(0, 1)))
+
+    if _RICH_FIGLET_AVAILABLE and figlet_cls is not None:
+        console.print(
+            figlet_cls(
+                'RouteMQ',
+                font='standard',
+                colors=['cyan', 'bright_blue'],
+                justify='center',
+                remove_blank_lines=True,
+                border='ROUNDED',
+                border_padding=(0, 1),
+                border_color='cyan',
+            )
+        )
+        console.print(panel_cls(tbl, title='System', border_style='cyan', padding=(0, 1)))
+    else:
+        console.print(panel_cls(tbl, title='🔧 RouteMQ Tinker', border_style='cyan', padding=(0, 1)))
 
 
 def _print_helpers_table_rich(console, db_enabled: bool):
