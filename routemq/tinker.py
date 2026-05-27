@@ -2,6 +2,7 @@
 RouteMQ Tinker - Interactive REPL for testing ORM relationships and queries
 Similar to Laravel Artisan Tinker
 """
+# pyright: reportMissingImports=false
 
 import asyncio
 import os
@@ -17,9 +18,172 @@ from bootstrap.app import Application
 from routemq.model import Model, Base
 from routemq.redis_manager import redis_manager
 
+try:
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.syntax import Syntax
+    from rich.traceback import install as _rich_install_traceback
+    from rich import box
+
+    _RICH_AVAILABLE = True
+    _console = Console()
+except ImportError:
+    Console = None
+    Panel = None
+    Table = None
+    Syntax = None
+    _rich_install_traceback = None
+    box = None
+    _RICH_AVAILABLE = False
+    _console = None
+
+
+def _install_tracebacks():
+    """Install Rich's traceback handler with locals visible."""
+    if _RICH_AVAILABLE and _rich_install_traceback is not None:
+        _rich_install_traceback(show_locals=True)
+
 
 # Enable nested event loops for IPython compatibility
 nest_asyncio.apply()
+
+
+def _make_repl_helpers(console):
+    """Return REPL helper functions that use Rich for styled output."""
+    import json as _json
+
+    if Syntax is None or Table is None or box is None:
+        raise RuntimeError('Rich helpers require rich to be installed')
+
+    syntax_cls = Syntax
+    table_cls = Table
+    box_module = box
+
+    def print_rich(obj):
+        """Pretty-print any object via Rich."""
+        console.print(obj)
+
+    def print_sql(sql: str):
+        """Render SQL with syntax highlighting."""
+        console.print(syntax_cls(sql, 'sql', theme='monokai', line_numbers=False))
+
+    def print_json(payload):
+        """Render JSON-serializable object as colored JSON."""
+        text = payload if isinstance(payload, str) else _json.dumps(payload, indent=2, default=str)
+        console.print(syntax_cls(text, 'json', theme='monokai', line_numbers=False))
+
+    def print_rows(rows, title: str = 'Query Results'):
+        """Render iterable of ORM rows or dicts as Rich Table."""
+        rows = list(rows)
+        if not rows:
+            console.print(f'[yellow]No rows in {title}[/yellow]')
+            return
+
+        first = rows[0]
+        if isinstance(first, dict):
+            cols = list(first.keys())
+
+            def get_dict(row, col):
+                return row.get(col)
+
+            get = get_dict
+
+        elif hasattr(first, '__table__'):
+            cols = [c.name for c in first.__table__.columns]
+
+            def get_table_attr(row, col):
+                return getattr(row, col)
+
+            get = get_table_attr
+
+        else:
+            cols = list(vars(first).keys())
+
+            def get_object_attr(row, col):
+                return getattr(row, col)
+
+            get = get_object_attr
+
+        table = table_cls(title=title, box=box_module.SIMPLE_HEAVY)
+        for col in cols:
+            table.add_column(str(col), overflow='fold')
+        for row in rows:
+            table.add_row(*[str(get(row, col)) for col in cols])
+        console.print(table)
+
+    return {
+        'print_rich': print_rich,
+        'print_sql': print_sql,
+        'print_json': print_json,
+        'print_rows': print_rows,
+    }
+
+
+def _print_banner_rich(console, app):
+    """Render the styled startup banner with system info table."""
+    import platform
+    import psutil
+    from datetime import datetime
+
+    if Panel is None or Table is None or box is None:
+        raise RuntimeError('Rich banner requires rich to be installed')
+
+    panel_cls = Panel
+    table_cls = Table
+    box_module = box
+
+    tbl = table_cls(show_header=False, box=box_module.SIMPLE)
+    tbl.add_column('Field', style='dim', width=18)
+    tbl.add_column('Value', style='bold')
+    tbl.add_row('Host', platform.node())
+    tbl.add_row('OS', f'{platform.system()} {platform.release()}')
+    tbl.add_row('Python', platform.python_version())
+    tbl.add_row('RouteMQ', Application.get_version())
+    tbl.add_row('MySQL enabled', '✓' if app.mysql_enabled else '—')
+    tbl.add_row('Redis enabled', '✓' if app.redis_enabled else '—')
+    tbl.add_row('CPU cores', str(psutil.cpu_count(logical=True)))
+    mem_gb = round(psutil.virtual_memory().total / (1024**3), 1)
+    tbl.add_row('RAM', f'{mem_gb} GB')
+    tbl.add_row('Time', datetime.now().isoformat(timespec='seconds'))
+    console.print(panel_cls(tbl, title='🔧 RouteMQ Tinker', border_style='cyan', padding=(0, 1)))
+
+
+def _print_helpers_table_rich(console, db_enabled: bool):
+    """Render the available objects + helper functions as Rich tables."""
+    if Table is None or box is None:
+        raise RuntimeError('Rich helper tables require rich to be installed')
+
+    table_cls = Table
+    box_module = box
+
+    objects = table_cls(title='Available objects', box=box_module.SIMPLE)
+    objects.add_column('Name', style='bold cyan')
+    objects.add_column('Description')
+    objects.add_row('app', 'Application instance')
+    objects.add_row('Model', 'Base Model class')
+    objects.add_row('Base', 'SQLAlchemy declarative base')
+    objects.add_row('session', 'Database session (if MySQL enabled)')
+    objects.add_row('redis_manager', 'Redis manager (if Redis enabled)')
+    objects.add_row('select', 'SQLAlchemy select function')
+    objects.add_row('and_, or_, func, desc, asc', 'SQLAlchemy query operators')
+    objects.add_row('run_async()', 'Helper to run async code in REPL')
+    console.print(objects)
+
+    helpers = table_cls(title='Rich helpers', box=box_module.SIMPLE)
+    helpers.add_column('Helper', style='bold green')
+    helpers.add_column('Use')
+    helpers.add_row('print_rich(obj)', 'Pretty-print any object via Rich')
+    helpers.add_row('print_sql(sql)', 'SQL with syntax highlighting')
+    helpers.add_row('print_json(payload)', 'JSON with syntax highlighting')
+    helpers.add_row('print_rows(rows, title=)', 'Iterable of ORM rows or dicts as styled Table')
+    console.print(helpers)
+
+    if db_enabled:
+        console.print('\n[dim]Tip: Use [bold]run_async()[/bold] to execute async queries.[/dim]')
+        console.print('[dim]Example: [bold]devices = run_async(session.execute(select(Device)))[/bold][/dim]')
+    else:
+        console.print('\n[yellow]Database is disabled. Enable in .env with ENABLE_MYSQL=true.[/yellow]')
 
 
 @magics_class
@@ -90,6 +254,9 @@ class TinkerEnvironment:
             'run_async': run_async,
         }
 
+        if _RICH_AVAILABLE:
+            self.globals.update(_make_repl_helpers(_console))
+
         # Import all models dynamically
         self._import_models()
 
@@ -125,6 +292,15 @@ class TinkerEnvironment:
         if self.app.redis_enabled:
             print(f'✓ Redis manager available')
 
+        if _RICH_AVAILABLE:
+            _install_tracebacks()
+            _print_banner_rich(_console, self.app)
+            _print_helpers_table_rich(_console, Model._is_enabled)
+        else:
+            self._print_banner_plain()
+
+    def _print_banner_plain(self):
+        """Render the plain-text startup banner used when Rich is unavailable."""
         print('\n' + '=' * 60)
         print('🔧 RouteMQ Tinker - Interactive REPL Environment')
         print('=' * 60)
@@ -170,10 +346,11 @@ class TinkerEnvironment:
         print('=' * 60 + '\n')
 
 
-def start_tinker_sync(env_file='.env'):
+def start_tinker_sync(env_file='.env'):  # pragma: no cover - interactive IPython entrypoint
     """Synchronous wrapper for starting tinker."""
 
     async def _start_tinker():
+        tinker_env = None
         try:
             # Create application instance
             print('Initializing RouteMQ application...')
@@ -213,7 +390,7 @@ def start_tinker_sync(env_file='.env'):
             traceback.print_exc()
         finally:
             # Cleanup
-            if 'tinker_env' in locals() and hasattr(tinker_env, 'session') and tinker_env.session:
+            if tinker_env is not None and tinker_env.session:
                 await tinker_env.session.close()
 
     # Check if we're already in an event loop
@@ -243,10 +420,10 @@ def start_tinker_sync(env_file='.env'):
         asyncio.run(_start_tinker())
 
 
-def run_tinker():
+def run_tinker():  # pragma: no cover - console script entrypoint
     """Entry point for running tinker from command line."""
     start_tinker_sync()
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: no cover
     run_tinker()
