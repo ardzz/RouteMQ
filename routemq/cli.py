@@ -5,7 +5,6 @@ RouteMQ - A flexible MQTT routing framework with middleware support
 
 import argparse
 import os
-import sys
 
 from bootstrap.app import Application
 
@@ -140,17 +139,41 @@ with router.group(prefix="devices") as devices:
     print('Example files created successfully!')
 
 
-def tinker():
+def _cmd_new(name: str) -> None:
+    """Stub for project scaffolding until Sprint 19 Phase C."""
+    print('Phase C will implement the full scaffolder; see docs/plans/sprints/SPRINT-19-pypi-distribution.md')
+
+    if name == '.':
+        create_env_file()
+        setup_example()
+        print('RouteMQ project initialized successfully!')
+
+
+def _cmd_run() -> None:
+    """Run the MQTT application."""
+    create_env_file()
+    app = create_app()
+    app.connect()
+    app.run()
+
+
+def _cmd_tinker() -> None:
     """Start the interactive REPL environment for testing ORM and queries."""
     from routemq.tinker import run_tinker
 
     run_tinker()
 
 
-def queue_work(queue='default', connection=None, max_jobs=None, max_time=None, sleep=3, max_tries=None, timeout=60):
+def tinker() -> None:
+    """Backward-compatible wrapper for the tinker command handler."""
+    _cmd_tinker()
+
+
+def _cmd_queue_work(
+    queue='default', connection=None, max_jobs=None, max_time=None, sleep=3, max_tries=None, timeout=60
+) -> None:
     """Start the queue worker to process background jobs."""
     import asyncio
-    from bootstrap.app import Application
     from routemq.queue.queue_worker import QueueWorker
 
     # Initialize the application to setup database/redis connections
@@ -189,13 +212,28 @@ def queue_work(queue='default', connection=None, max_jobs=None, max_time=None, s
     asyncio.run(run_worker())
 
 
+def queue_work(
+    queue='default', connection=None, max_jobs=None, max_time=None, sleep=3, max_tries=None, timeout=60
+) -> None:
+    """Backward-compatible wrapper for the queue-work command handler."""
+    _cmd_queue_work(
+        queue=queue,
+        connection=connection,
+        max_jobs=max_jobs,
+        max_time=max_time,
+        sleep=sleep,
+        max_tries=max_tries,
+        timeout=timeout,
+    )
+
+
 def main():
     """Main entry point for the CLI."""
-    parser = argparse.ArgumentParser(description='RouteMQ - MQTT routing framework')
-    parser.add_argument('--init', action='store_true', help='Initialize a new RouteMQ project')
-    parser.add_argument('--run', action='store_true', help='Run the MQTT application')
-    parser.add_argument('--tinker', action='store_true', help='Start interactive REPL for testing ORM and queries')
-    parser.add_argument('--queue-work', action='store_true', help='Start queue worker to process background jobs')
+    parser = argparse.ArgumentParser(prog='routemq', description='RouteMQ - MQTT routing framework')
+    parser.add_argument('--init', action='store_true', help='(deprecated alias for `routemq new .`)')
+    parser.add_argument('--run', action='store_true', help='(deprecated alias for `routemq run`)')
+    parser.add_argument('--tinker', action='store_true', help='(deprecated alias for `routemq tinker`)')
+    parser.add_argument('--queue-work', action='store_true', help='(deprecated alias for `routemq queue-work`)')
     parser.add_argument('--queue', type=str, default='default', help='The queue to process (default: default)')
     parser.add_argument('--connection', type=str, help='Queue connection to use (redis or database)')
     parser.add_argument('--max-jobs', type=int, help='Maximum number of jobs to process')
@@ -204,19 +242,50 @@ def main():
     parser.add_argument('--max-tries', type=int, help='Maximum number of times to attempt a job')
     parser.add_argument('--timeout', type=int, default=60, help='Maximum seconds a job can run (default: 60)')
 
+    sub = parser.add_subparsers(dest='command', required=False, metavar='COMMAND')
+
+    new_p = sub.add_parser('new', help='Scaffold a new RouteMQ project')
+    new_p.add_argument('name', nargs='?', default='.', help='Project directory name (default: current dir)')
+
+    sub.add_parser('run', help='Run the MQTT application')
+    sub.add_parser('tinker', help='Interactive REPL for ORM and queries')
+
+    qw_p = sub.add_parser('queue-work', help='Run a queue worker')
+    qw_p.add_argument('--queue', type=str, default='default', help='The queue to process (default: default)')
+    qw_p.add_argument('--connection', type=str, help='Queue connection to use (redis or database)')
+    qw_p.add_argument('--max-jobs', type=int, help='Maximum number of jobs to process')
+    qw_p.add_argument('--max-time', type=int, help='Maximum time in seconds to run')
+    qw_p.add_argument('--sleep', type=int, default=3, help='Seconds to sleep when no job is available (default: 3)')
+    qw_p.add_argument('--max-tries', type=int, help='Maximum number of times to attempt a job')
+    qw_p.add_argument('--timeout', type=int, default=60, help='Maximum seconds a job can run (default: 60)')
+
     args = parser.parse_args()
 
-    if args.init:
-        create_env_file()
-        setup_example()
-        print('RouteMQ project initialized successfully!')
+    effective_command = args.command
+    if effective_command is None:
+        if args.init:
+            effective_command = 'new'
+            args.name = '.'
+        elif args.queue_work:
+            effective_command = 'queue-work'
+        elif args.tinker:
+            effective_command = 'tinker'
+        else:
+            effective_command = 'run'
+
+    if effective_command == 'new':
+        _cmd_new(name=getattr(args, 'name', '.'))
         return
 
-    if args.tinker:
+    if effective_command == 'run':
+        _cmd_run()
+        return
+
+    if effective_command == 'tinker':
         tinker()
         return
 
-    if args.queue_work:
+    if effective_command == 'queue-work':
         queue_work(
             queue=args.queue,
             connection=args.connection,
@@ -226,13 +295,6 @@ def main():
             max_tries=args.max_tries,
             timeout=args.timeout,
         )
-        return
-
-    if args.run or not sys.argv[1:]:
-        create_env_file()
-        app = create_app()
-        app.connect()
-        app.run()
 
 
 if __name__ == '__main__':
