@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from sqlalchemy import Column, Integer, String, Text, DateTime, Index
 
 from core.model import Model
@@ -15,7 +15,7 @@ class QueueJob(Model):
     attempts = Column(Integer, nullable=False, default=0)
     reserved_at = Column(DateTime, nullable=True)
     available_at = Column(DateTime, nullable=False)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
 
     __table_args__ = (Index('queue_jobs_queue_reserved_at_index', 'queue', 'reserved_at'),)
 
@@ -33,7 +33,7 @@ class QueueFailedJob(Model):
     queue = Column(String(255), nullable=False, index=True)
     payload = Column(Text, nullable=False)
     exception = Column(Text, nullable=False)
-    failed_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    failed_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
 
     def __repr__(self):
         return f"<QueueFailedJob(id={self.id}, queue='{self.queue}', failed_at='{self.failed_at}')>"

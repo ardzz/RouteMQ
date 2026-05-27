@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Optional, Union
 from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,7 +34,7 @@ class DatabaseQueue(QueueDriver):
 
         session: AsyncSession = await Model.get_session()
         try:
-            available_at = datetime.utcnow()
+            available_at = datetime.now(UTC)
             if delay > 0:
                 available_at += timedelta(seconds=delay)
 
@@ -43,7 +43,7 @@ class DatabaseQueue(QueueDriver):
                 payload=payload,
                 attempts=0,
                 available_at=available_at,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC),
             )
 
             session.add(job)
@@ -72,7 +72,7 @@ class DatabaseQueue(QueueDriver):
                 .where(
                     QueueJob.queue == queue,
                     QueueJob.reserved_at.is_(None),
-                    QueueJob.available_at <= datetime.utcnow(),
+                    QueueJob.available_at <= datetime.now(UTC),
                 )
                 .order_by(QueueJob.id)
                 .limit(1)
@@ -86,7 +86,7 @@ class DatabaseQueue(QueueDriver):
                 return None
 
             # Mark job as reserved
-            job.reserved_at = datetime.utcnow()
+            job.reserved_at = datetime.now(UTC)
             job.attempts += 1
 
             await session.commit()
@@ -120,7 +120,7 @@ class DatabaseQueue(QueueDriver):
 
         session: AsyncSession = await Model.get_session()
         try:
-            available_at = datetime.utcnow()
+            available_at = datetime.now(UTC)
             if delay > 0:
                 available_at += timedelta(seconds=delay)
 
@@ -184,7 +184,7 @@ class DatabaseQueue(QueueDriver):
                 queue=queue,
                 payload=payload,
                 exception=exception,
-                failed_at=datetime.utcnow(),
+                failed_at=datetime.now(UTC),
             )
 
             session.add(failed_job)
