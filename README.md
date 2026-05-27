@@ -4,6 +4,10 @@
 
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ardzz/RouteMQ/badge)](https://scorecard.dev/viewer/?uri=github.com/ardzz/RouteMQ)
 
+<!-- TODO(sprint-15-followup): replace <PROJECT_ID> after submitting at https://www.bestpractices.dev/en/projects/new
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/<PROJECT_ID>/badge)](https://www.bestpractices.dev/projects/<PROJECT_ID>)
+-->
+
 An MQTT routing framework with middleware support, dynamic router loading, Redis integration, and horizontal scaling capabilities, inspired by web frameworks.
 
 ## Quick Start

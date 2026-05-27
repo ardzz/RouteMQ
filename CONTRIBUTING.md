@@ -1,41 +1,75 @@
 # Contributing to RouteMQ
 
-Thank you for your interest in contributing to RouteMQ!
+Thank you for your interest in contributing to RouteMQ. This guide explains how to report issues, propose changes, and prepare pull requests that are easy to review and safe to merge.
 
-## Getting Started
+## How to report bugs
 
-1. Fork the repository and clone your fork.
+Use [GitHub Issues](https://github.com/ardzz/RouteMQ/issues) for bug reports. A useful report includes:
+
+- RouteMQ version or commit SHA.
+- Python version, operating system, and whether Docker is involved.
+- MQTT broker, Redis, or MySQL details when relevant, with secrets removed.
+- A minimum reproduction: topic, payload shape, route definition, expected behavior, and actual behavior.
+- Logs, tracebacks, or screenshots if they help explain the failure.
+
+Please do not report undisclosed security vulnerabilities in public issues. Follow [SECURITY.md](./SECURITY.md) instead.
+
+## How to request features
+
+Use [GitHub Issues](https://github.com/ardzz/RouteMQ/issues) for feature requests. Include the use case, motivation, proposed API or behavior when you have one, and any compatibility concerns for existing RouteMQ users.
+
+## Pull request process
+
+1. Fork the repository or create a branch from `master`.
 2. Install dependencies with `uv sync`.
-3. Run `python main.py --init` to scaffold the local app structure.
-4. Create a branch for your changes.
+3. Run `uv run python main.py --init` if you need the local scaffolded app structure.
+4. Keep changes focused and follow Conventional Commits:
+   - `feat:` — new feature
+   - `fix:` — bug fix
+   - `docs:` — documentation only
+   - `test:` — adding or correcting tests
+   - `build:` — build system or dependency changes
+   - `chore:` — maintenance tasks
+   - `ci:` — CI configuration
+   - `refactor:` — code change that neither fixes a bug nor adds a feature
+5. Run the local verification commands before opening a PR:
+   ```bash
+   uv run python run_tests.py
+   uv run ruff check . && uv run ruff format --check .
+   uv run mypy core app bootstrap tests/unit
+   ```
+6. Open a pull request with a clear description, link related issues, wait for CI, and respond to review threads.
 
-## Development Workflow
+## Testing requirements
 
-- Follow the existing code style. The project targets Python 3.12+.
-- All controller handlers should be `@staticmethod async`.
-- Add or update tests in `tests/` and run `uv run python run_tests.py` before submitting.
-- Keep middleware chains non-blocking; heavy work belongs in queued `Job` instances.
+- All new features must include tests.
+- Bug fixes should include regression tests that fail without the fix when practical.
+- CI enforces a coverage floor of 95%.
+- If a regression test is not applicable because the project has no matching historical report or the behavior is documentation-only, state that in the PR description.
+
+## Coding standards
+
+- RouteMQ targets Python 3.12+.
+- Type hints are encouraged for new and changed code.
+- Follow existing framework patterns documented in [AGENTS.md](./AGENTS.md) and nested AGENTS.md files.
+- Controller handlers should be `@staticmethod async` methods.
+- Middleware and jobs should avoid blocking the event loop; use async APIs or `asyncio.to_thread` for blocking work.
 - Do not introduce side effects at module-import time in `app/routers/*.py`.
+- Do not add broad `# type: ignore` suppressions or equivalent unchecked casts; narrow and justify unavoidable exceptions in review.
 
-## Commit Style
+## Acceptable contribution requirements
 
-This project uses [Commitizen](https://commitizen-tools.github.io/commitizen/) to manage versions and changelogs. Please use conventional commit messages:
+- Contributions must be compatible with the project's MIT license.
+- DCO sign-off is not required.
+- Contributors must follow the [Code of Conduct](./CODE_OF_CONDUCT.md).
+- Do not include secrets, credentials, private keys, or production data in commits, tests, issues, or PRs.
 
-- `feat:` — new feature
-- `fix:` — bug fix
-- `docs:` — documentation only
-- `style:` — formatting, no code change
-- `refactor:` — code change that neither fixes a bug nor adds a feature
-- `test:` — adding or correcting tests
-- `chore:` — maintenance tasks
+## Communication channels
 
-## Pull Request Process
+- Use GitHub Issues for bugs and feature requests.
+- Use GitHub Discussions for usage questions, design questions, and community discussion.
+- Use pull request threads for code-level review and implementation details.
 
-1. Ensure your branch is up to date with the upstream `master` or `develop` branch.
-2. Verify that `uv run python run_tests.py` passes.
-3. Open a pull request with a clear description of the change and the problem it solves.
-4. Link any related issues.
+## Project structure
 
-## Questions?
-
-Open an issue or start a discussion in the repository. For usage questions, refer to the documentation in the `docs/` folder.
+RouteMQ keeps framework internals in `core/`, application examples and scaffolded userland code in `app/`, bootstrapping in `bootstrap/`, and unittest-based tests in `tests/unit/`. The root [AGENTS.md](./AGENTS.md) is the maintained contributor map for architecture, conventions, and anti-patterns; consult it before changing routing, queue, worker, or bootstrap behavior.
