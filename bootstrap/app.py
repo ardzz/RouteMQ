@@ -1,20 +1,29 @@
 import asyncio
-import json
 import logging
 import logging.handlers
 import os
 import platform
 import psutil
+from importlib import import_module
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
-from paho.mqtt import client as mqtt_client
 
 from routemq.model import Model
 from routemq.router import Router
 from routemq.router_registry import RouterRegistry
+from routemq.mqtt_utils import (
+    create_mqtt_client,
+    get_main_client_id,
+    get_mqtt_connection_config,
+    get_mqtt_group_name,
+    parse_mqtt_payload,
+)
 from routemq.worker_manager import WorkerManager
 from routemq.redis_manager import redis_manager
+
+observability = import_module('routemq.observability')
 
 
 class Application:
@@ -76,7 +85,7 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
         self._setup_logging(log_to_console=log_to_console)
 
         self.router_directory = router_directory
-        self.router = router
+        self.router: Any = router
         if self.router is None:
             try:
                 registry = RouterRegistry(self.router_directory)
@@ -99,8 +108,8 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
         else:
             self.logger.info('Redis integration is disabled')
 
-        self.client = None
-        self.group_name = os.getenv('MQTT_GROUP_NAME', 'mqtt_framework_group')
+        self.client: Any = None
+        self.group_name = get_mqtt_group_name()
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
 
@@ -226,33 +235,50 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
         self.logger.debug(f'Received message on topic {msg.topic}')
 
         try:
+            payload = parse_mqtt_payload(msg.payload)
+            context = {
+                'source': 'mqtt',
+                'mqtt_topic': msg.topic,
+                'process': 'main',
+            }
+            coro = self._dispatch_mqtt_message(msg.topic, payload, client, context)
             try:
-                payload = json.loads(msg.payload.decode())
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                payload = msg.payload
-
-            asyncio.run_coroutine_threadsafe(self.router.dispatch(msg.topic, payload, client), self.loop)
+                asyncio.run_coroutine_threadsafe(coro, self.loop)
+            except Exception:
+                coro.close()
+                raise
 
         except Exception as e:
             self.logger.error(f'Error processing message: {str(e)}')
 
+    async def _dispatch_mqtt_message(self, topic: str, payload: Any, client: Any, context: dict[str, Any]) -> None:
+        """Restore MQTT correlation context inside the application event loop."""
+        token = observability.set_context(context)
+        try:
+            observability.lifecycle('mqtt.message.received', {'process': 'main'})
+            await self.router.dispatch(topic, payload, client)
+            observability.lifecycle('mqtt.message.succeeded', {'process': 'main'})
+        except Exception as exc:
+            observability.lifecycle('mqtt.message.failed', {'process': 'main', 'error': exc.__class__.__name__})
+            raise
+        finally:
+            observability.reset_context(token)
+
     def connect(self):
         """Connect to the MQTT broker."""
-        broker = os.getenv('MQTT_BROKER', 'localhost')
-        port = int(os.getenv('MQTT_PORT', '1883'))
-        client_id = os.getenv('MQTT_CLIENT_ID', f'mqtt-framework-main-{os.getpid()}')
-        username = os.getenv('MQTT_USERNAME')
-        password = os.getenv('MQTT_PASSWORD')
+        config = get_mqtt_connection_config()
+        client_id = get_main_client_id()
 
-        self.client = mqtt_client.Client(client_id=client_id)
-        self.client.on_connect = self._on_connect
-        self.client.on_message = self._on_message
+        self.client = create_mqtt_client(
+            client_id,
+            on_connect=self._on_connect,
+            on_message=self._on_message,
+            username=config.username,
+            password=config.password,
+        )
 
-        if username and password:
-            self.client.username_pw_set(username, password)
-
-        self.logger.info(f'Connecting main client to {broker}:{port}')
-        self.client.connect(broker, port)
+        self.logger.info(f'Connecting main client to {config.broker}:{config.port}')
+        self.client.connect(config.broker, config.port)
 
     def start_workers(self):
         """Start worker processes for shared subscriptions."""

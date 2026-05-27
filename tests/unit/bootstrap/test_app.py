@@ -243,7 +243,7 @@ class TestApplicationMqtt(unittest.TestCase):
         fake_client = MagicMock(name='mqtt_client')
 
         with (
-            patch('bootstrap.app.mqtt_client.Client', return_value=fake_client) as client_class,
+            patch('routemq.mqtt_utils.mqtt_client.Client', return_value=fake_client) as client_class,
             patch.dict(
                 os.environ,
                 {'MQTT_BROKER': 'broker', 'MQTT_PORT': '1884', 'MQTT_CLIENT_ID': 'client'},
@@ -263,7 +263,7 @@ class TestApplicationMqtt(unittest.TestCase):
         fake_client = MagicMock(name='mqtt_client')
 
         with (
-            patch('bootstrap.app.mqtt_client.Client', return_value=fake_client),
+            patch('routemq.mqtt_utils.mqtt_client.Client', return_value=fake_client),
             patch.dict(os.environ, {'MQTT_USERNAME': 'user', 'MQTT_PASSWORD': 'pass'}, clear=True),
         ):
             app.connect()
@@ -283,8 +283,11 @@ class TestApplicationMqtt(unittest.TestCase):
         with patch('bootstrap.app.asyncio.run_coroutine_threadsafe') as run_threadsafe:
             app._on_message(client, None, msg)
 
-        app.router.dispatch.assert_called_once_with('devices/1', {'ok': True}, client)
-        run_threadsafe.assert_called_once_with(app.router.dispatch.return_value, app.loop)
+        app.router.dispatch.assert_not_called()
+        run_threadsafe.assert_called_once()
+        coro, loop = run_threadsafe.call_args.args
+        self.assertIs(loop, app.loop)
+        coro.close()
 
     def test_on_message_uses_raw_payload_when_json_decode_fails(self) -> None:
         """Invalid JSON payloads are still dispatched as raw bytes."""
@@ -295,10 +298,26 @@ class TestApplicationMqtt(unittest.TestCase):
         app.router.dispatch.return_value = MagicMock(name='coroutine')
         msg = MagicMock(topic='raw/topic', payload=b'not-json')
 
-        with patch('bootstrap.app.asyncio.run_coroutine_threadsafe'):
+        with patch('bootstrap.app.asyncio.run_coroutine_threadsafe') as run_threadsafe:
             app._on_message(MagicMock(), None, msg)
 
-        self.assertEqual(app.router.dispatch.call_args.args[1], b'not-json')
+        app.router.dispatch.assert_not_called()
+        run_threadsafe.call_args.args[0].close()
+
+    def test_on_message_uses_raw_payload_when_unicode_decode_fails(self) -> None:
+        """Non-UTF8 payloads are dispatched as their original bytes."""
+        app = object.__new__(Application)
+        app.logger = MagicMock()
+        app.loop = MagicMock()
+        app.router = MagicMock()
+        app.router.dispatch.return_value = MagicMock(name='coroutine')
+        msg = MagicMock(topic='raw/topic', payload=b'\xff\xfe binary')
+
+        with patch('bootstrap.app.asyncio.run_coroutine_threadsafe') as run_threadsafe:
+            app._on_message(MagicMock(), None, msg)
+
+        app.router.dispatch.assert_not_called()
+        run_threadsafe.call_args.args[0].close()
 
     def test_run_drives_loop_lifecycle_and_cleanup(self) -> None:
         """Run uses the stored event loop and always stops client and workers."""

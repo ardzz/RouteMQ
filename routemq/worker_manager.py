@@ -1,13 +1,20 @@
 import asyncio
 import logging
 import multiprocessing
-import os
 import time
-import uuid
 from typing import List, Dict, Any
 
 from .router import Router
 from .router_registry import RouterRegistry
+from .observability import lifecycle, reset_context, set_context
+from .mqtt_utils import (
+    build_worker_broker_config,
+    build_worker_client_id,
+    create_mqtt_client,
+    get_mqtt_group_name,
+    is_network_startup_error,
+    parse_mqtt_payload,
+)
 
 
 class WorkerProcess:
@@ -18,16 +25,16 @@ class WorkerProcess:
         worker_id: int,
         router_directory: str,
         shared_routes: List[Dict[str, Any]],
-        broker_config: Dict[str, str],
+        broker_config: Dict[str, Any],
         group_name: str,
     ):
         self.worker_id = worker_id
         self.router_directory = router_directory
-        self.router = None
+        self.router: Any = None
         self.shared_routes = shared_routes
         self.broker_config = broker_config
         self.group_name = group_name
-        self.client = None
+        self.client: Any = None
         self.logger = logging.getLogger(f'RouteMQ.Worker-{self.worker_id}')
 
     def setup_router(self):
@@ -46,20 +53,20 @@ class WorkerProcess:
 
     def setup_client(self):
         """Setup MQTT client for this worker."""
-        from paho.mqtt import client as mqtt_client
-
-        client_id = (
-            f'{self.broker_config.get("client_id_prefix", "mqtt-worker")}-{self.worker_id}-{uuid.uuid4().hex[:8]}'
+        client_id = build_worker_client_id(
+            self.worker_id,
+            self.broker_config.get('client_id_prefix', 'mqtt-worker'),
         )
-
-        self.client = mqtt_client.Client(client_id=client_id)
-        self.client.on_connect = self._on_connect
-        self.client.on_message = self._on_message
 
         username = self.broker_config.get('username')
         password = self.broker_config.get('password')
-        if username and password:
-            self.client.username_pw_set(username, password)
+        self.client = create_mqtt_client(
+            client_id,
+            on_connect=self._on_connect,
+            on_message=self._on_message,
+            username=username,
+            password=password,
+        )
 
         self.logger.info(f'Worker {self.worker_id} connecting with client ID: {client_id}')
 
@@ -74,29 +81,46 @@ class WorkerProcess:
 
     def _on_message(self, client, userdata, msg):
         """Callback for when a PUBLISH message is received from the server."""
-        import json
-
         self.logger.debug(f'Worker {self.worker_id} received message on topic {msg.topic}')
 
         try:
-            try:
-                payload = json.loads(msg.payload.decode())
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                payload = msg.payload
+            payload = parse_mqtt_payload(msg.payload)
 
             actual_topic = msg.topic
             if msg.topic.startswith(f'$share/{self.group_name}/'):
                 actual_topic = msg.topic[len(f'$share/{self.group_name}/') :]
 
+            context = {
+                'source': 'mqtt',
+                'process': 'worker',
+                'worker_id': self.worker_id,
+                'mqtt_topic': msg.topic,
+                'actual_topic': actual_topic,
+                'group_name': self.group_name,
+            }
+
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
-                loop.run_until_complete(self.router.dispatch(actual_topic, payload, client))
+                loop.run_until_complete(self._dispatch_mqtt_message(actual_topic, payload, client, context))
             finally:
                 loop.close()
 
         except Exception as e:
             self.logger.error(f'Worker {self.worker_id} error processing message: {str(e)}')
+
+    async def _dispatch_mqtt_message(self, topic: str, payload: Any, client: Any, context: Dict[str, Any]) -> None:
+        """Restore per-message observability context inside the worker loop."""
+        token = set_context(context)
+        try:
+            lifecycle('mqtt.message.received', {'process': 'worker'})
+            await self.router.dispatch(topic, payload, client)
+            lifecycle('mqtt.message.succeeded', {'process': 'worker'})
+        except Exception as exc:
+            lifecycle('mqtt.message.failed', {'process': 'worker', 'error': exc.__class__.__name__})
+            raise
+        finally:
+            reset_context(token)
 
     def run(self):
         """Run this worker process."""
@@ -106,7 +130,17 @@ class WorkerProcess:
         broker = self.broker_config['broker']
         port = int(self.broker_config['port'])
 
-        self.client.connect(broker, port)
+        try:
+            self.client.connect(broker, port)
+        except OSError as exc:
+            if not is_network_startup_error(exc):
+                raise
+            self.logger.error(
+                f'Worker {self.worker_id} could not connect to MQTT broker at {broker}:{port} ({exc}). '
+                'Please verify the broker is running and the address/port are correct.'
+            )
+            return
+
         self.client.loop_start()
 
         try:
@@ -135,9 +169,9 @@ def worker_process_main(
 class WorkerManager:
     """Manages multiple worker processes for horizontal scaling."""
 
-    def __init__(self, router: Router, group_name: str = None, router_directory: str = 'app.routers'):
+    def __init__(self, router: Router, group_name: str | None = None, router_directory: str = 'app.routers'):
         self.router = router
-        self.group_name = group_name or os.getenv('MQTT_GROUP_NAME', 'mqtt_framework_group')
+        self.group_name = group_name or get_mqtt_group_name()
         self.router_directory = router_directory
         self.workers: List[multiprocessing.Process] = []
         self.logger = logging.getLogger('RouteMQ.WorkerManager')
@@ -157,7 +191,7 @@ class WorkerManager:
                 )
         return shared_routes
 
-    def start_workers(self, num_workers: int = None):
+    def start_workers(self, num_workers: int | None = None):
         """Start one process per shared route worker slot and skip failed starts."""
         shared_routes = self.get_shared_routes_info()
         if not shared_routes:
@@ -174,13 +208,7 @@ class WorkerManager:
         if num_workers <= 0:
             return
 
-        broker_config = {
-            'broker': os.getenv('MQTT_BROKER', 'localhost'),
-            'port': os.getenv('MQTT_PORT', '1883'),
-            'username': os.getenv('MQTT_USERNAME'),
-            'password': os.getenv('MQTT_PASSWORD'),
-            'client_id_prefix': os.getenv('MQTT_CLIENT_ID', 'mqtt-worker'),
-        }
+        broker_config = build_worker_broker_config()
 
         self.logger.info(f'Starting {num_workers} workers for shared subscriptions')
 

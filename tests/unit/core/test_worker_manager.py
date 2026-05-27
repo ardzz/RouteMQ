@@ -116,6 +116,26 @@ class TestWorkerManager(unittest.TestCase):
             second_kwargs['args'], (1, 'custom.routers', expected_shared_routes, expected_broker_config, 'workers')
         )
 
+    def test_worker_broker_config_uses_framework_defaults(self) -> None:
+        manager = WorkerManager(self.make_router(), group_name='workers', router_directory='app.routers')
+        process = self.make_process(pid=210)
+
+        with patch.dict('os.environ', {}, clear=True):
+            with patch('routemq.worker_manager.multiprocessing.Process', return_value=process) as process_cls:
+                manager.start_workers(num_workers=1)
+
+        broker_config = process_cls.call_args.kwargs['args'][3]
+        self.assertEqual(
+            broker_config,
+            {
+                'broker': 'localhost',
+                'port': '1883',
+                'username': None,
+                'password': None,
+                'client_id_prefix': 'mqtt-worker',
+            },
+        )
+
     def test_default_worker_count_is_sum_of_shared_route_worker_counts(self) -> None:
         manager = WorkerManager(self.make_router(), group_name='workers', router_directory='app.routers')
         processes = [self.make_process(pid=300 + index) for index in range(5)]
