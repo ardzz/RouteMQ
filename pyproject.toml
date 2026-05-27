@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "routemq"
-version = "0.12.0"
+version = "0.12.2"
 description = "A flexible MQTT routing framework with middleware support"
 readme = "README.md"
 license = {text = "MIT"}
@@ -96,7 +96,11 @@ packages = ["app", "bootstrap", "core"]
 [tool.commitizen]
 name = "cz_conventional_commits"
 version = "0.12.2"
+version_provider = "uv"
 tag_format = "v$version"
+legacy_tag_formats = ["$version"]
+major_version_zero = true
+update_changelog_on_bump = true
 
 [tool.ruff]
 line-length = 120

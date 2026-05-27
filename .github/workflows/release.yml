@@ -6,6 +6,10 @@ on:
       - master
       - develop
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -68,7 +72,7 @@ jobs:
         run: |
           NEW_COMMITS=$(git rev-list --count origin/master..HEAD)
           if [ "$NEW_COMMITS" -gt 0 ]; then
-            VERSION=$(grep -E '^version = ' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+            VERSION="$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['tool']['commitizen']['version'])")"
             BRANCH="release/auto-bump-v${VERSION}"
             echo "bumped=true" >> "$GITHUB_OUTPUT"
             echo "version=v${VERSION}" >> "$GITHUB_OUTPUT"
@@ -81,6 +85,12 @@ jobs:
       - name: Push bump branch and tag
         if: steps.bump_detect.outputs.bumped == 'true'
         run: |
+          NEXT_VERSION="$(uv run cz bump --get-next 2>/dev/null || true)"
+          if [ -z "$NEXT_VERSION" ]; then
+            echo "cz bump --get-next returned empty; no version bump to apply. Skipping tag push."
+            exit 0
+          fi
+          echo "Commitizen bump --get-next resolved version: ${NEXT_VERSION}"
           BRANCH="${{ steps.bump_detect.outputs.branch }}"
           VERSION="${{ steps.bump_detect.outputs.version }}"
           git checkout -b "$BRANCH"
@@ -123,9 +133,6 @@ jobs:
       - name: Release
         uses: release-drafter/release-drafter@693d20e7c1ce1a81d3a41962f85914253b518449 # v7.3.1
         with:
-          version: ${{ env.REVISION }}
-          tag: ${{ env.REVISION }}
-          name: ${{ env.REVISION }}
-          publish: true
+          publish: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
