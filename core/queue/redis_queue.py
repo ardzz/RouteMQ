@@ -2,7 +2,7 @@ import json
 import logging
 import time
 from typing import Optional, Union
-from datetime import datetime
+from datetime import UTC, datetime
 
 from core.queue.queue_driver import QueueDriver
 from core.redis_manager import RedisManager
@@ -220,7 +220,7 @@ class RedisQueue(QueueDriver):
                         queue=queue,
                         payload=payload,
                         exception=exception,
-                        failed_at=datetime.utcnow(),
+                        failed_at=datetime.now(UTC),
                     )
                     session.add(failed_job)
                     await session.commit()
@@ -236,7 +236,7 @@ class RedisQueue(QueueDriver):
                     'queue': queue,
                     'payload': payload,
                     'exception': exception,
-                    'failed_at': datetime.utcnow().isoformat(),
+                    'failed_at': datetime.now(UTC).isoformat(),
                 }
                 await client.rpush(failed_key, json.dumps(failed_data))
                 logger.info(f"Failed job stored in Redis for queue '{queue}'")

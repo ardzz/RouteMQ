@@ -94,7 +94,8 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
 
         self.client = None
         self.group_name = os.getenv('MQTT_GROUP_NAME', 'mqtt_framework_group')
-        self.loop = asyncio.get_event_loop()
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
 
         self.worker_manager = WorkerManager(self.router, self.group_name, self.router_directory)
 

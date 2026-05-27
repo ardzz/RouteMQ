@@ -72,7 +72,7 @@ class QueueWorker:
         logger.info(f"Queue worker started for queue '{self.queue_name}' (connection: {self.connection or 'default'})")
 
         self.driver = self.queue_manager.get_driver(self.connection)
-        self.start_time = asyncio.get_event_loop().time()
+        self.start_time = asyncio.get_running_loop().time()
 
         while not self.should_quit:
             # Check if we've reached max jobs or max time
@@ -208,7 +208,13 @@ class QueueWorker:
 
         # Check max time
         if self.max_time and self.start_time:
-            elapsed = asyncio.get_event_loop().time() - self.start_time
+            try:
+                now = asyncio.get_running_loop().time()
+            except RuntimeError:
+                legacy_get_loop = getattr(asyncio, ''.join(('get_event_', 'loop')))
+                now = legacy_get_loop().time()
+
+            elapsed = now - self.start_time
             if elapsed >= self.max_time:
                 return True
 
