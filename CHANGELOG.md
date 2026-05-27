@@ -1,3 +1,10 @@
+## v0.13.4 (2026-05-27)
+
+### Refactor
+
+- **cli**: convert argparse flags to subcommands with backward-compat aliases
+- **rename**: rename core/ to routemq/ and fix install-correctness bugs (#44)
+
 ## v0.13.3 (2026-05-27)
 
 ### Fix
