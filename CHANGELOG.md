@@ -1,3 +1,18 @@
+## v0.12.3 (2026-05-27)
+
+### Fix
+
+- **ci**: use REVISION env var for bump detection and remove stale preflight
+- **ci**: stop release-drafter from autotagging on every push; sync version sources (#23)
+
+## v0.1.31 (2026-05-27)
+
+## v0.1.30 (2026-05-27)
+
+## v0.1.29 (2026-05-27)
+
+## v0.1.28 (2026-05-27)
+
 ## v0.1.27 (2026-05-27)
 
 ### Fix
