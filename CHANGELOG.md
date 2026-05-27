@@ -1,3 +1,9 @@
+## v0.13.1 (2026-05-27)
+
+### Fix
+
+- replace deprecated datetime.utcnow() and asyncio.get_event_loop() in runtime paths
+
 ## v0.13.0 (2026-05-27)
 
 ### Feat
