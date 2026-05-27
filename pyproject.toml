@@ -48,6 +48,11 @@ dependencies = [
 
 [project.optional-dependencies]
 redis = ["redis>=5.0.1"]
+cli = [
+    "questionary>=2.0.0",
+    "rich>=14.0.0",
+    "jinja2>=3.1.0",
+]
 dev = [
     "pytest>=7.4.3",
     "pytest-asyncio>=0.21.1",
@@ -61,8 +66,16 @@ dev = [
     "build>=1.2.0",
     "cyclonedx-bom>=5.2.0",
     "testcontainers>=4.0.0",
+    "questionary>=2.0.0",
+    "rich>=14.0.0",
+    "jinja2>=3.1.0",
 ]
-all = ["redis>=5.0.1"]
+all = [
+    "redis>=5.0.1",
+    "questionary>=2.0.0",
+    "rich>=14.0.0",
+    "jinja2>=3.1.0",
+]
 
 [project.scripts]
 routemq = "routemq.cli:main"
@@ -88,10 +101,19 @@ dev = [
     "build>=1.2.0",
     "cyclonedx-bom>=5.2.0",
     "testcontainers>=4.0.0",
+    "questionary>=2.0.0",
+    "rich>=14.0.0",
+    "jinja2>=3.1.0",
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["routemq", "bootstrap"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"routemq/scaffold/templates/base/.env" = "routemq/scaffold/templates/base/.env"
+
+[tool.hatch.build.targets.sdist.force-include]
+"routemq/scaffold/templates/base/.env" = "routemq/scaffold/templates/base/.env"
 
 [tool.commitizen]
 name = "cz_conventional_commits"

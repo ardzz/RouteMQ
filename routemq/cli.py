@@ -139,14 +139,42 @@ with router.group(prefix="devices") as devices:
     print('Example files created successfully!')
 
 
-def _cmd_new(name: str) -> None:
-    """Stub for project scaffolding until Sprint 19 Phase C."""
-    print('Phase C will implement the full scaffolder; see docs/plans/sprints/SPRINT-19-pypi-distribution.md')
+def _cmd_new(
+    name: str,
+    *,
+    yes: bool = False,
+    with_mysql: bool = False,
+    with_redis: bool = False,
+    with_queue: bool = False,
+    with_docker: bool = False,
+    package_manager: str = 'uv',
+    no_input: bool = False,
+) -> int:
+    """Scaffold a new RouteMQ project."""
+    from routemq.scaffold import run_scaffolder
 
     if name == '.':
-        create_env_file()
-        setup_example()
-        print('RouteMQ project initialized successfully!')
+        return run_scaffolder(
+            '.',
+            yes=True,
+            with_mysql=False,
+            with_redis=False,
+            with_queue=False,
+            with_docker=False,
+            package_manager=package_manager,
+            no_input=True,
+        )
+
+    return run_scaffolder(
+        name,
+        yes=yes,
+        with_mysql=with_mysql,
+        with_redis=with_redis,
+        with_queue=with_queue,
+        with_docker=with_docker,
+        package_manager=package_manager,
+        no_input=no_input,
+    )
 
 
 def _cmd_run() -> None:
@@ -246,6 +274,13 @@ def main():
 
     new_p = sub.add_parser('new', help='Scaffold a new RouteMQ project')
     new_p.add_argument('name', nargs='?', default='.', help='Project directory name (default: current dir)')
+    new_p.add_argument('--yes', action='store_true', help='Accept defaults')
+    new_p.add_argument('--with-mysql', action='store_true')
+    new_p.add_argument('--with-redis', action='store_true')
+    new_p.add_argument('--with-queue', action='store_true')
+    new_p.add_argument('--with-docker', action='store_true')
+    new_p.add_argument('--package-manager', choices=['uv', 'pip'], default='uv')
+    new_p.add_argument('--no-input', action='store_true', help='Forbid prompts')
 
     sub.add_parser('run', help='Run the MQTT application')
     sub.add_parser('tinker', help='Interactive REPL for ORM and queries')
@@ -274,7 +309,18 @@ def main():
             effective_command = 'run'
 
     if effective_command == 'new':
-        _cmd_new(name=getattr(args, 'name', '.'))
+        rc = _cmd_new(
+            name=getattr(args, 'name', '.'),
+            yes=getattr(args, 'yes', False),
+            with_mysql=getattr(args, 'with_mysql', False),
+            with_redis=getattr(args, 'with_redis', False),
+            with_queue=getattr(args, 'with_queue', False),
+            with_docker=getattr(args, 'with_docker', False),
+            package_manager=getattr(args, 'package_manager', 'uv'),
+            no_input=getattr(args, 'no_input', False),
+        )
+        if rc:
+            raise SystemExit(rc)
         return
 
     if effective_command == 'run':

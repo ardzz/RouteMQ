@@ -1,0 +1,49 @@
+services:
+  app:
+    build: .
+    env_file: .env
+    depends_on:
+{% if with_mysql %}
+      - mysql
+{% endif %}
+{% if with_redis %}
+      - redis
+{% endif %}
+    restart: unless-stopped
+
+{% if with_queue %}
+  queue-worker:
+    build: .
+    env_file: .env
+    command: ["routemq", "queue-work", "--queue", "default"]
+    depends_on:
+{% if with_mysql %}
+      - mysql
+{% endif %}
+{% if with_redis %}
+      - redis
+{% endif %}
+    restart: unless-stopped
+
+{% endif %}
+{% if with_redis %}
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+{% endif %}
+{% if with_mysql %}
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: {{ package_name }}
+      MYSQL_ROOT_PASSWORD: routemq
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+volumes:
+  mysql-data:
+{% endif %}
