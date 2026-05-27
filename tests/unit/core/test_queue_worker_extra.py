@@ -181,6 +181,119 @@ class QueueWorkerProcessJobTests(_WorkerSignalGuard):
         worker.driver.delete.assert_awaited_once()
 
 
+class QueueWorkerWorkLoopTests(_WorkerSignalGuard):
+    async def test_work_exits_immediately_when_should_quit(self) -> None:
+        worker = self._make_worker(max_jobs=99, sleep=0)
+        driver = MagicMock()
+        driver.pop = AsyncMock()
+        worker.queue_manager.get_driver = MagicMock(return_value=driver)
+        worker.should_quit = True
+
+        await worker.work()
+
+        driver.pop.assert_not_called()
+        self.assertEqual(worker.jobs_processed, 0)
+
+    async def test_work_sleeps_and_continues_when_paused(self) -> None:
+        worker = self._make_worker(sleep=0)
+        driver = MagicMock()
+        pop_calls = 0
+
+        async def pop_side_effect(*args: Any, **kwargs: Any) -> Any:
+            nonlocal pop_calls
+            pop_calls += 1
+            worker.should_quit = True
+            return None
+
+        worker.paused = True
+        worker.queue_manager.get_driver = MagicMock(return_value=driver)
+        # After one sleep cycle, unpause and stop
+        original_sleep = worker.sleep
+        worker.sleep = 0
+
+        async def unpause_and_stop():
+            worker.paused = False
+            worker.should_quit = True
+
+        driver.pop = AsyncMock(side_effect=pop_side_effect)
+
+        # Override sleep so it exits after one paused iteration
+        async def sleep_side_effect(duration):
+            worker.paused = False
+            worker.should_quit = True
+
+        with patch('asyncio.sleep', AsyncMock(side_effect=sleep_side_effect)):
+            await worker.work()
+
+        worker.sleep = original_sleep
+        driver.pop.assert_not_called()
+
+    async def test_work_sleeps_when_no_job_available(self) -> None:
+        worker = self._make_worker(sleep=0)
+        driver = MagicMock()
+        pop_calls = 0
+
+        async def pop_side_effect(*args: Any, **kwargs: Any) -> Any:
+            nonlocal pop_calls
+            pop_calls += 1
+            if pop_calls >= 3:
+                worker.should_quit = True
+            return None
+
+        driver.pop = AsyncMock(side_effect=pop_side_effect)
+        worker.queue_manager.get_driver = MagicMock(return_value=driver)
+
+        await worker.work()
+
+        self.assertGreaterEqual(driver.pop.await_count, 2)
+
+    async def test_work_catches_pop_exception_and_continues(self) -> None:
+        worker = self._make_worker(sleep=0)
+        driver = MagicMock()
+        pop_calls = 0
+
+        async def pop_side_effect(*args: Any, **kwargs: Any) -> Any:
+            nonlocal pop_calls
+            pop_calls += 1
+            if pop_calls == 1:
+                raise RuntimeError('pop error')
+            worker.should_quit = True
+            return None
+
+        driver.pop = AsyncMock(side_effect=pop_side_effect)
+        worker.queue_manager.get_driver = MagicMock(return_value=driver)
+
+        await worker.work()
+
+        self.assertGreaterEqual(pop_calls, 2)
+
+    async def test_process_job_recovers_if_second_unserialize_succeeds(self) -> None:
+        worker = self._make_worker(connection='redis')
+        driver = MagicMock()
+        driver.delete = AsyncMock()
+        driver.release = AsyncMock()
+        worker.driver = cast(Any, driver)
+
+        job = _DummyJob(raises=RuntimeError('boom'))
+        with patch('core.queue.queue_worker.Job') as mock_job_cls:
+            mock_job_cls.unserialize.side_effect = [ValueError('first fail'), job]
+            await worker._process_job({'id': 'j1', 'payload': 'p', 'attempts': 2})
+
+        driver.release.assert_awaited_once()
+        driver.delete.assert_not_called()
+
+
+class QueueWorkerShouldStopExtraTests(_WorkerSignalGuard):
+    def test_max_time_not_exceeded_does_not_stop(self) -> None:
+        worker = self._make_worker(max_time=10)
+        worker.start_time = 1000.0
+        with patch(
+            'core.queue.queue_worker.asyncio.get_event_loop',
+            return_value=MagicMock(time=MagicMock(return_value=1005.0)),
+        ):
+            self.assertFalse(worker._should_stop())
+
+
 class QueueWorkerFailJobTests(_WorkerSignalGuard):
     async def test_fail_job_calls_handlers(self) -> None:
         worker = self._make_worker(connection='redis')

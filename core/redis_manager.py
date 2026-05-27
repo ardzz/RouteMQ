@@ -7,7 +7,7 @@ try:
     import redis.asyncio as redis
 
     REDIS_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover - optional dependency fallback
     REDIS_AVAILABLE = False
     redis = None
 
@@ -49,7 +49,7 @@ class RedisManager:
 
         self._initialized = True
 
-        if self.enabled and not REDIS_AVAILABLE:
+        if self.enabled and not REDIS_AVAILABLE:  # pragma: no cover - requires uninstalled redis
             self.logger.error('Redis is enabled but redis package is not installed. Install with: uv add redis')
             self.enabled = False
 
