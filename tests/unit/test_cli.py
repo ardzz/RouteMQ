@@ -35,19 +35,35 @@ class TestCliSubcommands(unittest.TestCase):
             self.assertEqual(kwargs['queue'], 'emails')
             self.assertEqual(kwargs['sleep'], 5)
 
-    def test_new_subcommand_stub_prints_message(self):
-        with patch('builtins.print') as mock_print:
-            self._run_with_argv(['new', 'demo'])
+    def test_new_subcommand_calls_scaffolder(self):
+        with patch('routemq.scaffold.run_scaffolder', return_value=0) as mock_scaffold:
+            self._run_with_argv(['new', 'demo', '--yes', '--with-redis', '--package-manager', 'pip'])
 
-            outputs = ' '.join(str(c.args[0]) for c in mock_print.call_args_list if c.args)
-            self.assertIn('Phase C', outputs)
+        mock_scaffold.assert_called_once_with(
+            'demo',
+            yes=True,
+            with_mysql=False,
+            with_redis=True,
+            with_queue=False,
+            with_docker=False,
+            package_manager='pip',
+            no_input=False,
+        )
 
     def test_init_alias_routes_to_new_with_dot(self):
-        with patch('routemq.cli.setup_example') as mock_setup, patch('routemq.cli.create_env_file') as mock_env:
+        with patch('routemq.scaffold.run_scaffolder', return_value=0) as mock_scaffold:
             self._run_with_argv(['--init'])
 
-            mock_env.assert_called_once()
-            mock_setup.assert_called_once()
+        mock_scaffold.assert_called_once_with(
+            '.',
+            yes=True,
+            with_mysql=False,
+            with_redis=False,
+            with_queue=False,
+            with_docker=False,
+            package_manager='uv',
+            no_input=True,
+        )
 
     def test_no_args_defaults_to_run(self):
         with patch('routemq.cli.create_app') as mock_create, patch('routemq.cli.create_env_file'):

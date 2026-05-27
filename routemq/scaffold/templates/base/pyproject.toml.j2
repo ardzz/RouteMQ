@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ project_name }}"
+version = "0.1.0"
+description = "RouteMQ application"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "{{ dependency }}",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
