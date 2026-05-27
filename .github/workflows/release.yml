@@ -71,26 +71,20 @@ jobs:
         id: bump_detect
         run: |
           NEW_COMMITS=$(git rev-list --count origin/master..HEAD)
-          if [ "$NEW_COMMITS" -gt 0 ]; then
-            VERSION="$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['tool']['commitizen']['version'])")"
-            BRANCH="release/auto-bump-v${VERSION}"
+          if [ "$NEW_COMMITS" -gt 0 ] && [ -n "$REVISION" ]; then
+            VERSION="v${REVISION}"
+            BRANCH="release/auto-bump-${VERSION}"
             echo "bumped=true" >> "$GITHUB_OUTPUT"
-            echo "version=v${VERSION}" >> "$GITHUB_OUTPUT"
+            echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
             echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
-            echo "Commitizen produced a bump: ${BRANCH} (tag v${VERSION})"
+            echo "Commitizen produced a bump: ${BRANCH} (tag ${VERSION})"
           else
             echo "bumped=false" >> "$GITHUB_OUTPUT"
-            echo "No bump produced by Commitizen (no fix:/feat: commits since last release)"
+            echo "No bump produced by Commitizen"
           fi
       - name: Push bump branch and tag
         if: steps.bump_detect.outputs.bumped == 'true'
         run: |
-          NEXT_VERSION="$(uv run cz bump --get-next 2>/dev/null || true)"
-          if [ -z "$NEXT_VERSION" ]; then
-            echo "cz bump --get-next returned empty; no version bump to apply. Skipping tag push."
-            exit 0
-          fi
-          echo "Commitizen bump --get-next resolved version: ${NEXT_VERSION}"
           BRANCH="${{ steps.bump_detect.outputs.branch }}"
           VERSION="${{ steps.bump_detect.outputs.version }}"
           git checkout -b "$BRANCH"
