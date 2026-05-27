@@ -15,8 +15,8 @@ Controllers handle the business logic for your MQTT routes.
 Controllers contain the business logic that processes MQTT messages:
 
 ```python
-from core.controller import Controller
-from core.redis_manager import redis_manager
+from routemq.controller import Controller
+from routemq.redis_manager import redis_manager
 import json
 import time
 

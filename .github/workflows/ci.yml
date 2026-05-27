@@ -82,7 +82,7 @@ jobs:
         run: uv sync --all-extras --dev
 
       - name: Mypy type check
-        run: uv run mypy core app bootstrap
+        run: uv run mypy routemq app bootstrap
 
   security:
     name: security
@@ -103,7 +103,7 @@ jobs:
         run: uv sync --all-extras --dev
 
       - name: SAST scan (Bandit)
-        run: uv run bandit -c pyproject.toml -r core app bootstrap main.py
+        run: uv run bandit -c pyproject.toml -r routemq app bootstrap
 
       - name: Dependency audit (pip-audit)
         run: uv run pip-audit

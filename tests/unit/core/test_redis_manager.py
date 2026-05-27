@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 class TestRedisManager(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
-        self._module_names = ['core.redis_manager', 'redis.asyncio', 'redis']
+        self._module_names = ['routemq.redis_manager', 'redis.asyncio', 'redis']
         self._saved_modules = {name: sys.modules[name] for name in self._module_names if name in sys.modules}
         self._clear_modules()
 
@@ -38,7 +38,7 @@ class TestRedisManager(unittest.IsolatedAsyncioTestCase):
         patcher = patch.dict(os.environ, env or {}, clear=clear)
         patcher.start()
         self.addCleanup(patcher.stop)
-        return importlib.import_module('core.redis_manager')
+        return importlib.import_module('routemq.redis_manager')
 
     async def test_singleton_instance_is_shared_with_module_global(self) -> None:
         module = self._import_manager({'ENABLE_REDIS': 'false'})
@@ -226,7 +226,7 @@ class TestRedisManager(unittest.IsolatedAsyncioTestCase):
                 sys.modules['redis.asyncio'] = self.fake_redis_asyncio
                 with patch.dict(os.environ, env, clear=True):
                     with self.assertRaises(ValueError):
-                        importlib.import_module('core.redis_manager')
+                        importlib.import_module('routemq.redis_manager')
 
 
 if __name__ == '__main__':

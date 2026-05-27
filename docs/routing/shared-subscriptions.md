@@ -16,7 +16,7 @@ Shared subscriptions enable multiple worker processes to subscribe to the same M
 ### Enabling Shared Subscriptions
 
 ```python
-from core.router import Router
+from routemq.router import Router
 from app.controllers.sensor_controller import SensorController
 
 router = Router()
@@ -87,7 +87,7 @@ app.worker_manager.start_workers(num_workers=5)
 
 ```python
 import os
-from core.worker_manager import WorkerManager
+from routemq.worker_manager import WorkerManager
 
 # Configure worker manager
 worker_manager = WorkerManager(
@@ -121,7 +121,7 @@ MQTT_PASSWORD=worker_password
 ### Per-Route Worker Counts
 
 ```python
-from core.router import Router
+from routemq.router import Router
 from app.controllers import *
 
 router = Router()
@@ -608,7 +608,7 @@ class WorkerMetricsMiddleware(Middleware):
 ```python
 import pytest
 from unittest.mock import Mock, patch
-from core.worker_manager import WorkerManager
+from routemq.worker_manager import WorkerManager
 
 def test_shared_route_identification():
     """Test identification of shared routes"""
@@ -649,7 +649,7 @@ def test_worker_count_calculation():
 async def test_shared_subscription_topic_format():
     """Test MQTT shared subscription topic formatting"""
     
-    from core.router import Route
+    from routemq.router import Route
     
     route = Route("sensors/{device_id}/data", Mock(), shared=True)
     

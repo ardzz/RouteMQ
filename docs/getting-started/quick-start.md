@@ -7,7 +7,7 @@ Get RouteMQ up and running in just a few minutes.
 After installation, initialize a new RouteMQ project:
 
 ```bash
-python main.py --init
+routemq --init
 ```
 
 This creates the basic project structure and configuration files.
@@ -41,7 +41,7 @@ LOG_FORMAT=%(asctime)s - %(name)s - %(levelname)s - %(message)s
 Start RouteMQ:
 
 ```bash
-uv run python main.py --run
+uv run routemq --run
 ```
 
 Your MQTT routing framework is now running and ready to handle messages!

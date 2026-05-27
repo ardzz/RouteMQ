@@ -87,7 +87,7 @@ async def handle_command(device_id: str, payload, client):
 Simple handlers that process messages without sending responses:
 
 ```python
-from core.controller import Controller
+from routemq.controller import Controller
 import logging
 
 class LoggingController(Controller):
@@ -105,7 +105,7 @@ class LoggingController(Controller):
 Handlers that process requests and send responses:
 
 ```python
-from core.controller import Controller
+from routemq.controller import Controller
 import json
 
 class ApiController(Controller):
@@ -135,7 +135,7 @@ class ApiController(Controller):
 Handlers that receive messages and broadcast to multiple topics:
 
 ```python
-from core.controller import Controller
+from routemq.controller import Controller
 import json
 
 class BroadcastController(Controller):
@@ -165,8 +165,8 @@ class BroadcastController(Controller):
 Handlers that maintain state across messages:
 
 ```python
-from core.controller import Controller
-from core.redis_manager import redis_manager
+from routemq.controller import Controller
+from routemq.redis_manager import redis_manager
 import json
 
 class StateController(Controller):
@@ -199,7 +199,7 @@ class StateController(Controller):
 Handle multiple items in a single message:
 
 ```python
-from core.controller import Controller
+from routemq.controller import Controller
 import json
 import asyncio
 
@@ -235,7 +235,7 @@ class BatchController(Controller):
 Chain multiple processing steps:
 
 ```python
-from core.controller import Controller
+from routemq.controller import Controller
 import json
 
 class PipelineController(Controller):
@@ -273,7 +273,7 @@ class PipelineController(Controller):
 Handle errors and implement retry logic:
 
 ```python
-from core.controller import Controller
+from routemq.controller import Controller
 import json
 import asyncio
 import logging

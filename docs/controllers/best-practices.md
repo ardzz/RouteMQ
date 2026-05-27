@@ -157,7 +157,7 @@ class DeviceController(Controller):
 Always handle different types of errors:
 
 ```python
-from core.controller import Controller
+from routemq.controller import Controller
 import logging
 import json
 

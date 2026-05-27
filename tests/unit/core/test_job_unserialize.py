@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from typing import Any
 from unittest.mock import patch
 
-from core.job import Job
+from routemq.job import Job
 
 
 class RegisteredRegressionJob(Job):
@@ -74,23 +74,23 @@ class TestJobUnserializeAllowList(unittest.TestCase):
 
     def test_dotted_path_traversal_is_rejected(self) -> None:
         """Dotted-path traversal cannot bypass the allow-list."""
-        payload = self.make_payload('core..job.Job')
+        payload = self.make_payload('routemq..job.Job')
 
-        with self.assertRaisesRegex(ValueError, 'unregistered job class: core..job.Job'):
+        with self.assertRaisesRegex(ValueError, 'unregistered job class: routemq..job.Job'):
             Job.unserialize(payload)
 
     def test_slash_path_traversal_is_rejected(self) -> None:
         """Slash path traversal cannot bypass the allow-list."""
-        payload = self.make_payload('core/job.Job')
+        payload = self.make_payload('routemq/job.Job')
 
-        with self.assertRaisesRegex(ValueError, 'unregistered job class: core/job.Job'):
+        with self.assertRaisesRegex(ValueError, 'unregistered job class: routemq/job.Job'):
             Job.unserialize(payload)
 
     def test_leading_dot_path_is_rejected(self) -> None:
         """Leading-dot class paths cannot bypass the allow-list."""
-        payload = self.make_payload('.core.job.Job')
+        payload = self.make_payload('.routemq.job.Job')
 
-        with self.assertRaisesRegex(ValueError, 'unregistered job class: \\.core\\.job\\.Job'):
+        with self.assertRaisesRegex(ValueError, 'unregistered job class: \\.routemq\\.job\\.Job'):
             Job.unserialize(payload)
 
     def test_case_variation_is_rejected(self) -> None:
@@ -111,7 +111,7 @@ class TestJobUnserializeAllowList(unittest.TestCase):
 
     def test_very_long_class_name_is_rejected(self) -> None:
         """Very long class paths cannot bypass the allow-list."""
-        payload = self.make_payload(f'core.job.{"A" * 4096}')
+        payload = self.make_payload(f'routemq.job.{"A" * 4096}')
 
         with self.assertRaisesRegex(ValueError, 'unregistered job class'):
             Job.unserialize(payload)

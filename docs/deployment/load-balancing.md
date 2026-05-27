@@ -220,7 +220,7 @@ frontend stats
 ### Client-Side Load Balancing
 
 ```python
-# core/mqtt_load_balancer.py
+# routemq/mqtt_load_balancer.py
 import random
 import time
 import logging
@@ -518,7 +518,7 @@ spec:
 ### Read/Write Split
 
 ```python
-# core/database_load_balancer.py
+# routemq/database_load_balancer.py
 import random
 import asyncio
 import logging
@@ -623,7 +623,7 @@ class DatabaseRouter:
 ### Database Connection Pooling
 
 ```python
-# core/connection_pool_manager.py
+# routemq/connection_pool_manager.py
 import asyncio
 import time
 from typing import Dict, List
@@ -761,7 +761,7 @@ api.routemq.com:
 ### Application-Level Geographic Routing
 
 ```python
-# core/geo_load_balancer.py
+# routemq/geo_load_balancer.py
 import geoip2.database
 import logging
 from typing import Dict, List, Optional
@@ -974,7 +974,7 @@ async def mqtt_health_check():
 async def database_health_check():
     """Health check for database"""
     try:
-        from core.model import Model
+        from routemq.model import Model
         session = await Model.get_session()
         await session.execute("SELECT 1")
         await session.close()

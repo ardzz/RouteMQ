@@ -60,7 +60,7 @@ def setup_example():
     controller_path = 'app/controllers/example_controller.py'
     if not os.path.exists(controller_path):
         with open(controller_path, 'w') as f:
-            f.write("""from core.controller import Controller
+            f.write("""from routemq.controller import Controller
 
 class ExampleController(Controller):
     @staticmethod
@@ -75,7 +75,7 @@ class ExampleController(Controller):
     middleware_path = 'app/middleware/example_middleware.py'
     if not os.path.exists(middleware_path):
         with open(middleware_path, 'w') as f:
-            f.write("""from core.middleware import Middleware
+            f.write("""from routemq.middleware import Middleware
 from typing import Dict, Any, Callable, Awaitable
 import time
 
@@ -117,7 +117,7 @@ class LoggingMiddleware(Middleware):
     router_path = 'app/routers/example_device.py'
     if not os.path.exists(router_path):
         with open(router_path, 'w') as f:
-            f.write("""from core.router import Router
+            f.write("""from routemq.router import Router
 from app.controllers.example_controller import ExampleController
 from app.middleware.example_middleware import LoggingMiddleware
 
@@ -142,7 +142,7 @@ with router.group(prefix="devices") as devices:
 
 def tinker():
     """Start the interactive REPL environment for testing ORM and queries."""
-    from core.tinker import run_tinker
+    from routemq.tinker import run_tinker
 
     run_tinker()
 
@@ -151,7 +151,7 @@ def queue_work(queue='default', connection=None, max_jobs=None, max_time=None, s
     """Start the queue worker to process background jobs."""
     import asyncio
     from bootstrap.app import Application
-    from core.queue.queue_worker import QueueWorker
+    from routemq.queue.queue_worker import QueueWorker
 
     # Initialize the application to setup database/redis connections
     create_env_file()

@@ -3,7 +3,7 @@ import unittest
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from core.queue.database_queue import DatabaseQueue
+from routemq.queue.database_queue import DatabaseQueue
 
 
 def _mock_session() -> MagicMock:
@@ -28,7 +28,7 @@ class DatabaseQueueBase(unittest.IsolatedAsyncioTestCase):
 class DatabaseQueuePushTests(DatabaseQueueBase):
     async def test_disabled_mysql_raises(self) -> None:
         driver = DatabaseQueue()
-        with patch('core.queue.database_queue.Model') as mock_model:
+        with patch('routemq.queue.database_queue.Model') as mock_model:
             mock_model._is_enabled = False
             with self.assertRaises(RuntimeError):
                 await driver.push('p', 'q', 0)
@@ -37,8 +37,8 @@ class DatabaseQueuePushTests(DatabaseQueueBase):
         driver = DatabaseQueue()
         session = _mock_session()
         with (
-            patch('core.queue.database_queue.Model') as mock_model,
-            patch('core.queue.database_queue.QueueJob') as mock_job_cls,
+            patch('routemq.queue.database_queue.Model') as mock_model,
+            patch('routemq.queue.database_queue.QueueJob') as mock_job_cls,
         ):
             mock_model._is_enabled = True
             mock_model.get_session = AsyncMock(return_value=session)
@@ -54,7 +54,7 @@ class DatabaseQueuePushTests(DatabaseQueueBase):
         driver = DatabaseQueue()
         session = _mock_session()
         session.commit.side_effect = RuntimeError('db fail')
-        with patch('core.queue.database_queue.Model') as mock_model:
+        with patch('routemq.queue.database_queue.Model') as mock_model:
             mock_model._is_enabled = True
             mock_model.get_session = AsyncMock(return_value=session)
 
@@ -68,7 +68,7 @@ class DatabaseQueuePushTests(DatabaseQueueBase):
 class DatabaseQueuePopTests(DatabaseQueueBase):
     async def test_disabled_returns_none(self) -> None:
         driver = DatabaseQueue()
-        with patch('core.queue.database_queue.Model') as mock_model:
+        with patch('routemq.queue.database_queue.Model') as mock_model:
             mock_model._is_enabled = False
             self.assertIsNone(await driver.pop('q'))
 
@@ -81,7 +81,7 @@ class DatabaseQueuePopTests(DatabaseQueueBase):
         result.scalars.return_value = scalars
         session.execute.return_value = result
 
-        with patch('core.queue.database_queue.Model') as mock_model:
+        with patch('routemq.queue.database_queue.Model') as mock_model:
             mock_model._is_enabled = True
             mock_model.get_session = AsyncMock(return_value=session)
             self.assertIsNone(await driver.pop('q'))
@@ -100,7 +100,7 @@ class DatabaseQueuePopTests(DatabaseQueueBase):
         result.scalars.return_value = scalars
         session.execute.return_value = result
 
-        with patch('core.queue.database_queue.Model') as mock_model:
+        with patch('routemq.queue.database_queue.Model') as mock_model:
             mock_model._is_enabled = True
             mock_model.get_session = AsyncMock(return_value=session)
             popped = await driver.pop('q')
@@ -115,7 +115,7 @@ class DatabaseQueuePopTests(DatabaseQueueBase):
         session = _mock_session()
         session.execute.side_effect = RuntimeError('db error')
 
-        with patch('core.queue.database_queue.Model') as mock_model:
+        with patch('routemq.queue.database_queue.Model') as mock_model:
             mock_model._is_enabled = True
             mock_model.get_session = AsyncMock(return_value=session)
             self.assertIsNone(await driver.pop('q'))
@@ -126,14 +126,14 @@ class DatabaseQueuePopTests(DatabaseQueueBase):
 class DatabaseQueueReleaseTests(DatabaseQueueBase):
     async def test_release_when_disabled_is_noop(self) -> None:
         driver = DatabaseQueue()
-        with patch('core.queue.database_queue.Model') as mock_model:
+        with patch('routemq.queue.database_queue.Model') as mock_model:
             mock_model._is_enabled = False
             await driver.release(1, 'q', 0)
 
     async def test_release_updates_record(self) -> None:
         driver = DatabaseQueue()
         session = _mock_session()
-        with patch('core.queue.database_queue.Model') as mock_model:
+        with patch('routemq.queue.database_queue.Model') as mock_model:
             mock_model._is_enabled = True
             mock_model.get_session = AsyncMock(return_value=session)
             await driver.release(1, 'q', 5)
@@ -145,7 +145,7 @@ class DatabaseQueueReleaseTests(DatabaseQueueBase):
         driver = DatabaseQueue()
         session = _mock_session()
         session.commit.side_effect = RuntimeError('db fail')
-        with patch('core.queue.database_queue.Model') as mock_model:
+        with patch('routemq.queue.database_queue.Model') as mock_model:
             mock_model._is_enabled = True
             mock_model.get_session = AsyncMock(return_value=session)
             with self.assertRaises(RuntimeError):
@@ -156,14 +156,14 @@ class DatabaseQueueReleaseTests(DatabaseQueueBase):
 class DatabaseQueueDeleteTests(DatabaseQueueBase):
     async def test_delete_when_disabled_is_noop(self) -> None:
         driver = DatabaseQueue()
-        with patch('core.queue.database_queue.Model') as mock_model:
+        with patch('routemq.queue.database_queue.Model') as mock_model:
             mock_model._is_enabled = False
             await driver.delete(1, 'q')
 
     async def test_delete_executes_and_commits(self) -> None:
         driver = DatabaseQueue()
         session = _mock_session()
-        with patch('core.queue.database_queue.Model') as mock_model:
+        with patch('routemq.queue.database_queue.Model') as mock_model:
             mock_model._is_enabled = True
             mock_model.get_session = AsyncMock(return_value=session)
             await driver.delete(1, 'q')
@@ -174,7 +174,7 @@ class DatabaseQueueDeleteTests(DatabaseQueueBase):
         driver = DatabaseQueue()
         session = _mock_session()
         session.execute.side_effect = RuntimeError('db fail')
-        with patch('core.queue.database_queue.Model') as mock_model:
+        with patch('routemq.queue.database_queue.Model') as mock_model:
             mock_model._is_enabled = True
             mock_model.get_session = AsyncMock(return_value=session)
             with self.assertRaises(RuntimeError):
@@ -185,7 +185,7 @@ class DatabaseQueueDeleteTests(DatabaseQueueBase):
 class DatabaseQueueFailedTests(DatabaseQueueBase):
     async def test_failed_when_disabled_is_noop(self) -> None:
         driver = DatabaseQueue()
-        with patch('core.queue.database_queue.Model') as mock_model:
+        with patch('routemq.queue.database_queue.Model') as mock_model:
             mock_model._is_enabled = False
             await driver.failed('c', 'q', 'p', 'e')
 
@@ -193,8 +193,8 @@ class DatabaseQueueFailedTests(DatabaseQueueBase):
         driver = DatabaseQueue()
         session = _mock_session()
         with (
-            patch('core.queue.database_queue.Model') as mock_model,
-            patch('core.queue.database_queue.QueueFailedJob') as mock_failed_cls,
+            patch('routemq.queue.database_queue.Model') as mock_model,
+            patch('routemq.queue.database_queue.QueueFailedJob') as mock_failed_cls,
         ):
             mock_model._is_enabled = True
             mock_model.get_session = AsyncMock(return_value=session)
@@ -207,7 +207,10 @@ class DatabaseQueueFailedTests(DatabaseQueueBase):
         driver = DatabaseQueue()
         session = _mock_session()
         session.commit.side_effect = RuntimeError('db fail')
-        with patch('core.queue.database_queue.Model') as mock_model, patch('core.queue.database_queue.QueueFailedJob'):
+        with (
+            patch('routemq.queue.database_queue.Model') as mock_model,
+            patch('routemq.queue.database_queue.QueueFailedJob'),
+        ):
             mock_model._is_enabled = True
             mock_model.get_session = AsyncMock(return_value=session)
             with self.assertRaises(RuntimeError):
@@ -218,7 +221,7 @@ class DatabaseQueueFailedTests(DatabaseQueueBase):
 class DatabaseQueueSizeTests(DatabaseQueueBase):
     async def test_size_when_disabled_returns_zero(self) -> None:
         driver = DatabaseQueue()
-        with patch('core.queue.database_queue.Model') as mock_model:
+        with patch('routemq.queue.database_queue.Model') as mock_model:
             mock_model._is_enabled = False
             self.assertEqual(await driver.size('q'), 0)
 
@@ -231,7 +234,7 @@ class DatabaseQueueSizeTests(DatabaseQueueBase):
         result.scalars.return_value = scalars
         session.execute.return_value = result
 
-        with patch('core.queue.database_queue.Model') as mock_model:
+        with patch('routemq.queue.database_queue.Model') as mock_model:
             mock_model._is_enabled = True
             mock_model.get_session = AsyncMock(return_value=session)
             self.assertEqual(await driver.size('q'), 3)
@@ -241,7 +244,7 @@ class DatabaseQueueSizeTests(DatabaseQueueBase):
         session = _mock_session()
         session.execute.side_effect = RuntimeError('db fail')
 
-        with patch('core.queue.database_queue.Model') as mock_model:
+        with patch('routemq.queue.database_queue.Model') as mock_model:
             mock_model._is_enabled = True
             mock_model.get_session = AsyncMock(return_value=session)
             self.assertEqual(await driver.size('q'), 0)

@@ -15,7 +15,7 @@ Learn how to define and organize routes in RouteMQ.
 Routes in RouteMQ map MQTT topics to handler functions using an expressive syntax:
 
 ```python
-from core.router import Router
+from routemq.router import Router
 from app.controllers.sensor_controller import SensorController
 
 router = Router()
@@ -49,7 +49,7 @@ app/routers/
 
 ```python
 # app/routers/devices.py
-from core.router import Router
+from routemq.router import Router
 from app.controllers.device_controller import DeviceController
 from app.middleware.logging_middleware import LoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware

@@ -27,7 +27,7 @@ Event Sources -> RouteMQ -> Notification Router -> Multiple Channels
 
 ```python
 # app/routers/notifications.py
-from core.router import Router
+from routemq.router import Router
 from app.controllers.notification_controller import NotificationController
 from app.middleware.auth import AuthMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
@@ -77,8 +77,8 @@ with router.group(prefix="websocket", middleware=[auth]) as websocket:
 
 ```python
 # app/controllers/notification_controller.py
-from core.controller import Controller
-from core.redis_manager import redis_manager
+from routemq.controller import Controller
+from routemq.redis_manager import redis_manager
 from app.models.mail_log import MailLog
 from app.models.user import User
 from app.services.email_service import EmailService
@@ -550,7 +550,7 @@ class NotificationController(Controller):
 
 ```python
 # app/services/websocket_service.py
-from core.redis_manager import redis_manager
+from routemq.redis_manager import redis_manager
 import json
 import asyncio
 

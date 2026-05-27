@@ -21,7 +21,7 @@ IoT Devices <-> MQTT Broker <-> RouteMQ <-> Redis/Database
 
 ```python
 # app/routers/iot_devices.py
-from core.router import Router
+from routemq.router import Router
 from app.controllers.iot_controller import IoTController
 from app.middleware.auth import AuthMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
@@ -57,8 +57,8 @@ with router.group(prefix="iot/devices", middleware=[auth, rate_limit]) as device
 
 ```python
 # app/controllers/iot_controller.py
-from core.controller import Controller
-from core.redis_manager import redis_manager
+from routemq.controller import Controller
+from routemq.redis_manager import redis_manager
 from app.models.device import Device
 from app.models.device_parameter import DeviceParameter
 import json
@@ -361,7 +361,7 @@ class IoTController(Controller):
 
 ```python
 # app/models/device.py (enhanced)
-from core.model import Model
+from routemq.model import Model
 from sqlalchemy import Column, String, Boolean, DateTime, Text, Float
 from sqlalchemy.sql import func
 import json
@@ -397,8 +397,8 @@ class Device(Model):
 
 ```python
 # app/middleware/device_monitor.py
-from core.middleware import Middleware
-from core.redis_manager import redis_manager
+from routemq.middleware import Middleware
+from routemq.redis_manager import redis_manager
 import time
 
 class DeviceMonitorMiddleware(Middleware):
@@ -473,7 +473,7 @@ class DeviceMonitorMiddleware(Middleware):
 ```python
 # app/services/device_monitoring.py
 import asyncio
-from core.redis_manager import redis_manager
+from routemq.redis_manager import redis_manager
 import time
 
 class DeviceMonitoringService:

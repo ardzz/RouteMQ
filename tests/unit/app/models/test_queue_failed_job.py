@@ -3,8 +3,8 @@ import unittest
 from sqlalchemy import DateTime, Integer, String, Text
 
 from app.models.queue_failed_job import QueueFailedJob
-from core.model import Model
-from core.queue.models import QueueFailedJob as CoreQueueFailedJob
+from routemq.model import Model
+from routemq.queue.models import QueueFailedJob as CoreQueueFailedJob
 
 
 class TestAppQueueFailedJobModel(unittest.TestCase):

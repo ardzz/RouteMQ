@@ -112,7 +112,7 @@ services:
       args:
         TIMEZONE: ${TIMEZONE:-Asia/Jakarta}
     container_name: routemq-queue-default
-    command: ["uv", "run", "python", "main.py", "--queue-work", "--queue", "default", "--sleep", "3"]
+    command: ["uv", "run", "routemq", "--queue-work", "--queue", "default", "--sleep", "3"]
     environment:
       ENABLE_MYSQL: ${ENABLE_MYSQL:-true}
       DB_HOST: ${DB_HOST:-mysql}
@@ -164,7 +164,7 @@ services:
       args:
         TIMEZONE: ${TIMEZONE:-Asia/Jakarta}
     container_name: routemq-queue-high
-    command: ["uv", "run", "python", "main.py", "--queue-work", "--queue", "high-priority", "--sleep", "1"]
+    command: ["uv", "run", "routemq", "--queue-work", "--queue", "high-priority", "--sleep", "1"]
     environment:
       ENABLE_MYSQL: ${ENABLE_MYSQL:-true}
       DB_HOST: ${DB_HOST:-mysql}
@@ -216,7 +216,7 @@ services:
       args:
         TIMEZONE: ${TIMEZONE:-Asia/Jakarta}
     container_name: routemq-queue-emails
-    command: ["uv", "run", "python", "main.py", "--queue-work", "--queue", "emails", "--sleep", "5"]
+    command: ["uv", "run", "routemq", "--queue-work", "--queue", "emails", "--sleep", "5"]
     environment:
       ENABLE_MYSQL: ${ENABLE_MYSQL:-true}
       DB_HOST: ${DB_HOST:-mysql}

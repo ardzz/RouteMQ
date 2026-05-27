@@ -85,7 +85,7 @@ LINDEX routemq:queue:failed:default 0
 Override the `failed()` method in your job to handle permanent failures:
 
 ```python
-from core.job import Job
+from routemq.job import Job
 import logging
 
 logger = logging.getLogger("MyJob")
@@ -201,7 +201,7 @@ class GenerateReportJob(Job):
 ### Get Job Details
 
 ```python
-from core.model import Model
+from routemq.model import Model
 from app.models.queue_failed_job import QueueFailedJob
 from sqlalchemy import select
 
@@ -256,8 +256,8 @@ GROUP BY queue;
 ### Manual Retry
 
 ```python
-from core.job import Job
-from core.queue.queue_manager import dispatch
+from routemq.job import Job
+from routemq.queue.queue_manager import dispatch
 
 async def retry_failed_job(failed_job_id: int):
     """Retry a specific failed job."""
@@ -342,7 +342,7 @@ WHERE id NOT IN (
 # cleanup_failed_jobs.py
 import asyncio
 from datetime import datetime, timedelta
-from core.model import Model
+from routemq.model import Model
 from app.models.queue_failed_job import QueueFailedJob
 
 async def cleanup_old_failed_jobs(days: int = 30):

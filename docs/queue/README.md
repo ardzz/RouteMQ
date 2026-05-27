@@ -40,7 +40,7 @@ The queue system consists of several components:
 
 ```python
 # 1. Create a job
-from core.job import Job
+from routemq.job import Job
 
 class SendEmailJob(Job):
     max_tries = 3
@@ -56,7 +56,7 @@ class SendEmailJob(Job):
         print(f"Sending email to {self.to}")
 
 # 2. Dispatch the job
-from core.queue.queue_manager import dispatch
+from routemq.queue.queue_manager import dispatch
 
 job = SendEmailJob()
 job.to = "user@example.com"
@@ -64,7 +64,7 @@ job.subject = "Welcome!"
 await dispatch(job)
 
 # 3. Run the worker
-# python main.py --queue-work --queue emails
+# routemq --queue-work --queue emails
 ```
 
 ## Key Features
@@ -93,7 +93,7 @@ await dispatch(job)
 ### 1. Email Notifications
 
 ```python
-from core.queue.queue_manager import dispatch
+from routemq.queue.queue_manager import dispatch
 from app.jobs.send_email_job import SendEmailJob
 
 async def handle_user_signup(context):
@@ -106,7 +106,7 @@ async def handle_user_signup(context):
 ### 2. Data Processing
 
 ```python
-from core.queue.queue_manager import queue
+from routemq.queue.queue_manager import queue
 
 job = ProcessDataJob()
 job.device_id = device_id

@@ -25,7 +25,7 @@ MYSQL_DATABASE=routemq
 All models extend the base `Model` class:
 
 ```python
-from core.model import Model, Base
+from routemq.model import Model, Base
 from sqlalchemy import Column, Integer, String, DateTime, Float
 from sqlalchemy.sql import func
 
@@ -47,7 +47,7 @@ Create model files in the `app/models/` directory:
 
 ```python
 # app/models/device_model.py
-from core.model import Model, Base
+from routemq.model import Model, Base
 from sqlalchemy import Column, Integer, String, DateTime, Float, Text
 from sqlalchemy.sql import func
 import json
@@ -92,7 +92,7 @@ class SensorDataModel(Base, Model):
 ### Basic CRUD Operations
 
 ```python
-from core.controller import Controller
+from routemq.controller import Controller
 from app.models.device_model import DeviceModel
 from sqlalchemy.future import select
 from sqlalchemy.exc import IntegrityError
@@ -184,7 +184,7 @@ class DeviceController(Controller):
 ### Sensor Data Storage
 
 ```python
-from core.controller import Controller
+from routemq.controller import Controller
 from app.models.device_model import SensorDataModel
 from sqlalchemy.future import select
 from sqlalchemy import desc
@@ -268,7 +268,7 @@ class SensorController(Controller):
 ### Complex Queries and Aggregations
 
 ```python
-from core.controller import Controller
+from routemq.controller import Controller
 from app.models.device_model import DeviceModel, SensorDataModel
 from sqlalchemy.future import select
 from sqlalchemy import func, and_, or_
@@ -392,7 +392,7 @@ class AnalyticsController(Controller):
 ### Batch Operations
 
 ```python
-from core.controller import Controller
+from routemq.controller import Controller
 from app.models.device_model import SensorDataModel
 from sqlalchemy.dialects.mysql import insert
 
@@ -449,7 +449,7 @@ class BatchController(Controller):
 ### Transaction Management
 
 ```python
-from core.controller import Controller
+from routemq.controller import Controller
 from app.models.device_model import DeviceModel, SensorDataModel
 from sqlalchemy.future import select
 
@@ -534,7 +534,7 @@ async def handle_with_fallback(device_id: str, payload, client):
     
     if not session:
         # Database not available - use alternative storage
-        from core.redis_manager import redis_manager
+        from routemq.redis_manager import redis_manager
         
         if redis_manager.is_enabled():
             # Fallback to Redis

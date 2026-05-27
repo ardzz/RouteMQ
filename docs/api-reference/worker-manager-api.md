@@ -9,7 +9,7 @@ The `WorkerManager` class manages multiple worker processes to enable horizontal
 ### Import
 
 ```python
-from core.worker_manager import WorkerManager
+from routemq.worker_manager import WorkerManager
 ```
 
 ### Constructor
@@ -25,8 +25,8 @@ WorkerManager(router, group_name=None, router_directory="app.routers")
 
 **Example:**
 ```python
-from core.router import Router
-from core.worker_manager import WorkerManager
+from routemq.router import Router
+from routemq.worker_manager import WorkerManager
 
 # Create router with shared routes
 router = Router()
@@ -185,8 +185,8 @@ Individual worker process that handles MQTT subscriptions. This class is used in
 ### Basic Usage
 
 ```python
-from core.router import Router
-from core.worker_manager import WorkerManager
+from routemq.router import Router
+from routemq.worker_manager import WorkerManager
 from app.controllers.telemetry_controller import TelemetryController
 
 # Define routes with shared subscriptions
@@ -219,7 +219,7 @@ worker_manager.stop_workers()
 ```python
 import os
 import signal
-from core.worker_manager import WorkerManager
+from routemq.worker_manager import WorkerManager
 
 class ScalableApplication:
     def __init__(self):
@@ -233,7 +233,7 @@ class ScalableApplication:
     
     def _setup_router(self):
         # Router configuration loaded from external files
-        from core.router_registry import RouterRegistry
+        from routemq.router_registry import RouterRegistry
         registry = RouterRegistry("app.routers")
         return registry.discover_and_load_routers()
     
@@ -278,7 +278,7 @@ app.start()
 ```python
 import asyncio
 import time
-from core.redis_manager import redis_manager
+from routemq.redis_manager import redis_manager
 
 class DynamicWorkerManager:
     def __init__(self, worker_manager: WorkerManager):

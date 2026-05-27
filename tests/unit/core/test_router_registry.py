@@ -4,8 +4,8 @@ from types import ModuleType, SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
-from core.router import Router
-from core.router_registry import RouterRegistry, create_dynamic_router
+from routemq.router import Router
+from routemq.router_registry import RouterRegistry, create_dynamic_router
 
 
 def _make_router_module(name: str, routes: list[Any]) -> ModuleType:
@@ -64,8 +64,8 @@ class RouterRegistryDiscoveryHappyPathTests(unittest.TestCase):
         ]
 
         with (
-            patch('core.router_registry.pkgutil.iter_modules', return_value=iter_modules_return),
-            patch('core.router_registry.importlib.import_module') as mock_import,
+            patch('routemq.router_registry.pkgutil.iter_modules', return_value=iter_modules_return),
+            patch('routemq.router_registry.importlib.import_module') as mock_import,
         ):
             mock_import.side_effect = [fake_package, module_a, module_b]
 
@@ -86,8 +86,8 @@ class RouterRegistryDiscoveryHappyPathTests(unittest.TestCase):
         ]
 
         with (
-            patch('core.router_registry.pkgutil.iter_modules', return_value=iter_modules_return),
-            patch('core.router_registry.importlib.import_module') as mock_import,
+            patch('routemq.router_registry.pkgutil.iter_modules', return_value=iter_modules_return),
+            patch('routemq.router_registry.importlib.import_module') as mock_import,
         ):
             mock_import.side_effect = [fake_package, module_public]
 
@@ -111,8 +111,8 @@ class RouterRegistryDiscoveryHappyPathTests(unittest.TestCase):
         ]
 
         with (
-            patch('core.router_registry.pkgutil.iter_modules', return_value=iter_modules_return),
-            patch('core.router_registry.importlib.import_module') as mock_import,
+            patch('routemq.router_registry.pkgutil.iter_modules', return_value=iter_modules_return),
+            patch('routemq.router_registry.importlib.import_module') as mock_import,
         ):
             mock_import.side_effect = [fake_package, module_real]
 
@@ -127,8 +127,8 @@ class RouterRegistryDiscoveryHappyPathTests(unittest.TestCase):
         fake_package = SimpleNamespace(__path__=['/fake/path'])
 
         with (
-            patch('core.router_registry.pkgutil.iter_modules', return_value=[]),
-            patch('core.router_registry.importlib.import_module', return_value=fake_package),
+            patch('routemq.router_registry.pkgutil.iter_modules', return_value=[]),
+            patch('routemq.router_registry.importlib.import_module', return_value=fake_package),
         ):
             registry = RouterRegistry()
             result = registry.discover_and_load_routers()
@@ -146,7 +146,7 @@ class RouterRegistryDiscoveryErrorPathTests(unittest.TestCase):
 
     def test_import_error_on_root_package_returns_empty_router(self) -> None:
         with patch(
-            'core.router_registry.importlib.import_module',
+            'routemq.router_registry.importlib.import_module',
             side_effect=ImportError('boom'),
         ):
             registry = RouterRegistry()
@@ -157,7 +157,7 @@ class RouterRegistryDiscoveryErrorPathTests(unittest.TestCase):
 
     def test_generic_exception_on_root_package_returns_empty_router(self) -> None:
         with patch(
-            'core.router_registry.importlib.import_module',
+            'routemq.router_registry.importlib.import_module',
             side_effect=RuntimeError('unexpected'),
         ):
             registry = RouterRegistry()
@@ -173,8 +173,8 @@ class RouterRegistryDiscoveryErrorPathTests(unittest.TestCase):
         iter_modules_return = [(None, 'bare', False)]
 
         with (
-            patch('core.router_registry.pkgutil.iter_modules', return_value=iter_modules_return),
-            patch('core.router_registry.importlib.import_module') as mock_import,
+            patch('routemq.router_registry.pkgutil.iter_modules', return_value=iter_modules_return),
+            patch('routemq.router_registry.importlib.import_module') as mock_import,
         ):
             mock_import.side_effect = [fake_package, bare_module]
 
@@ -191,8 +191,8 @@ class RouterRegistryDiscoveryErrorPathTests(unittest.TestCase):
         iter_modules_return = [(None, 'bad', False)]
 
         with (
-            patch('core.router_registry.pkgutil.iter_modules', return_value=iter_modules_return),
-            patch('core.router_registry.importlib.import_module') as mock_import,
+            patch('routemq.router_registry.pkgutil.iter_modules', return_value=iter_modules_return),
+            patch('routemq.router_registry.importlib.import_module') as mock_import,
         ):
             mock_import.side_effect = [fake_package, bad_module]
 
@@ -220,8 +220,8 @@ class RouterRegistryDiscoveryErrorPathTests(unittest.TestCase):
             raise AssertionError(f'unexpected import: {name}')
 
         with (
-            patch('core.router_registry.pkgutil.iter_modules', return_value=iter_modules_return),
-            patch('core.router_registry.importlib.import_module', side_effect=import_side_effect),
+            patch('routemq.router_registry.pkgutil.iter_modules', return_value=iter_modules_return),
+            patch('routemq.router_registry.importlib.import_module', side_effect=import_side_effect),
         ):
             registry = RouterRegistry()
             registry.discover_and_load_routers()
@@ -247,8 +247,8 @@ class RouterRegistryDiscoveryErrorPathTests(unittest.TestCase):
             raise AssertionError(f'unexpected import: {name}')
 
         with (
-            patch('core.router_registry.pkgutil.iter_modules', return_value=iter_modules_return),
-            patch('core.router_registry.importlib.import_module', side_effect=import_side_effect),
+            patch('routemq.router_registry.pkgutil.iter_modules', return_value=iter_modules_return),
+            patch('routemq.router_registry.importlib.import_module', side_effect=import_side_effect),
         ):
             registry = RouterRegistry()
             registry.discover_and_load_routers()
@@ -295,7 +295,7 @@ class CreateDynamicRouterTests(unittest.TestCase):
         self.addCleanup(logger.setLevel, original_level)
 
     def test_uses_default_directory(self) -> None:
-        with patch('core.router_registry.RouterRegistry') as mock_registry_cls:
+        with patch('routemq.router_registry.RouterRegistry') as mock_registry_cls:
             mock_instance = MagicMock()
             mock_instance.discover_and_load_routers.return_value = 'sentinel'
             mock_registry_cls.return_value = mock_instance
@@ -307,7 +307,7 @@ class CreateDynamicRouterTests(unittest.TestCase):
         self.assertEqual(result, 'sentinel')
 
     def test_passes_custom_directory(self) -> None:
-        with patch('core.router_registry.RouterRegistry') as mock_registry_cls:
+        with patch('routemq.router_registry.RouterRegistry') as mock_registry_cls:
             mock_instance = MagicMock()
             mock_instance.discover_and_load_routers.return_value = 'sentinel'
             mock_registry_cls.return_value = mock_instance

@@ -9,7 +9,7 @@ RouteMQ provides async database operations through the Model base class and SQLA
 #### Using Model.create()
 
 ```python
-from core.model import Model
+from routemq.model import Model
 from app.models.sensor_reading import SensorReading
 
 # Create a new sensor reading
@@ -28,7 +28,7 @@ print(f"Created reading with ID: {reading.id}")
 #### Using Session Directly
 
 ```python
-from core.model import Model
+from routemq.model import Model
 from app.models.device import Device
 
 async def create_device():
@@ -541,8 +541,8 @@ async def search_devices(filters: dict):
 ### Controller Integration
 
 ```python
-from core.controller import Controller
-from core.model import Model
+from routemq.controller import Controller
+from routemq.model import Model
 from app.models.sensor_reading import SensorReading
 from app.models.device import Device
 

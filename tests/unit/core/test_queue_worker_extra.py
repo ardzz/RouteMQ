@@ -3,7 +3,7 @@ import unittest
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from core.queue.queue_worker import QueueWorker
+from routemq.queue.queue_worker import QueueWorker
 
 
 class _DummyJob:
@@ -83,7 +83,7 @@ class QueueWorkerShouldStopTests(_WorkerSignalGuard):
         worker = self._make_worker(max_time=5)
         worker.start_time = 1000.0
         with patch(
-            'core.queue.queue_worker.asyncio.get_event_loop',
+            'routemq.queue.queue_worker.asyncio.get_event_loop',
             return_value=MagicMock(time=MagicMock(return_value=1100.0)),
         ):
             self.assertTrue(worker._should_stop())
@@ -98,7 +98,7 @@ class QueueWorkerProcessJobTests(_WorkerSignalGuard):
         worker._fail_job = AsyncMock()
 
         job = _DummyJob()
-        with patch('core.queue.queue_worker.Job') as mock_job_cls:
+        with patch('routemq.queue.queue_worker.Job') as mock_job_cls:
             mock_job_cls.unserialize.return_value = job
             await worker._process_job({'id': 'j1', 'payload': 'p', 'attempts': 5})
 
@@ -112,7 +112,7 @@ class QueueWorkerProcessJobTests(_WorkerSignalGuard):
         worker.driver.failed = AsyncMock()
 
         job = _DummyJob()
-        with patch('core.queue.queue_worker.Job') as mock_job_cls:
+        with patch('routemq.queue.queue_worker.Job') as mock_job_cls:
             mock_job_cls.unserialize.return_value = job
             await worker._process_job({'id': 'j1', 'payload': 'p', 'attempts': 1})
 
@@ -132,9 +132,9 @@ class QueueWorkerProcessJobTests(_WorkerSignalGuard):
         job = _DummyJob(timeout=0)
         job.handle = slow_handle  # type: ignore[method-assign]
         with (
-            patch('core.queue.queue_worker.Job') as mock_job_cls,
+            patch('routemq.queue.queue_worker.Job') as mock_job_cls,
             patch(
-                'core.queue.queue_worker.asyncio.wait_for',
+                'routemq.queue.queue_worker.asyncio.wait_for',
                 AsyncMock(side_effect=asyncio.TimeoutError()),
             ),
         ):
@@ -150,7 +150,7 @@ class QueueWorkerProcessJobTests(_WorkerSignalGuard):
         worker.driver.release = AsyncMock()
 
         job = _DummyJob(raises=RuntimeError('boom'))
-        with patch('core.queue.queue_worker.Job') as mock_job_cls:
+        with patch('routemq.queue.queue_worker.Job') as mock_job_cls:
             mock_job_cls.unserialize.return_value = job
             await worker._process_job({'id': 'j1', 'payload': 'p', 'attempts': 1})
 
@@ -163,7 +163,7 @@ class QueueWorkerProcessJobTests(_WorkerSignalGuard):
         worker._fail_job = AsyncMock()
 
         job = _DummyJob(raises=RuntimeError('boom'))
-        with patch('core.queue.queue_worker.Job') as mock_job_cls:
+        with patch('routemq.queue.queue_worker.Job') as mock_job_cls:
             mock_job_cls.unserialize.return_value = job
             await worker._process_job({'id': 'j1', 'payload': 'p', 'attempts': 2})
 
@@ -174,7 +174,7 @@ class QueueWorkerProcessJobTests(_WorkerSignalGuard):
         worker.driver = MagicMock()
         worker.driver.delete = AsyncMock()
 
-        with patch('core.queue.queue_worker.Job') as mock_job_cls:
+        with patch('routemq.queue.queue_worker.Job') as mock_job_cls:
             mock_job_cls.unserialize.side_effect = ValueError('cannot unserialize')
             await worker._process_job({'id': 'j1', 'payload': 'garbage', 'attempts': 1})
 
@@ -275,7 +275,7 @@ class QueueWorkerWorkLoopTests(_WorkerSignalGuard):
         worker.driver = cast(Any, driver)
 
         job = _DummyJob(raises=RuntimeError('boom'))
-        with patch('core.queue.queue_worker.Job') as mock_job_cls:
+        with patch('routemq.queue.queue_worker.Job') as mock_job_cls:
             mock_job_cls.unserialize.side_effect = [ValueError('first fail'), job]
             await worker._process_job({'id': 'j1', 'payload': 'p', 'attempts': 2})
 
@@ -288,7 +288,7 @@ class QueueWorkerShouldStopExtraTests(_WorkerSignalGuard):
         worker = self._make_worker(max_time=10)
         worker.start_time = 1000.0
         with patch(
-            'core.queue.queue_worker.asyncio.get_event_loop',
+            'routemq.queue.queue_worker.asyncio.get_event_loop',
             return_value=MagicMock(time=MagicMock(return_value=1005.0)),
         ):
             self.assertFalse(worker._should_stop())

@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime
 
-from core.queue.models import QueueFailedJob, QueueJob
+from routemq.queue.models import QueueFailedJob, QueueJob
 
 
 class TestQueueJobRepr(unittest.TestCase):

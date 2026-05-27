@@ -60,7 +60,7 @@ def _setup_database(self):
 You can also configure the database manually:
 
 ```python
-from core.model import Model
+from routemq.model import Model
 
 # Configure with custom connection string
 Model.configure("mysql+aiomysql://user:pass@localhost:3306/mydb")

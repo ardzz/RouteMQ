@@ -27,7 +27,7 @@ Chat Clients <-> MQTT <-> RouteMQ Chat Router <-> Redis/Database
 
 ```python
 # app/routers/chat.py
-from core.router import Router
+from routemq.router import Router
 from app.controllers.chat_controller import ChatController
 from app.middleware.auth import AuthMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
@@ -91,8 +91,8 @@ with router.group(prefix="chat/admin", middleware=[auth]) as admin:
 
 ```python
 # app/controllers/chat_controller.py
-from core.controller import Controller
-from core.redis_manager import redis_manager
+from routemq.controller import Controller
+from routemq.redis_manager import redis_manager
 from app.models.user import User
 from app.services.chat_service import ChatService
 from app.services.file_service import FileService
@@ -676,7 +676,7 @@ class ChatController(Controller):
 
 ```python
 # app/middleware/message_validation.py
-from core.middleware import Middleware
+from routemq.middleware import Middleware
 import re
 
 class MessageValidationMiddleware(Middleware):

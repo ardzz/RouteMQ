@@ -7,7 +7,7 @@ Jobs are classes that extend the `Job` base class. Each job must implement the `
 ```python
 # app/jobs/send_notification_job.py
 import logging
-from core.job import Job
+from routemq.job import Job
 
 logger = logging.getLogger("RouteMQ.Jobs.SendNotificationJob")
 
@@ -138,7 +138,7 @@ async def failed(self, exception: Exception) -> None:
 
 ```python
 import asyncio
-from core.job import Job
+from routemq.job import Job
 
 class SendEmailJob(Job):
     max_tries = 3
@@ -168,7 +168,7 @@ class SendEmailJob(Job):
 ### Example 2: Data Processing Job
 
 ```python
-from core.job import Job
+from routemq.job import Job
 
 class ProcessDataJob(Job):
     max_tries = 5
@@ -203,7 +203,7 @@ class ProcessDataJob(Job):
 
 ```python
 from datetime import datetime
-from core.job import Job
+from routemq.job import Job
 
 class GenerateReportJob(Job):
     max_tries = 2

@@ -5,14 +5,14 @@ from datetime import datetime
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from core.job import Job
-from core.model import Model
-from core.queue.database_queue import DatabaseQueue
-from core.queue.models import QueueFailedJob, QueueJob
-from core.queue.queue_driver import QueueDriver
-from core.queue.queue_manager import QueueManager, dispatch, queue
-from core.queue.queue_worker import QueueWorker
-from core.queue.redis_queue import RedisQueue
+from routemq.job import Job
+from routemq.model import Model
+from routemq.queue.database_queue import DatabaseQueue
+from routemq.queue.models import QueueFailedJob, QueueJob
+from routemq.queue.queue_driver import QueueDriver
+from routemq.queue.queue_manager import QueueManager, dispatch, queue
+from routemq.queue.queue_worker import QueueWorker
+from routemq.queue.redis_queue import RedisQueue
 
 
 class QueueTestJob(Job):
@@ -70,7 +70,7 @@ class TestQueueManager(QueueTestCase):
         redis_manager = MagicMock()
         redis_manager.is_enabled.return_value = True
 
-        with patch('core.queue.queue_manager.RedisManager', return_value=redis_manager):
+        with patch('routemq.queue.queue_manager.RedisManager', return_value=redis_manager):
             driver = manager.get_driver('redis')
 
         self.assertIsInstance(driver, RedisQueue)
@@ -80,7 +80,7 @@ class TestQueueManager(QueueTestCase):
         redis_manager = MagicMock()
         redis_manager.is_enabled.return_value = False
 
-        with patch('core.queue.queue_manager.RedisManager', return_value=redis_manager):
+        with patch('routemq.queue.queue_manager.RedisManager', return_value=redis_manager):
             with patch.object(Model, '_is_enabled', True):
                 driver = manager.get_driver('redis')
 

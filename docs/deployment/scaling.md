@@ -20,7 +20,7 @@ RouteMQ's built-in shared subscription support enables horizontal scaling:
 
 ```python
 # Enable shared subscriptions in your routes
-from core.router import Router
+from routemq.router import Router
 
 router = Router()
 
@@ -355,7 +355,7 @@ class MemoryManager:
 #### Dynamic Worker Adjustment
 
 ```python
-# core/dynamic_worker_manager.py
+# routemq/dynamic_worker_manager.py
 import asyncio
 import psutil
 import time

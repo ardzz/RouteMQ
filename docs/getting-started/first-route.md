@@ -9,8 +9,8 @@ Learn how to create your first MQTT route in RouteMQ.
 Create a new file `app/routers/my_first_router.py`:
 
 ```python
-from core.router import Router
-from core.controller import Controller
+from routemq.router import Router
+from routemq.controller import Controller
 
 router = Router()
 
@@ -33,7 +33,7 @@ router.on("hello/{name}", MyController.handle_hello, qos=1)
 Start the application:
 
 ```bash
-uv run python main.py --run
+uv run routemq --run
 ```
 
 Publish a test message to your route using an MQTT client:

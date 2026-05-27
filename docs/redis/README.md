@@ -19,8 +19,8 @@ REDIS_MAX_CONNECTIONS=10
 ## Using Redis in Controllers
 
 ```python
-from core.redis_manager import redis_manager
-from core.controller import Controller
+from routemq.redis_manager import redis_manager
+from routemq.controller import Controller
 
 class SensorController(Controller):
     @staticmethod
@@ -41,7 +41,7 @@ class SensorController(Controller):
 The Redis manager provides comprehensive async operations:
 
 ```python
-from core.redis_manager import redis_manager
+from routemq.redis_manager import redis_manager
 
 # Basic operations
 await redis_manager.set("key", "value", ex=60)  # Set with expiration

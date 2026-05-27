@@ -1,7 +1,7 @@
 import logging
 import unittest
 
-from core.job import Job
+from routemq.job import Job
 
 
 class _LoggingJob(Job):

@@ -4,7 +4,7 @@ import unittest
 from collections.abc import MutableSequence
 from typing import Any, cast
 
-from core.job import Job
+from routemq.job import Job
 
 
 class SerializableJob(Job):

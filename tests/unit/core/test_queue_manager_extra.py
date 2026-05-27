@@ -2,8 +2,8 @@ import os
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from core.queue.queue_driver import QueueDriver
-from core.queue.queue_manager import QueueManager
+from routemq.queue.queue_driver import QueueDriver
+from routemq.queue.queue_manager import QueueManager
 
 
 class QueueManagerExtraTestCase(unittest.IsolatedAsyncioTestCase):

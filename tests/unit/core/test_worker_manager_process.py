@@ -3,8 +3,8 @@ import unittest
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
-from core.router import Router
-from core.worker_manager import WorkerProcess, worker_process_main
+from routemq.router import Router
+from routemq.worker_manager import WorkerProcess, worker_process_main
 
 
 def _make_worker(
@@ -33,7 +33,7 @@ class WorkerProcessSetupRouterTests(unittest.TestCase):
     def test_setup_router_loads_from_registry_when_directory_set(self) -> None:
         worker = _make_worker(router_directory='custom.routers')
         fake_router = Router()
-        with patch('core.worker_manager.RouterRegistry') as mock_registry_cls:
+        with patch('routemq.worker_manager.RouterRegistry') as mock_registry_cls:
             mock_instance = MagicMock()
             mock_instance.discover_and_load_routers.return_value = fake_router
             mock_registry_cls.return_value = mock_instance
@@ -52,7 +52,7 @@ class WorkerProcessSetupRouterTests(unittest.TestCase):
     def test_setup_router_falls_back_to_empty_on_exception(self) -> None:
         worker = _make_worker(router_directory='broken.routers')
         with patch(
-            'core.worker_manager.RouterRegistry',
+            'routemq.worker_manager.RouterRegistry',
             side_effect=RuntimeError('registry boom'),
         ):
             worker.setup_router()
@@ -181,7 +181,7 @@ class WorkerProcessRunTests(unittest.TestCase):
 
         with (
             patch('paho.mqtt.client.Client', return_value=fake_client),
-            patch('core.worker_manager.time.sleep', side_effect=KeyboardInterrupt()),
+            patch('routemq.worker_manager.time.sleep', side_effect=KeyboardInterrupt()),
             patch.object(worker, 'setup_router'),
         ):
             worker.run()
@@ -194,7 +194,10 @@ class WorkerProcessRunTests(unittest.TestCase):
 
 class WorkerProcessMainEntryTests(unittest.TestCase):
     def test_worker_process_main_constructs_and_runs(self) -> None:
-        with patch('core.worker_manager.WorkerProcess') as mock_cls, patch('core.worker_manager.logging.basicConfig'):
+        with (
+            patch('routemq.worker_manager.WorkerProcess') as mock_cls,
+            patch('routemq.worker_manager.logging.basicConfig'),
+        ):
             instance = MagicMock()
             mock_cls.return_value = instance
             worker_process_main(7, 'r', [], {'broker': 'h', 'port': '1883'}, 'group')

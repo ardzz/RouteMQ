@@ -12,8 +12,8 @@ Middleware allows you to process messages before they reach route handlers.
 Middleware processes messages in a chain before reaching the final handler:
 
 ```python
-from core.middleware import Middleware
-from core.redis_manager import redis_manager
+from routemq.middleware import Middleware
+from routemq.redis_manager import redis_manager
 import time
 
 class LoggingMiddleware(Middleware):

@@ -17,7 +17,7 @@ The RouterRegistry class provides automatic route discovery and loading capabili
 ### Discovery Process
 
 ```python
-from core.router_registry import RouterRegistry
+from routemq.router_registry import RouterRegistry
 
 # Create registry with default directory
 registry = RouterRegistry("app.routers")
@@ -52,7 +52,7 @@ Each router file must export a `router` variable:
 
 ```python
 # app/routers/devices.py
-from core.router import Router
+from routemq.router import Router
 from app.controllers.device_controller import DeviceController
 from app.middleware.auth_middleware import AuthMiddleware
 
@@ -96,7 +96,7 @@ for registry in registries:
 
 ```python
 import os
-from core.router_registry import RouterRegistry
+from routemq.router_registry import RouterRegistry
 
 def create_router_registry():
     """Create router registry based on environment"""
@@ -122,7 +122,7 @@ Organize routes by functional domain:
 
 ```python
 # app/routers/iot_devices.py
-from core.router import Router
+from routemq.router import Router
 from app.controllers.iot_controller import IoTController
 
 router = Router()
@@ -136,7 +136,7 @@ with router.group(prefix="iot") as iot:
 
 ```python
 # app/routers/user_management.py
-from core.router import Router
+from routemq.router import Router
 from app.controllers.user_controller import UserController
 from app.middleware.auth_middleware import AuthMiddleware
 
@@ -155,7 +155,7 @@ with router.group(prefix="users", middleware=auth_required) as users:
 
 ```python
 # app/routers/monitoring.py
-from core.router import Router
+from routemq.router import Router
 from app.controllers.monitoring_controller import MonitoringController
 
 router = Router()
@@ -178,7 +178,7 @@ with router.group(prefix="monitoring") as monitor:
 ```python
 # app/routers/debug_routes.py
 import os
-from core.router import Router
+from routemq.router import Router
 from app.controllers.debug_controller import DebugController
 
 router = Router()
@@ -197,7 +197,7 @@ else:
 
 ```python
 # app/routers/dynamic_sensors.py
-from core.router import Router
+from routemq.router import Router
 from app.controllers.sensor_controller import SensorController
 
 router = Router()
@@ -221,7 +221,7 @@ for sensor_type in sensor_types:
 # app/routers/plugin_loader.py
 import importlib
 import os
-from core.router import Router
+from routemq.router import Router
 
 router = Router()
 
@@ -280,7 +280,7 @@ INFO - Successfully loaded 25 total routes from 3 modules
 #### Missing Router Variable
 ```python
 # ❌ Wrong: No router variable exported
-from core.router import Router
+from routemq.router import Router
 
 my_router = Router()  # Not named 'router'
 my_router.on("test", handler)
@@ -317,7 +317,7 @@ from app.middleware.my_middleware import MyMiddleware
 
 ```python
 import pytest
-from core.router_registry import RouterRegistry
+from routemq.router_registry import RouterRegistry
 
 def test_router_discovery():
     """Test that router discovery works correctly"""

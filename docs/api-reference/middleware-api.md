@@ -9,7 +9,7 @@ The `Middleware` class is an abstract base class that all middleware components 
 ### Import
 
 ```python
-from core.middleware import Middleware
+from routemq.middleware import Middleware
 ```
 
 ### Abstract Methods
@@ -61,7 +61,7 @@ class MyMiddleware(Middleware):
 ### Basic Middleware Pattern
 
 ```python
-from core.middleware import Middleware
+from routemq.middleware import Middleware
 from typing import Dict, Any, Callable, Awaitable
 
 class LoggingMiddleware(Middleware):
@@ -148,7 +148,7 @@ class AuthMiddleware(Middleware):
 ```python
 import time
 from collections import defaultdict
-from core.redis_manager import redis_manager
+from routemq.redis_manager import redis_manager
 
 class RateLimitMiddleware(Middleware):
     def __init__(self, max_requests: int = 100, window_seconds: int = 60, 
@@ -288,7 +288,7 @@ device_validator = ValidationMiddleware(
 ```python
 import time
 import psutil
-from core.redis_manager import redis_manager
+from routemq.redis_manager import redis_manager
 
 class MonitoringMiddleware(Middleware):
     def __init__(self, track_performance: bool = True, track_errors: bool = True):

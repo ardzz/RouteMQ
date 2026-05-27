@@ -1,1 +1,1 @@
-from core.queue.models import QueueFailedJob  # noqa: F401  # Re-exported for backward compatibility
+from routemq.queue.models import QueueFailedJob  # noqa: F401  # Re-exported for backward compatibility

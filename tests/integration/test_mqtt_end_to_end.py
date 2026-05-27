@@ -8,7 +8,7 @@ import paho.mqtt.client as mqtt_client
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
 
-from core.router import Router
+from routemq.router import Router
 
 
 _MOSQUITTO_INLINE_CONFIG = 'listener 1883\\nallow_anonymous true'

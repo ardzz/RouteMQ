@@ -24,8 +24,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 COPY pyproject.toml README.md uv.lock* ./
 COPY app ./app
 COPY bootstrap ./bootstrap
-COPY core ./core
-COPY main.py ./
+COPY routemq ./routemq
 
 RUN if [ -f uv.lock ]; then uv sync --no-dev --frozen; else uv sync --no-dev; fi
 
@@ -53,12 +52,11 @@ COPY pyproject.toml README.md ./
 COPY --from=builder /app/.venv ./.venv
 COPY --from=builder /app/app ./app
 COPY --from=builder /app/bootstrap ./bootstrap
-COPY --from=builder /app/core ./core
-COPY --from=builder /app/main.py ./
+COPY --from=builder /app/routemq ./routemq
 
 RUN groupadd --system app && useradd --system --no-create-home --gid app --shell /sbin/nologin app && \
     chown -R app:app /app
 
 USER app
 
-CMD ["uv", "run", "python", "main.py", "--run"]
+CMD ["uv", "run", "routemq", "--run"]

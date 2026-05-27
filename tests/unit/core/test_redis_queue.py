@@ -4,7 +4,7 @@ import unittest
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from core.queue.redis_queue import RedisQueue
+from routemq.queue.redis_queue import RedisQueue
 
 
 class _RedisQueueBase(unittest.IsolatedAsyncioTestCase):
@@ -203,8 +203,8 @@ class RedisQueueFailedTests(_RedisQueueBase):
         driver = self._make_driver()
 
         with (
-            patch('core.queue.redis_queue.Model') as mock_model,
-            patch('core.queue.redis_queue.QueueFailedJob') as mock_failed_cls,
+            patch('routemq.queue.redis_queue.Model') as mock_model,
+            patch('routemq.queue.redis_queue.QueueFailedJob') as mock_failed_cls,
         ):
             mock_model._is_enabled = True
             mock_model.get_session = AsyncMock(return_value=session)
@@ -221,7 +221,7 @@ class RedisQueueFailedTests(_RedisQueueBase):
         client.rpush = AsyncMock()
         driver = self._make_driver(client=client)
 
-        with patch('core.queue.redis_queue.Model') as mock_model:
+        with patch('routemq.queue.redis_queue.Model') as mock_model:
             mock_model._is_enabled = False
             await driver.failed('redis', 'q', 'p', 'exc')
 
@@ -229,7 +229,7 @@ class RedisQueueFailedTests(_RedisQueueBase):
 
     async def test_failed_logs_when_both_backends_disabled(self) -> None:
         driver = self._make_driver(enabled=False)
-        with patch('core.queue.redis_queue.Model') as mock_model:
+        with patch('routemq.queue.redis_queue.Model') as mock_model:
             mock_model._is_enabled = False
             await driver.failed('redis', 'q', 'p', 'exc')
 

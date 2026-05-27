@@ -9,8 +9,8 @@ RouteMQ includes a built-in Redis manager that provides async operations with co
 ### Basic Usage
 
 ```python
-from core.controller import Controller
-from core.redis_manager import redis_manager
+from routemq.controller import Controller
+from routemq.redis_manager import redis_manager
 import json
 
 class CachedController(Controller):
@@ -54,8 +54,8 @@ REDIS_SOCKET_CONNECT_TIMEOUT=5.0
 ### String Operations
 
 ```python
-from core.controller import Controller
-from core.redis_manager import redis_manager
+from routemq.controller import Controller
+from routemq.redis_manager import redis_manager
 
 class StringController(Controller):
     @staticmethod
@@ -96,8 +96,8 @@ class StringController(Controller):
 ### JSON Operations
 
 ```python
-from core.controller import Controller
-from core.redis_manager import redis_manager
+from routemq.controller import Controller
+from routemq.redis_manager import redis_manager
 import time
 
 class JsonController(Controller):
@@ -147,8 +147,8 @@ class JsonController(Controller):
 ### Hash Operations
 
 ```python
-from core.controller import Controller
-from core.redis_manager import redis_manager
+from routemq.controller import Controller
+from routemq.redis_manager import redis_manager
 
 class HashController(Controller):
     @staticmethod
@@ -177,8 +177,8 @@ class HashController(Controller):
 ### Caching with Fallback
 
 ```python
-from core.controller import Controller
-from core.redis_manager import redis_manager
+from routemq.controller import Controller
+from routemq.redis_manager import redis_manager
 import json
 
 class CacheController(Controller):
@@ -223,8 +223,8 @@ class CacheController(Controller):
 ### Rate Limiting
 
 ```python
-from core.controller import Controller
-from core.redis_manager import redis_manager
+from routemq.controller import Controller
+from routemq.redis_manager import redis_manager
 import time
 
 class RateLimitController(Controller):
@@ -279,8 +279,8 @@ class RateLimitController(Controller):
 ### Session Management
 
 ```python
-from core.controller import Controller
-from core.redis_manager import redis_manager
+from routemq.controller import Controller
+from routemq.redis_manager import redis_manager
 import uuid
 import time
 
@@ -350,8 +350,8 @@ class SessionController(Controller):
 ### Distributed Locking
 
 ```python
-from core.controller import Controller
-from core.redis_manager import redis_manager
+from routemq.controller import Controller
+from routemq.redis_manager import redis_manager
 import asyncio
 import time
 
@@ -401,8 +401,8 @@ class LockController(Controller):
 Always handle Redis errors gracefully:
 
 ```python
-from core.controller import Controller
-from core.redis_manager import redis_manager
+from routemq.controller import Controller
+from routemq.redis_manager import redis_manager
 import logging
 
 class RobustController(Controller):

@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from core.job import Job
+from routemq.job import Job
 
 logger = logging.getLogger('RouteMQ.Jobs.ProcessDataJob')
 
@@ -13,7 +13,7 @@ class ProcessDataJob(Job):
 
     Usage:
         from app.jobs.example_data_processing_job import ProcessDataJob
-        from core.queue.queue_manager import dispatch
+        from routemq.queue.queue_manager import dispatch
 
         # Dispatch the job
         job = ProcessDataJob()

@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from core.job import Job
+from routemq.job import Job
 
 logger = logging.getLogger('RouteMQ.Jobs.SendEmailJob')
 
@@ -11,7 +11,7 @@ class SendEmailJob(Job):
 
     Usage:
         from app.jobs.example_email_job import SendEmailJob
-        from core.queue.queue_manager import dispatch
+        from routemq.queue.queue_manager import dispatch
 
         # Dispatch the job
         job = SendEmailJob()

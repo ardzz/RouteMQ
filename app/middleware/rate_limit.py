@@ -1,8 +1,8 @@
 import time
 from typing import Dict, Optional, List
 
-from core.middleware import Middleware
-from core.redis_manager import redis_manager
+from routemq.middleware import Middleware
+from routemq.redis_manager import redis_manager
 
 
 class RateLimitMiddleware(Middleware):

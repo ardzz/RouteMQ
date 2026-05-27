@@ -3,7 +3,7 @@ import unittest
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from core.model import Model
+from routemq.model import Model
 
 
 class _StubModel:
@@ -60,7 +60,7 @@ class ModelFindTests(ModelStateGuard):
 
         with (
             patch.object(Model, 'get_session', AsyncMock(return_value=session)),
-            patch('core.model.select', return_value=MagicMock()),
+            patch('routemq.model.select', return_value=MagicMock()),
         ):
             result = await Model.find(_StubModel, 42)
 
@@ -86,7 +86,7 @@ class ModelAllTests(ModelStateGuard):
 
         with (
             patch.object(Model, 'get_session', AsyncMock(return_value=session)),
-            patch('core.model.select', return_value=MagicMock()),
+            patch('routemq.model.select', return_value=MagicMock()),
         ):
             result = await Model.all(_StubModel)
 

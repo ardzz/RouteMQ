@@ -1,6 +1,6 @@
 import unittest
 
-from core.queue.queue_driver import QueueDriver
+from routemq.queue.queue_driver import QueueDriver
 
 
 class _StubDriver(QueueDriver):

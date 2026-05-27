@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.model import Base, Model
+from routemq.model import Base, Model
 
 
 class TestModelLifecycle(unittest.IsolatedAsyncioTestCase):
@@ -28,8 +28,8 @@ class TestModelLifecycle(unittest.IsolatedAsyncioTestCase):
         session_factory = MagicMock(name='session_factory')
 
         with (
-            patch('core.model.create_async_engine', return_value=engine) as create_async_engine,
-            patch('core.model.sessionmaker', return_value=session_factory) as sessionmaker,
+            patch('routemq.model.create_async_engine', return_value=engine) as create_async_engine,
+            patch('routemq.model.sessionmaker', return_value=session_factory) as sessionmaker,
         ):
             Model.configure('mysql+aiomysql://user:pass@db:3306/app')
 
@@ -46,8 +46,10 @@ class TestModelLifecycle(unittest.IsolatedAsyncioTestCase):
         second_factory = MagicMock(name='second_factory')
 
         with (
-            patch('core.model.create_async_engine', side_effect=[first_engine, second_engine]) as create_async_engine,
-            patch('core.model.sessionmaker', side_effect=[first_factory, second_factory]) as sessionmaker,
+            patch(
+                'routemq.model.create_async_engine', side_effect=[first_engine, second_engine]
+            ) as create_async_engine,
+            patch('routemq.model.sessionmaker', side_effect=[first_factory, second_factory]) as sessionmaker,
         ):
             Model.configure('mysql+aiomysql://first')
             Model.configure('mysql+aiomysql://second')
@@ -103,8 +105,8 @@ class TestModelLifecycle(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.dict(os.environ, {'ENABLE_MYSQL': 'false'}),
-            patch('core.model.create_async_engine', return_value=engine) as create_async_engine,
-            patch('core.model.sessionmaker', return_value=session_factory),
+            patch('routemq.model.create_async_engine', return_value=engine) as create_async_engine,
+            patch('routemq.model.sessionmaker', return_value=session_factory),
         ):
             Model.configure('mysql+aiomysql://user:pass@db:3306/app')
 

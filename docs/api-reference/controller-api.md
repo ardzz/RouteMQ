@@ -9,7 +9,7 @@ The `Controller` class is the base class that all application controllers should
 ### Import
 
 ```python
-from core.controller import Controller
+from routemq.controller import Controller
 ```
 
 ### Constructor
@@ -218,7 +218,7 @@ class DeviceController(Controller):
 Use Redis for caching and temporary data:
 
 ```python
-from core.redis_manager import redis_manager
+from routemq.redis_manager import redis_manager
 
 class CacheController(Controller):
     @staticmethod
