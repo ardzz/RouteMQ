@@ -26,6 +26,12 @@ class TestCliSubcommands(unittest.TestCase):
 
             mock_tinker.assert_called_once()
 
+    def test_tinker_alias_calls_run_tinker(self):
+        with patch('routemq.cli.tinker') as mock_tinker:
+            self._run_with_argv(['--tinker'])
+
+            mock_tinker.assert_called_once()
+
     def test_queue_work_subcommand_passes_args(self):
         with patch('routemq.cli.queue_work') as mock_qw:
             self._run_with_argv(['queue-work', '--queue', 'emails', '--sleep', '5'])
