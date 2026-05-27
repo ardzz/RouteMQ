@@ -7,7 +7,7 @@ Learn how to extract dynamic values from MQTT topics using RouteMQ's parameter s
 Route parameters are defined using curly braces `{}` in topic patterns:
 
 ```python
-from core.router import Router
+from routemq.router import Router
 from app.controllers.device_controller import DeviceController
 
 router = Router()

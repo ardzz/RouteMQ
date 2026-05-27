@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, AsyncMock
 
-from core.router import Router, Route
+from routemq.router import Router, Route
 
 
 class TestRouter(unittest.IsolatedAsyncioTestCase):
@@ -81,7 +81,7 @@ class TestRouter(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, 'devices/status')
 
     def test_group_combines_group_and_route_middleware(self):
-        from core.middleware import Middleware
+        from routemq.middleware import Middleware
 
         class _GroupMW(Middleware):
             async def handle(self, context, next_handler):
@@ -112,7 +112,7 @@ class TestRouter(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(kwargs['device_id'], '42')
 
     async def test_dispatch_runs_route_middleware_chain(self):
-        from core.middleware import Middleware
+        from routemq.middleware import Middleware
 
         call_order = []
 

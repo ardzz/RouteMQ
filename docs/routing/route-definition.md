@@ -7,7 +7,7 @@ Learn how to define routes in RouteMQ using an intuitive, Laravel-inspired synta
 Routes are defined using the `Router.on()` method, which maps MQTT topic patterns to handler functions:
 
 ```python
-from core.router import Router
+from routemq.router import Router
 from app.controllers.sensor_controller import SensorController
 
 router = Router()
@@ -127,7 +127,7 @@ router.on("api/v1/devices/{device_id}/config", handler)
 ## Complete Route Example
 
 ```python
-from core.router import Router
+from routemq.router import Router
 from app.controllers.device_controller import DeviceController
 from app.middleware.auth_middleware import AuthMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware

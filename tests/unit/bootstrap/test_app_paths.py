@@ -1,19 +1,20 @@
 import logging
 import os
 import unittest
-from unittest.mock import AsyncMock, MagicMock, mock_open, patch
+from importlib.metadata import PackageNotFoundError
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from bootstrap.app import Application
 
 
 class GetVersionExceptionPathTests(unittest.TestCase):
-    def test_returns_latest_when_file_open_raises(self) -> None:
-        with patch('builtins.open', side_effect=OSError('boom')):
-            self.assertEqual(Application.get_version(), 'latest')
+    def test_returns_dev_sentinel_when_package_metadata_missing(self) -> None:
+        with patch('importlib.metadata.version', side_effect=PackageNotFoundError):
+            self.assertEqual(Application.get_version(), '0.0.0+dev')
 
-    def test_returns_latest_when_toml_invalid(self) -> None:
-        with patch('builtins.open', mock_open(read_data=b'this is not toml [')):
-            self.assertEqual(Application.get_version(), 'latest')
+    def test_returns_installed_package_version(self) -> None:
+        with patch('importlib.metadata.version', return_value='1.2.3'):
+            self.assertEqual(Application.get_version(), '1.2.3')
 
 
 class ConstructorRouterAutoLoadTests(unittest.TestCase):

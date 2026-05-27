@@ -15,7 +15,7 @@ Complete API documentation for RouteMQ framework components.
 ### Router Class
 
 ```python
-from core.router import Router
+from routemq.router import Router
 
 router = Router()
 
@@ -30,7 +30,7 @@ with router.group(prefix="api", middleware=[auth]) as group:
 ### Controller Class
 
 ```python
-from core.controller import Controller
+from routemq.controller import Controller
 
 class MyController(Controller):
     @staticmethod
@@ -42,7 +42,7 @@ class MyController(Controller):
 ### Middleware Class
 
 ```python
-from core.middleware import Middleware
+from routemq.middleware import Middleware
 
 class MyMiddleware(Middleware):
     async def handle(self, context, next_handler):
@@ -55,7 +55,7 @@ class MyMiddleware(Middleware):
 ### Redis Manager
 
 ```python
-from core.redis_manager import redis_manager
+from routemq.redis_manager import redis_manager
 
 # Basic operations
 await redis_manager.set("key", "value", ex=60)

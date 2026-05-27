@@ -31,7 +31,7 @@ services:
     command: --default-authentication-plugin=mysql_native_password
 
   # Main RouteMQ Application (for development only)
-  # Use `uv run python main.py --run` on host for hot reload
+  # Use `uv run routemq --run` on host for hot reload
   # This service is optional for development
   routemq:
     build:

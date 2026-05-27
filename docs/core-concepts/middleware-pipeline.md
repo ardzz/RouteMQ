@@ -45,7 +45,7 @@ Middleware in RouteMQ provides a powerful way to process messages before they re
 All middleware must extend the `Middleware` base class:
 
 ```python
-from core.middleware import Middleware
+from routemq.middleware import Middleware
 from typing import Dict, Any, Callable, Awaitable
 
 class LoggingMiddleware(Middleware):

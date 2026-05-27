@@ -77,7 +77,7 @@ USER app
 # Health check
 RUN uv run python -c "import sys; sys.exit(0)"
 
-CMD ["uv", "run", "python", "main.py", "--run"]
+CMD ["uv", "run", "routemq", "--run"]
 ```
 
 ### Key Features
@@ -464,7 +464,7 @@ RUN uv sync --dev
 
 COPY . .
 
-CMD ["uv", "run", "python", "main.py", "--run"]
+CMD ["uv", "run", "routemq", "--run"]
 
 # Production stage
 FROM base as production
@@ -485,7 +485,7 @@ RUN useradd --create-home --shell /bin/bash app && \
 
 USER app
 
-CMD ["uv", "run", "python", "main.py", "--run"]
+CMD ["uv", "run", "routemq", "--run"]
 ```
 
 ## Container Commands
@@ -591,7 +591,7 @@ except:
 
 # Check database health
 docker exec routemq python -c "
-from core.model import Model
+from routemq.model import Model
 import asyncio
 
 async def test_db():

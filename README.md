@@ -40,11 +40,11 @@ bash setup-project.sh    # Linux/Mac
 uv sync
 
 # Initialize project structure
-python main.py --init
+routemq --init
 
 # Configure .env file with your MQTT broker details
 # Run the application
-uv run python main.py --run
+uv run routemq --run
 ```
 
 ### Option 2: Direct Clone
@@ -55,8 +55,8 @@ To explore or contribute to RouteMQ itself:
 git clone https://github.com/ardzz/RouteMQ.git
 cd RouteMQ
 uv sync
-uv run python main.py --init
-uv run python main.py --run
+uv run routemq --init
+uv run routemq --run
 ```
 
 ## Features
@@ -105,7 +105,7 @@ RouteMQ/
 │   ├── models/            # Database models
 │   ├── jobs/              # Background jobs
 │   └── routers/           # Route definitions
-├── core/                  # Framework core
+├── routemq/                  # Framework core
 │   ├── queue/             # Queue system
 │   ├── job.py             # Base job class
 │   └── ...                # Other core components
@@ -142,7 +142,7 @@ Process time-consuming tasks asynchronously with the built-in queue system:
 
 ```python
 # Create a job
-from core.job import Job
+from routemq.job import Job
 
 class SendEmailJob(Job):
     max_tries = 3
@@ -153,14 +153,14 @@ class SendEmailJob(Job):
         pass
 
 # Dispatch the job
-from core.queue.queue_manager import dispatch
+from routemq.queue.queue_manager import dispatch
 
 job = SendEmailJob()
 job.to = "user@example.com"
 await dispatch(job)
 
 # Run queue worker
-python main.py --queue-work --queue emails
+routemq --queue-work --queue emails
 ```
 
 See [Queue System Documentation](./docs/queue/README.md) for complete guide.

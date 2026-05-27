@@ -51,7 +51,7 @@ This is the easiest way to create a new project based on RouteMQ.
 
 8. **Initialize project structure:**
    ```bash
-   uv run python main.py --init
+   uv run routemq --init
    ```
 
 9. **Configure environment:**
@@ -62,7 +62,7 @@ This is the easiest way to create a new project based on RouteMQ.
 
 10. **Run the application:**
     ```bash
-    uv run python main.py --run
+    uv run routemq --run
     ```
 
 ### Advantages:
@@ -113,12 +113,12 @@ Use this method if you want to download RouteMQ and initialize it with a fresh g
 
 4. **Initialize project structure:**
    ```bash
-   python main.py --init
+   routemq --init
    ```
 
 5. **Run the application:**
    ```bash
-   uv run python main.py --run
+   uv run routemq --run
    ```
 
 ### Option B: Manual Git Reinitialization
@@ -157,8 +157,8 @@ Use this method if you want to download RouteMQ and initialize it with a fresh g
 5. **Continue with installation:**
    ```bash
    uv sync
-   python main.py --init
-   uv run python main.py --run
+   routemq --init
+   uv run routemq --run
    ```
 
 ---
@@ -178,13 +178,13 @@ cd RouteMQ
 uv sync
 
 # Initialize project
-python main.py --init
+routemq --init
 
 # Configure .env
 # Edit the .env file with your configuration
 
 # Run the application
-uv run python main.py --run
+uv run routemq --run
 ```
 
 ---
@@ -216,7 +216,7 @@ DATABASE_URL=mysql://user:password@localhost/database
 
 ```python
 # app/routers/example.py
-from core.router import Router
+from routemq.router import Router
 from app.controllers.example_controller import ExampleController
 
 router = Router()

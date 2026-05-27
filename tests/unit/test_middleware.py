@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
-from core.middleware import Middleware
+from routemq.middleware import Middleware
 
 
 class TestMiddleware(unittest.IsolatedAsyncioTestCase):

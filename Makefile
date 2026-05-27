@@ -51,13 +51,13 @@ dev-down: ## Stop development environment
 	docker compose -f docker-compose.dev.yml down
 
 queue-work: ## Start queue worker on host (for development)
-	uv run python main.py --queue-work --queue default
+	uv run routemq --queue-work --queue default
 
 queue-high: ## Start high-priority queue worker on host
-	uv run python main.py --queue-work --queue high-priority --sleep 1
+	uv run routemq --queue-work --queue high-priority --sleep 1
 
 queue-emails: ## Start emails queue worker on host
-	uv run python main.py --queue-work --queue emails --sleep 5
+	uv run routemq --queue-work --queue emails --sleep 5
 
 scale-default: ## Scale default queue workers to 3 instances
 	docker compose up -d --scale queue-worker-default=3
@@ -89,10 +89,10 @@ install: ## Install dependencies on host
 	uv sync
 
 run: ## Run RouteMQ on host
-	uv run python main.py --run
+	uv run routemq --run
 
 tinker: ## Start interactive REPL
-	uv run python main.py --tinker
+	uv run routemq --tinker
 
 init: ## Initialize new RouteMQ project
-	uv run python main.py --init
+	uv run routemq --init

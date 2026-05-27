@@ -10,7 +10,7 @@ Start a worker to process jobs from the default queue:
 
 ```bash
 # Process jobs from 'default' queue
-python main.py --queue-work
+routemq --queue-work
 
 # Or using the routemq command
 routemq --queue-work
@@ -30,9 +30,9 @@ The worker will:
 Specify which queue to process:
 
 ```bash
-python main.py --queue-work --queue emails
-python main.py --queue-work --queue high-priority
-python main.py --queue-work --queue reports
+routemq --queue-work --queue emails
+routemq --queue-work --queue high-priority
+routemq --queue-work --queue reports
 ```
 
 ### --connection
@@ -41,10 +41,10 @@ Override the queue connection:
 
 ```bash
 # Use Redis queue
-python main.py --queue-work --connection redis
+routemq --queue-work --connection redis
 
 # Use database queue
-python main.py --queue-work --connection database
+routemq --queue-work --connection database
 ```
 
 ### --max-jobs
@@ -53,10 +53,10 @@ Process a maximum number of jobs then stop:
 
 ```bash
 # Process 100 jobs then exit
-python main.py --queue-work --max-jobs 100
+routemq --queue-work --max-jobs 100
 
 # Process 1 job then exit (useful for testing)
-python main.py --queue-work --max-jobs 1
+routemq --queue-work --max-jobs 1
 ```
 
 ### --max-time
@@ -65,10 +65,10 @@ Run for a maximum time (in seconds) then stop:
 
 ```bash
 # Run for 1 hour
-python main.py --queue-work --max-time 3600
+routemq --queue-work --max-time 3600
 
 # Run for 8 hours
-python main.py --queue-work --max-time 28800
+routemq --queue-work --max-time 28800
 ```
 
 ### --sleep
@@ -77,13 +77,13 @@ Seconds to sleep when no jobs are available:
 
 ```bash
 # Check every second (high priority queue)
-python main.py --queue-work --sleep 1
+routemq --queue-work --sleep 1
 
 # Check every 5 seconds (normal priority)
-python main.py --queue-work --sleep 5
+routemq --queue-work --sleep 5
 
 # Check every 10 seconds (low priority)
-python main.py --queue-work --sleep 10
+routemq --queue-work --sleep 10
 ```
 
 ### --max-tries
@@ -92,10 +92,10 @@ Override the maximum retry attempts for all jobs:
 
 ```bash
 # Retry failed jobs up to 5 times
-python main.py --queue-work --max-tries 5
+routemq --queue-work --max-tries 5
 
 # Never retry (fail immediately)
-python main.py --queue-work --max-tries 1
+routemq --queue-work --max-tries 1
 ```
 
 ### --timeout
@@ -104,10 +104,10 @@ Maximum seconds a job can run:
 
 ```bash
 # 2 minute timeout
-python main.py --queue-work --timeout 120
+routemq --queue-work --timeout 120
 
 # 10 minute timeout
-python main.py --queue-work --timeout 600
+routemq --queue-work --timeout 600
 ```
 
 ## Multiple Workers
@@ -116,16 +116,16 @@ Run multiple workers for different queues:
 
 ```bash
 # Terminal 1: High-priority queue (check every second)
-python main.py --queue-work --queue high-priority --sleep 1
+routemq --queue-work --queue high-priority --sleep 1
 
 # Terminal 2: Default queue (check every 3 seconds)
-python main.py --queue-work --queue default --sleep 3
+routemq --queue-work --queue default --sleep 3
 
 # Terminal 3: Low-priority queue (check every 10 seconds)
-python main.py --queue-work --queue low-priority --sleep 10
+routemq --queue-work --queue low-priority --sleep 10
 
 # Terminal 4: Email queue (dedicated worker)
-python main.py --queue-work --queue emails --sleep 5
+routemq --queue-work --queue emails --sleep 5
 ```
 
 ## Production Deployment
@@ -155,7 +155,7 @@ For non-Docker deployments, use Supervisor:
 ; /etc/supervisor/conf.d/routemq-queue.conf
 
 [program:routemq-queue-default]
-command=/path/to/venv/bin/python main.py --queue-work --queue default --sleep 3
+command=/path/to/venv/bin/routemq --queue-work --queue default --sleep 3
 directory=/path/to/RouteMQ
 user=www-data
 autostart=true
@@ -166,7 +166,7 @@ startsecs=10
 stopwaitsecs=60
 
 [program:routemq-queue-high]
-command=/path/to/venv/bin/python main.py --queue-work --queue high-priority --sleep 1
+command=/path/to/venv/bin/routemq --queue-work --queue high-priority --sleep 1
 directory=/path/to/RouteMQ
 user=www-data
 autostart=true
@@ -177,7 +177,7 @@ startsecs=10
 stopwaitsecs=60
 
 [program:routemq-queue-emails]
-command=/path/to/venv/bin/python main.py --queue-work --queue emails --sleep 5
+command=/path/to/venv/bin/routemq --queue-work --queue emails --sleep 5
 directory=/path/to/RouteMQ
 user=www-data
 autostart=true
@@ -228,7 +228,7 @@ After=network.target redis.service mysql.service
 Type=simple
 User=www-data
 WorkingDirectory=/path/to/RouteMQ
-ExecStart=/path/to/venv/bin/python main.py --queue-work --queue default --sleep 3
+ExecStart=/path/to/venv/bin/routemq --queue-work --queue default --sleep 3
 Restart=always
 RestartSec=10
 StandardOutput=append:/var/log/routemq/queue-default.log
@@ -312,7 +312,7 @@ kill -TERM <pid>
 
 ```bash
 # In terminal
-python main.py --queue-work --queue default
+routemq --queue-work --queue default
 
 # Output:
 # 2024-01-15 10:30:00 - RouteMQ.QueueWorker - INFO - Queue worker started for queue 'default'
@@ -323,7 +323,7 @@ python main.py --queue-work --queue default
 ### Check Queue Size
 
 ```python
-from core.queue.queue_manager import queue
+from routemq.queue.queue_manager import queue
 
 # Check how many jobs are waiting
 size = await queue.size("default")
@@ -411,7 +411,7 @@ If jobs are timing out:
 
 ```bash
 # Increase timeout
-python main.py --queue-work --timeout 300
+routemq --queue-work --timeout 300
 
 # Or set timeout in job class
 class MyJob(Job):
@@ -424,7 +424,7 @@ If worker memory grows:
 
 ```bash
 # Restart worker after processing N jobs
-python main.py --queue-work --max-jobs 1000
+routemq --queue-work --max-jobs 1000
 
 # Then use supervisor/systemd to auto-restart
 ```
@@ -451,13 +451,13 @@ docker compose up -d --scale queue-worker-default=5
 
 ```bash
 # High priority - fast polling
-python main.py --queue-work --queue critical --sleep 1
+routemq --queue-work --queue critical --sleep 1
 
 # Normal priority
-python main.py --queue-work --queue default --sleep 3
+routemq --queue-work --queue default --sleep 3
 
 # Low priority - slow polling
-python main.py --queue-work --queue cleanup --sleep 30
+routemq --queue-work --queue cleanup --sleep 30
 ```
 
 ### 3. Set Resource Limits

@@ -22,7 +22,7 @@ Use [GitHub Issues](https://github.com/ardzz/RouteMQ/issues) for feature request
 
 1. Fork the repository or create a branch from `master`.
 2. Install dependencies with `uv sync`.
-3. Run `uv run python main.py --init` if you need the local scaffolded app structure.
+3. Run `uv run routemq --init` if you need the local scaffolded app structure.
 4. Keep changes focused and follow Conventional Commits:
    - `feat:` — new feature
    - `fix:` — bug fix
@@ -72,4 +72,4 @@ Use [GitHub Issues](https://github.com/ardzz/RouteMQ/issues) for feature request
 
 ## Project structure
 
-RouteMQ keeps framework internals in `core/`, application examples and scaffolded userland code in `app/`, bootstrapping in `bootstrap/`, and unittest-based tests in `tests/unit/`. The root [AGENTS.md](./AGENTS.md) is the maintained contributor map for architecture, conventions, and anti-patterns; consult it before changing routing, queue, worker, or bootstrap behavior.
+RouteMQ keeps framework internals in `routemq/`, application examples and scaffolded userland code in `app/`, bootstrapping in `bootstrap/`, and unittest-based tests in `tests/unit/`. The root [AGENTS.md](./AGENTS.md) is the maintained contributor map for architecture, conventions, and anti-patterns; consult it before changing routing, queue, worker, or bootstrap behavior.

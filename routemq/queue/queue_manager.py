@@ -2,12 +2,12 @@ import logging
 import os
 from typing import Optional
 
-from core.job import Job
-from core.queue.queue_driver import QueueDriver
-from core.queue.redis_queue import RedisQueue
-from core.queue.database_queue import DatabaseQueue
-from core.redis_manager import RedisManager
-from core.model import Model
+from routemq.job import Job
+from routemq.queue.queue_driver import QueueDriver
+from routemq.queue.redis_queue import RedisQueue
+from routemq.queue.database_queue import DatabaseQueue
+from routemq.redis_manager import RedisManager
+from routemq.model import Model
 
 logger = logging.getLogger('RouteMQ.QueueManager')
 

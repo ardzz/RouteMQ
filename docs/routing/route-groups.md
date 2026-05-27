@@ -7,7 +7,7 @@ Learn how to organize and structure your routes using RouteMQ's route groups, en
 Route groups allow you to organize related routes under a common prefix and apply shared middleware, reducing code duplication and improving maintainability.
 
 ```python
-from core.router import Router
+from routemq.router import Router
 from app.controllers.device_controller import DeviceController
 from app.middleware.auth_middleware import AuthMiddleware
 

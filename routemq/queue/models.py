@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from sqlalchemy import Column, Integer, String, Text, DateTime, Index
 
-from core.model import Model
+from routemq.model import Model
 
 
 class QueueJob(Model):

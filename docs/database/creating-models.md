@@ -10,7 +10,7 @@ All models inherit from the SQLAlchemy `Base` class:
 
 ```python
 from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Boolean
-from core.model import Base
+from routemq.model import Base
 import time
 
 class SensorReading(Base):
@@ -294,7 +294,7 @@ class SensorReading(Base):
     @classmethod
     async def get_latest_by_sensor(cls, sensor_id: str):
         """Get the most recent reading for a sensor"""
-        from core.model import Model
+        from routemq.model import Model
         session = await Model.get_session()
         
         result = await session.execute(
@@ -308,7 +308,7 @@ class SensorReading(Base):
     @classmethod
     async def get_readings_in_range(cls, sensor_id: str, start_time: float, end_time: float):
         """Get readings within a time range"""
-        from core.model import Model
+        from routemq.model import Model
         session = await Model.get_session()
         
         result = await session.execute(

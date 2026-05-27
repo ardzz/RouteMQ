@@ -9,7 +9,7 @@ The `RedisManager` class provides async Redis operations with connection pooling
 ### Import
 
 ```python
-from core.redis_manager import redis_manager
+from routemq.redis_manager import redis_manager
 ```
 
 ### Global Instance
@@ -18,10 +18,10 @@ RouteMQ provides a pre-configured global Redis manager instance:
 
 ```python
 # Use the global instance (recommended)
-from core.redis_manager import redis_manager
+from routemq.redis_manager import redis_manager
 
 # Or create your own instance
-from core.redis_manager import RedisManager
+from routemq.redis_manager import RedisManager
 custom_redis = RedisManager()
 ```
 

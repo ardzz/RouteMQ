@@ -4,9 +4,9 @@ from typing import Optional, Union
 from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.queue.queue_driver import QueueDriver
-from core.model import Model
-from core.queue.models import QueueJob, QueueFailedJob
+from routemq.queue.queue_driver import QueueDriver
+from routemq.model import Model
+from routemq.queue.models import QueueJob, QueueFailedJob
 
 logger = logging.getLogger('RouteMQ.DatabaseQueue')
 

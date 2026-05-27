@@ -390,8 +390,8 @@ mysql> SHOW OPEN TABLES WHERE In_use > 0;
 
 3. **Check worker connection:**
    ```bash
-   python main.py --queue-work --connection redis
-   python main.py --queue-work --connection database
+   routemq --queue-work --connection redis
+   routemq --queue-work --connection database
    ```
 
 ## Best Practices

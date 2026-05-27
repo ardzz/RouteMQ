@@ -24,7 +24,7 @@ Response ← Middleware 1 ← Middleware 2 ← Middleware 3 ← Handler
 ## Basic Chain Example
 
 ```python
-from core.router import Router
+from routemq.router import Router
 from app.middleware.logging import LoggingMiddleware
 from app.middleware.auth import AuthenticationMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware

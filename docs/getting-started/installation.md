@@ -63,7 +63,7 @@ uv sync --extra dev
 Run the following command to verify the installation:
 
 ```bash
-uv run python main.py --help
+uv run routemq --help
 ```
 
 You should see the RouteMQ help message with available commands.

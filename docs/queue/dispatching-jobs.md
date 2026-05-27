@@ -7,7 +7,7 @@ Once you've created a job, you need to dispatch it to the queue for processing. 
 The simplest way to dispatch a job:
 
 ```python
-from core.queue.queue_manager import dispatch
+from routemq.queue.queue_manager import dispatch
 from app.jobs.send_notification_job import SendNotificationJob
 
 # In your MQTT handler or anywhere in your code
@@ -31,7 +31,7 @@ The `dispatch()` helper:
 For more control, use the `QueueManager` directly:
 
 ```python
-from core.queue.queue_manager import queue
+from routemq.queue.queue_manager import queue
 from app.jobs.send_email_job import SendEmailJob
 
 # Create job
@@ -55,7 +55,7 @@ await queue.push(job, connection="database")
 Schedule a job to run after a delay:
 
 ```python
-from core.queue.queue_manager import queue
+from routemq.queue.queue_manager import queue
 from app.jobs.generate_report_job import GenerateReportJob
 
 job = GenerateReportJob()
@@ -83,7 +83,7 @@ await queue.later(86400, job)
 Dispatch multiple jobs at once:
 
 ```python
-from core.queue.queue_manager import queue
+from routemq.queue.queue_manager import queue
 from app.jobs.send_notification_job import SendNotificationJob
 
 jobs = []
@@ -105,8 +105,8 @@ This is more efficient than dispatching jobs one by one in a loop.
 
 ```python
 # app/controllers/order_controller.py
-from core.controller import Controller
-from core.queue.queue_manager import dispatch
+from routemq.controller import Controller
+from routemq.queue.queue_manager import dispatch
 from app.jobs.process_order_job import ProcessOrderJob
 
 
@@ -129,8 +129,8 @@ class OrderController(Controller):
 
 ```python
 # app/middleware/queue_middleware.py
-from core.middleware import Middleware
-from core.queue.queue_manager import dispatch
+from routemq.middleware import Middleware
+from routemq.queue.queue_manager import dispatch
 from app.jobs.log_message_job import LogMessageJob
 
 
@@ -167,7 +167,7 @@ async def handle_sensor_data(device_id: str, payload, client):
 Monitor how many jobs are pending:
 
 ```python
-from core.queue.queue_manager import queue
+from routemq.queue.queue_manager import queue
 
 # Check queue size
 size = await queue.size("default")
@@ -259,7 +259,7 @@ async def handle_user_signup(user_id, email):
 Schedule a series of jobs:
 
 ```python
-from core.queue.queue_manager import queue
+from routemq.queue.queue_manager import queue
 
 # Send welcome email immediately
 welcome_job = SendEmailJob()
@@ -305,13 +305,13 @@ Then run workers with appropriate settings:
 
 ```bash
 # High priority - check every second
-python main.py --queue-work --queue high-priority --sleep 1
+routemq --queue-work --queue high-priority --sleep 1
 
 # Normal priority - check every 3 seconds
-python main.py --queue-work --queue default --sleep 3
+routemq --queue-work --queue default --sleep 3
 
 # Low priority - check every 10 seconds
-python main.py --queue-work --queue low-priority --sleep 10
+routemq --queue-work --queue low-priority --sleep 10
 ```
 
 ### Pattern 4: Rate Limiting
@@ -334,7 +334,7 @@ async def send_to_external_api(data):
 ### Handle Dispatch Errors
 
 ```python
-from core.queue.queue_manager import dispatch
+from routemq.queue.queue_manager import dispatch
 
 try:
     job = SendEmailJob()

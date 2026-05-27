@@ -7,7 +7,7 @@ Controllers in RouteMQ handle the business logic for processing MQTT messages. T
 All controllers should extend the `Controller` base class:
 
 ```python
-from core.controller import Controller
+from routemq.controller import Controller
 
 class DeviceController(Controller):
     @staticmethod
@@ -22,7 +22,7 @@ class DeviceController(Controller):
 ### 1. Extend Controller Base Class
 
 ```python
-from core.controller import Controller
+from routemq.controller import Controller
 
 class MyController(Controller):
     # Your controller methods here
@@ -62,7 +62,7 @@ async def handle_sensor_data(device_id: str, sensor_type: str, payload, client):
 ### Simple Message Handler
 
 ```python
-from core.controller import Controller
+from routemq.controller import Controller
 import json
 
 class SimpleController(Controller):
@@ -77,7 +77,7 @@ class SimpleController(Controller):
 ### Device Control Controller
 
 ```python
-from core.controller import Controller
+from routemq.controller import Controller
 import json
 import time
 
@@ -141,7 +141,7 @@ class DeviceController(Controller):
 Always include proper error handling in your controllers:
 
 ```python
-from core.controller import Controller
+from routemq.controller import Controller
 import json
 import logging
 

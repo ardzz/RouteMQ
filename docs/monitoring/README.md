@@ -12,8 +12,8 @@ Monitor your RouteMQ application performance and health.
 ## Health Check Endpoint
 
 ```python
-from core.redis_manager import redis_manager
-from core.controller import Controller
+from routemq.redis_manager import redis_manager
+from routemq.controller import Controller
 
 class HealthController(Controller):
     @staticmethod
@@ -39,7 +39,7 @@ class HealthController(Controller):
 ## Redis-Based Metrics
 
 ```python
-from core.redis_manager import redis_manager
+from routemq.redis_manager import redis_manager
 
 class MetricsMiddleware(Middleware):
     async def handle(self, context, next_handler):

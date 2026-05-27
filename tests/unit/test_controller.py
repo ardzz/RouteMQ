@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import MagicMock
 
-from core.controller import Controller
+from routemq.controller import Controller
 
 
 class TestController(unittest.IsolatedAsyncioTestCase):
@@ -30,7 +30,7 @@ class TestController(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result['processed'])
 
     async def test_controller_integration_with_router(self):
-        from core.router import Router
+        from routemq.router import Router
 
         class _TestController(Controller):
             @staticmethod

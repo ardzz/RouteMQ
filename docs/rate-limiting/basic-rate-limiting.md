@@ -125,7 +125,7 @@ For distributed applications, use Redis for rate limiting:
 
 ```python
 # Ensure Redis is enabled in your application
-from core.redis_manager import redis_manager
+from routemq.redis_manager import redis_manager
 
 # Rate limiter automatically uses Redis if available
 rate_limiter = RateLimitMiddleware(
@@ -286,7 +286,7 @@ async def test_rate_limit_blocks_excess_requests():
 async def test_rate_limit_with_router():
     """Test rate limiting integrated with router"""
     
-    from core.router import Router
+    from routemq.router import Router
     
     # Create rate limited route
     rate_limiter = RateLimitMiddleware(max_requests=3, window_seconds=60)

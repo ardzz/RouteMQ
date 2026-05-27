@@ -4,10 +4,10 @@ import time
 from typing import Optional, Union
 from datetime import UTC, datetime
 
-from core.queue.queue_driver import QueueDriver
-from core.redis_manager import RedisManager
-from core.model import Model
-from core.queue.models import QueueFailedJob
+from routemq.queue.queue_driver import QueueDriver
+from routemq.redis_manager import RedisManager
+from routemq.model import Model
+from routemq.queue.models import QueueFailedJob
 
 logger = logging.getLogger('RouteMQ.RedisQueue')
 

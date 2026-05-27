@@ -9,7 +9,7 @@ The `Router` class is the core routing component that manages MQTT topic pattern
 ### Constructor
 
 ```python
-from core.router import Router
+from routemq.router import Router
 
 router = Router()
 ```
@@ -305,7 +305,7 @@ router.on("logs/{level}", LogController.handle,
 ## Complete Example
 
 ```python
-from core.router import Router
+from routemq.router import Router
 from app.controllers.device_controller import DeviceController
 from app.middleware.auth_middleware import AuthMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware

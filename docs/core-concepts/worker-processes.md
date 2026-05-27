@@ -39,7 +39,7 @@ MQTT shared subscriptions distribute messages across multiple subscribers, enabl
 Enable shared subscriptions for specific routes:
 
 ```python
-from core.router import Router
+from routemq.router import Router
 from app.controllers.sensor_controller import SensorController
 
 router = Router()
@@ -80,7 +80,7 @@ The WorkerManager handles the lifecycle of worker processes:
 ### Starting Workers
 
 ```python
-from core.worker_manager import WorkerManager
+from routemq.worker_manager import WorkerManager
 
 # Initialize worker manager
 worker_manager = WorkerManager(
@@ -388,7 +388,7 @@ WORKDIR /app
 # Default to 3 workers
 ENV WORKER_COUNT=3
 
-CMD ["python", "main.py", "--workers"]
+CMD ["routemq", "--workers"]
 ```
 
 ### Kubernetes Scaling

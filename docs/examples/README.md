@@ -17,7 +17,7 @@ This example shows a complete IoT device management system:
 ### Device Router
 ```python
 # app/routers/devices.py
-from core.router import Router
+from routemq.router import Router
 from app.controllers.device_controller import DeviceController
 from app.middleware.auth import AuthMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
@@ -37,8 +37,8 @@ with router.group(prefix="devices", middleware=[auth, rate_limit]) as devices:
 ### Device Controller
 ```python
 # app/controllers/device_controller.py
-from core.controller import Controller
-from core.redis_manager import redis_manager
+from routemq.controller import Controller
+from routemq.redis_manager import redis_manager
 from app.models.device import Device
 import json
 import time
@@ -92,7 +92,7 @@ class DeviceController(Controller):
 
 ```python
 # app/routers/sensors.py
-from core.router import Router
+from routemq.router import Router
 from app.controllers.sensor_controller import SensorController
 from app.middleware.validation import ValidationMiddleware
 
@@ -109,7 +109,7 @@ with router.group(prefix="sensors", middleware=[validation]) as sensors:
 
 ```python
 # app/routers/chat.py
-from core.router import Router
+from routemq.router import Router
 from app.controllers.chat_controller import ChatController
 from app.middleware.auth import AuthMiddleware
 
@@ -127,8 +127,8 @@ with router.group(prefix="chat", middleware=[auth]) as chat:
 
 ```python
 # app/middleware/performance.py
-from core.middleware import Middleware
-from core.redis_manager import redis_manager
+from routemq.middleware import Middleware
+from routemq.redis_manager import redis_manager
 import time
 
 class PerformanceMiddleware(Middleware):

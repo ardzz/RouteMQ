@@ -27,7 +27,7 @@ Create your models in `app/models/`:
 
 ```python
 from sqlalchemy import Column, Integer, String, Float, DateTime, Text
-from core.model import Base
+from routemq.model import Base
 import time
 
 class SensorReading(Base):
@@ -56,7 +56,7 @@ class DeviceStatus(Base):
 ## Using Models in Controllers
 
 ```python
-from core.controller import Controller
+from routemq.controller import Controller
 from app.models.sensor_reading import SensorReading
 
 class SensorController(Controller):

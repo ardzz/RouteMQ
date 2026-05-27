@@ -2,8 +2,8 @@ import unittest
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
-from core.router import Router
-from core.worker_manager import WorkerManager, WorkerProcess, worker_process_main
+from routemq.router import Router
+from routemq.worker_manager import WorkerManager, WorkerProcess, worker_process_main
 
 
 async def first_handler(*, payload: Any, client: Any) -> None:
@@ -60,7 +60,7 @@ class TestWorkerManager(unittest.TestCase):
         router.on('plain/topic', first_handler, shared=False, worker_count=5)
         manager = WorkerManager(router, group_name='workers', router_directory='app.routers')
 
-        with patch('core.worker_manager.multiprocessing.Process') as process_cls:
+        with patch('routemq.worker_manager.multiprocessing.Process') as process_cls:
             manager.start_workers()
 
         process_cls.assert_not_called()
@@ -70,7 +70,7 @@ class TestWorkerManager(unittest.TestCase):
         manager = WorkerManager(self.make_router(), group_name='workers', router_directory='app.routers')
         processes = [self.make_process(pid=100), self.make_process(pid=101)]
 
-        with patch('core.worker_manager.multiprocessing.Process', side_effect=processes) as process_cls:
+        with patch('routemq.worker_manager.multiprocessing.Process', side_effect=processes) as process_cls:
             manager.start_workers(num_workers=2)
 
         self.assertEqual(process_cls.call_count, 2)
@@ -92,7 +92,7 @@ class TestWorkerManager(unittest.TestCase):
                 'MQTT_CLIENT_ID': 'route-worker',
             },
         ):
-            with patch('core.worker_manager.multiprocessing.Process', side_effect=processes) as process_cls:
+            with patch('routemq.worker_manager.multiprocessing.Process', side_effect=processes) as process_cls:
                 manager.start_workers(num_workers=2)
 
         first_call, second_call = process_cls.call_args_list
@@ -120,7 +120,7 @@ class TestWorkerManager(unittest.TestCase):
         manager = WorkerManager(self.make_router(), group_name='workers', router_directory='app.routers')
         processes = [self.make_process(pid=300 + index) for index in range(5)]
 
-        with patch('core.worker_manager.multiprocessing.Process', side_effect=processes) as process_cls:
+        with patch('routemq.worker_manager.multiprocessing.Process', side_effect=processes) as process_cls:
             manager.start_workers()
 
         self.assertEqual(process_cls.call_count, 5)
@@ -187,7 +187,7 @@ class TestWorkerManager(unittest.TestCase):
         fourth = self.make_process(pid=603)
         fifth = self.make_process(pid=604)
 
-        with patch('core.worker_manager.multiprocessing.Process', side_effect=[first, failed, third, fourth, fifth]):
+        with patch('routemq.worker_manager.multiprocessing.Process', side_effect=[first, failed, third, fourth, fifth]):
             manager.start_workers(num_workers=3)
 
         first.start.assert_called_once_with()

@@ -277,7 +277,7 @@ class DynamicTopicRateLimitMiddleware(TopicRateLimitMiddleware):
 async def load_topic_config_from_database():
     """Load topic rate limit configuration from database"""
     # This would typically load from your configuration database
-    from core.model import Model
+    from routemq.model import Model
     
     try:
         # Example: load from a configuration table
@@ -611,7 +611,7 @@ async def test_topic_pattern_matching():
 async def test_topic_limits_with_router():
     """Test topic-specific rate limiting with router"""
     
-    from core.router import Router
+    from routemq.router import Router
     
     # Create topic-specific rate limiter
     topic_limiter = TopicRateLimitMiddleware(

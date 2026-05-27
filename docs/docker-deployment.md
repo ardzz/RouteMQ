@@ -183,10 +183,10 @@ For local development, use the minimal development compose file:
 docker compose -f docker-compose.dev.yml up -d
 
 # Run RouteMQ app on host for hot reload
-uv run python main.py --run
+uv run routemq --run
 
 # Run queue worker on host
-uv run python main.py --queue-work --queue default
+uv run routemq --queue-work --queue default
 ```
 
 Or start everything including the app:
@@ -208,7 +208,7 @@ queue-worker-default-2:
   build:
     context: .
   container_name: routemq-queue-default-2
-  command: ["uv", "run", "python", "main.py", "--queue-work", "--queue", "default", "--sleep", "3"]
+  command: ["uv", "run", "routemq", "--queue-work", "--queue", "default", "--sleep", "3"]
   # ... same environment as queue-worker-default
 ```
 
@@ -228,7 +228,7 @@ queue-worker-reports:
   build:
     context: .
   container_name: routemq-queue-reports
-  command: ["uv", "run", "python", "main.py", "--queue-work", "--queue", "reports", "--sleep", "10"]
+  command: ["uv", "run", "routemq", "--queue-work", "--queue", "reports", "--sleep", "10"]
   environment:
     # ... same as other workers
   depends_on:
@@ -574,10 +574,10 @@ docker compose up -d --scale queue-worker-default=5 --scale queue-worker-emails=
 docker compose -f docker-compose.dev.yml up -d
 
 # Run app on host
-uv run python main.py --run
+uv run routemq --run
 
 # Run worker on host
-uv run python main.py --queue-work
+uv run routemq --queue-work
 ```
 
 ## Summary

@@ -9,7 +9,7 @@ Middleware in RouteMQ follows the "onion" pattern where each middleware wraps th
 ### Basic Middleware Structure
 
 ```python
-from core.middleware import Middleware
+from routemq.middleware import Middleware
 from typing import Dict, Any, Callable, Awaitable
 
 class YourMiddleware(Middleware):
@@ -47,7 +47,7 @@ context = {
 
 ```python
 import time
-from core.middleware import Middleware
+from routemq.middleware import Middleware
 
 class RequestLoggerMiddleware(Middleware):
     async def handle(self, context, next_handler):
@@ -76,7 +76,7 @@ class RequestLoggerMiddleware(Middleware):
 
 ```python
 import uuid
-from core.middleware import Middleware
+from routemq.middleware import Middleware
 
 class RequestIdMiddleware(Middleware):
     async def handle(self, context, next_handler):
@@ -105,7 +105,7 @@ class RequestIdMiddleware(Middleware):
 
 ```python
 from marshmallow import Schema, ValidationError, fields
-from core.middleware import Middleware
+from routemq.middleware import Middleware
 
 class SensorDataSchema(Schema):
     device_id = fields.Str(required=True)
@@ -209,8 +209,8 @@ class ErrorHandlingMiddleware(Middleware):
 ### Context Enhancement Middleware
 
 ```python
-from core.redis_manager import redis_manager
-from core.model import Model
+from routemq.redis_manager import redis_manager
+from routemq.model import Model
 
 class ContextEnhancementMiddleware(Middleware):
     async def handle(self, context, next_handler):
@@ -255,7 +255,7 @@ class ContextEnhancementMiddleware(Middleware):
 ```python
 import time
 from collections import defaultdict
-from core.middleware import Middleware
+from routemq.middleware import Middleware
 
 class RateLimitMiddleware(Middleware):
     def __init__(self, max_requests: int = 100, window_seconds: int = 60, key_func=None):
@@ -312,8 +312,8 @@ device_rate_limiter = RateLimitMiddleware(
 ### Database Transaction Middleware
 
 ```python
-from core.middleware import Middleware
-from core.model import Model
+from routemq.middleware import Middleware
+from routemq.model import Model
 
 class TransactionMiddleware(Middleware):
     async def handle(self, context, next_handler):
@@ -347,8 +347,8 @@ class TransactionMiddleware(Middleware):
 ```python
 import json
 import hashlib
-from core.middleware import Middleware
-from core.redis_manager import redis_manager
+from routemq.middleware import Middleware
+from routemq.redis_manager import redis_manager
 
 class CacheMiddleware(Middleware):
     def __init__(self, ttl: int = 300, key_prefix: str = "cache"):
@@ -399,7 +399,7 @@ class CacheMiddleware(Middleware):
 ### Single Middleware
 
 ```python
-from core.router import Router
+from routemq.router import Router
 from app.middleware.logging import RequestLoggerMiddleware
 
 router = Router()

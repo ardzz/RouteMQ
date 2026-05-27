@@ -4,9 +4,9 @@ import signal
 import traceback
 from typing import Optional
 
-from core.job import Job
-from core.queue.queue_driver import QueueDriver
-from core.queue.queue_manager import QueueManager
+from routemq.job import Job
+from routemq.queue.queue_driver import QueueDriver
+from routemq.queue.queue_manager import QueueManager
 
 logger = logging.getLogger('RouteMQ.QueueWorker')
 

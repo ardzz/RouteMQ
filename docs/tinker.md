@@ -16,7 +16,7 @@ The RouteMQ Tinker is an interactive REPL (Read-Eval-Print Loop) environment sim
 
 ```bash
 # Start the interactive REPL
-python main.py --tinker
+routemq --tinker
 ```
 
 ### Available Objects

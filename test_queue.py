@@ -11,8 +11,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from dotenv import load_dotenv
-from core.job import Job
-from core.queue.queue_manager import dispatch, queue
+from routemq.job import Job
+from routemq.queue.queue_manager import dispatch, queue
 import logging
 
 # Setup logging
@@ -98,7 +98,7 @@ async def main():
         logger.info('✅ All tests passed!')
         logger.info('\nTo test the full queue system:')
         logger.info('1. Enable Redis or MySQL in your .env file')
-        logger.info('2. Run: python main.py --queue-work --queue test')
+        logger.info('2. Run: routemq --queue-work --queue test')
         logger.info('3. In another terminal, dispatch a job using the example jobs')
 
     except Exception as e:

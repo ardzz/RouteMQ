@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime
-from core.job import Job
+from routemq.job import Job
 
 logger = logging.getLogger('RouteMQ.Jobs.GenerateReportJob')
 
@@ -15,7 +15,7 @@ class GenerateReportJob(Job):
 
     Usage:
         from app.jobs.example_report_job import GenerateReportJob
-        from core.queue.queue_manager import queue
+        from routemq.queue.queue_manager import queue
 
         # Dispatch the job immediately
         job = GenerateReportJob()

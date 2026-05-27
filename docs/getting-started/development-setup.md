@@ -38,10 +38,10 @@ uv remove package-name
 
 ```bash
 # Run the application
-uv run python main.py --run
+uv run routemq --run
 
 # Run with specific configuration
-uv run python main.py --run --config custom.env
+uv run routemq --run --config custom.env
 ```
 
 ## Running Tests
@@ -80,10 +80,9 @@ RouteMQ/
 │   ├── models/            # Database models
 │   └── routers/           # Route definitions
 ├── bootstrap/             # Application bootstrap
-├── core/                  # Framework core
+├── routemq/               # Framework core (CLI lives at routemq/cli.py; installed as `routemq` console script)
 ├── docs/                  # Documentation
 ├── tests/                 # Test files
-├── main.py               # Entry point
 └── pyproject.toml        # Project configuration
 ```
 

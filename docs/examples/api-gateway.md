@@ -28,7 +28,7 @@ Client -> API Gateway (RouteMQ) -> Microservices
 
 ```python
 # app/routers/api_gateway.py
-from core.router import Router
+from routemq.router import Router
 from app.controllers.gateway_controller import GatewayController
 from app.middleware.auth import AuthMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
@@ -91,8 +91,8 @@ with router.group(prefix="gateway") as gateway:
 
 ```python
 # app/controllers/gateway_controller.py
-from core.controller import Controller
-from core.redis_manager import redis_manager
+from routemq.controller import Controller
+from routemq.redis_manager import redis_manager
 from app.services.service_discovery import ServiceDiscovery
 from app.services.load_balancer import LoadBalancer
 from app.services.circuit_breaker import CircuitBreaker
@@ -465,7 +465,7 @@ class GatewayController(Controller):
 
 ```python
 # app/services/service_discovery.py
-from core.redis_manager import redis_manager
+from routemq.redis_manager import redis_manager
 import json
 import time
 import random
@@ -579,7 +579,7 @@ class ServiceDiscovery:
 
 ```python
 # app/services/circuit_breaker.py
-from core.redis_manager import redis_manager
+from routemq.redis_manager import redis_manager
 import time
 
 class CircuitBreaker:

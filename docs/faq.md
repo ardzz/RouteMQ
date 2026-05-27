@@ -145,7 +145,7 @@ async def handle_request(param, payload, client):
 ### Can I use custom middleware?
 Yes, create middleware by extending the Middleware base class:
 ```python
-from core.middleware import Middleware
+from routemq.middleware import Middleware
 
 class CustomMiddleware(Middleware):
     async def handle(self, context, next_handler):

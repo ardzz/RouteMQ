@@ -14,8 +14,8 @@ from IPython.terminal.interactiveshell import TerminalInteractiveShell
 from IPython.core.magic import Magics, magics_class, line_magic
 
 from bootstrap.app import Application
-from core.model import Model, Base
-from core.redis_manager import redis_manager
+from routemq.model import Model, Base
+from routemq.redis_manager import redis_manager
 
 
 # Enable nested event loops for IPython compatibility

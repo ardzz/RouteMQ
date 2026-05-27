@@ -2,9 +2,10 @@ import logging
 import os
 import tempfile
 import unittest
+from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
 from bootstrap.app import Application
 
@@ -60,23 +61,20 @@ class TestApplicationInitialization(unittest.TestCase):
 
 
 class TestApplicationBanner(unittest.TestCase):
-    def test_get_version_reads_commitizen_version(self) -> None:
-        """Version source remains tool.commitizen.version in pyproject.toml."""
-        payload = b'[tool.commitizen]\nversion = "9.8.7"\n'
+    def test_get_version_reads_installed_package_version(self) -> None:
+        """Version source is the installed routemq distribution metadata."""
+        with patch('importlib.metadata.version', return_value='9.8.7') as version:
+            resolved = Application.get_version()
 
-        with patch('builtins.open', mock_open(read_data=payload)):
+        version.assert_called_once_with('routemq')
+        self.assertEqual(resolved, '9.8.7')
+
+    def test_get_version_falls_back_when_package_missing(self) -> None:
+        """Src checkouts without installed metadata use the dev sentinel."""
+        with patch('importlib.metadata.version', side_effect=PackageNotFoundError):
             version = Application.get_version()
 
-        self.assertEqual(version, '9.8.7')
-
-    def test_get_version_falls_back_when_commitizen_missing(self) -> None:
-        """Missing commitizen metadata degrades to latest instead of failing boot."""
-        payload = b'[project]\nname = "routemq"\n'
-
-        with patch('builtins.open', mock_open(read_data=payload)):
-            version = Application.get_version()
-
-        self.assertEqual(version, 'latest')
+        self.assertEqual(version, '0.0.0+dev')
 
     def test_print_banner_includes_version_and_system_info(self) -> None:
         """Banner output keeps version and runtime facts visible."""

@@ -65,7 +65,7 @@ dev = [
 all = ["redis>=5.0.1"]
 
 [project.scripts]
-routemq = "main:main"
+routemq = "routemq.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/ardzz/RouteMQ"
@@ -91,7 +91,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["app", "bootstrap", "core"]
+packages = ["routemq", "bootstrap"]
 
 [tool.commitizen]
 name = "cz_conventional_commits"
@@ -147,13 +147,14 @@ namespace_packages = true
 disable_error_code = ["assignment", "union-attr", "valid-type", "misc", "call-overload"]
 
 [tool.coverage.run]
-source = ["core", "app", "bootstrap"]
+source = ["routemq", "app", "bootstrap"]
 command_line = "run_tests.py"
 branch = true
 omit = [
     "tests/*",
     "*/__init__.py",
-    "core/tinker.py",
+    "routemq/cli.py",
+    "routemq/tinker.py",
     "app/jobs/example_*.py",
     "app/controllers/example_*.py",
     "app/middleware/example_*.py",

@@ -29,7 +29,7 @@ Each router file must export a `router` variable:
 
 ```python
 # app/routers/device_routes.py
-from core.router import Router
+from routemq.router import Router
 from app.controllers.device_controller import DeviceController
 from app.middleware.auth_middleware import AuthMiddleware
 
@@ -54,7 +54,7 @@ By default, RouterRegistry scans `app.routers`:
 
 ```python
 # bootstrap/app.py
-from core.router_registry import RouterRegistry
+from routemq.router_registry import RouterRegistry
 
 # Uses app.routers by default
 registry = RouterRegistry()
@@ -186,7 +186,7 @@ WARNING: Module app.routers.bad_router has 'router' attribute but it's not a Rou
 
 ```python
 # app/routers/new_feature.py
-from core.router import Router
+from routemq.router import Router
 from app.controllers.new_controller import NewController
 
 router = Router()
@@ -217,7 +217,7 @@ Load routes based on environment:
 ```python
 # app/routers/debug_routes.py
 import os
-from core.router import Router
+from routemq.router import Router
 
 router = Router()
 
@@ -232,7 +232,7 @@ Generate routes programmatically:
 
 ```python
 # app/routers/dynamic_routes.py
-from core.router import Router
+from routemq.router import Router
 
 router = Router()
 

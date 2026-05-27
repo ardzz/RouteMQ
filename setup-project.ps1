@@ -99,7 +99,7 @@ Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
 Write-Host "  1. Configure your .env file"
 Write-Host "  2. Run: uv sync"
-Write-Host "  3. Run: python main.py --init"
-Write-Host "  4. Run: uv run python main.py --run"
+Write-Host "  3. Run: routemq --init"
+Write-Host "  4. Run: uv run routemq --run"
 Write-Host ""
 Write-Host "📚 See README.md for detailed documentation" -ForegroundColor Cyan

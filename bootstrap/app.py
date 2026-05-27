@@ -5,30 +5,28 @@ import logging.handlers
 import os
 import platform
 import psutil
-import tomllib
 from pathlib import Path
 
 from dotenv import load_dotenv
 from paho.mqtt import client as mqtt_client
 
-from core.model import Model
-from core.router import Router
-from core.router_registry import RouterRegistry
-from core.worker_manager import WorkerManager
-from core.redis_manager import redis_manager
+from routemq.model import Model
+from routemq.router import Router
+from routemq.router_registry import RouterRegistry
+from routemq.worker_manager import WorkerManager
+from routemq.redis_manager import redis_manager
 
 
 class Application:
     @staticmethod
-    def get_version():
-        """Get version from pyproject.toml commitizen section."""
+    def get_version() -> str:
+        """Get installed package version, with src-checkout fallback."""
+        from importlib.metadata import PackageNotFoundError, version
+
         try:
-            pyproject_path = Path(__file__).parent.parent / 'pyproject.toml'
-            with open(pyproject_path, 'rb') as f:
-                data = tomllib.load(f)
-            return data.get('tool', {}).get('commitizen', {}).get('version', 'latest')
-        except Exception:
-            return 'latest'
+            return version('routemq')
+        except PackageNotFoundError:
+            return '0.0.0+dev'
 
     @staticmethod
     def print_banner():
