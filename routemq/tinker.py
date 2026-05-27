@@ -2,46 +2,63 @@
 RouteMQ Tinker - Interactive REPL for testing ORM relationships and queries
 Similar to Laravel Artisan Tinker
 """
-# pyright: reportMissingImports=false
 
 import asyncio
 import os
 import sys
 from pathlib import Path
-import nest_asyncio
+import nest_asyncio  # pyright: ignore[reportMissingImports]
 
-from IPython import embed
-from IPython.terminal.interactiveshell import TerminalInteractiveShell
-from IPython.core.magic import Magics, magics_class, line_magic
+from IPython import embed  # pyright: ignore[reportMissingImports]
+from IPython.terminal.interactiveshell import TerminalInteractiveShell  # pyright: ignore[reportMissingImports]
+from IPython.core.magic import Magics, magics_class, line_magic  # pyright: ignore[reportMissingImports]
 
 from bootstrap.app import Application
 from routemq.model import Model, Base
 from routemq.redis_manager import redis_manager
 
-try:
-    from rich.console import Console
-    from rich.panel import Panel
-    from rich.table import Table
-    from rich.syntax import Syntax
-    from rich.traceback import install as _rich_install_traceback
-    from rich import box
+Console = None
+Panel = None
+Table = None
+Syntax = None
+_rich_install_traceback = None
+box = None
+_RICH_AVAILABLE = False
+_console = None
 
+
+def _load_rich():
+    """Lazy-load Rich primitives used only by the tinker REPL."""
+    global Console, Panel, Table, Syntax, _rich_install_traceback, box, _RICH_AVAILABLE, _console
+
+    if _console is not None:
+        return True
+
+    try:
+        from rich.console import Console as _Console  # pyright: ignore[reportMissingImports]
+        from rich.panel import Panel as _Panel  # pyright: ignore[reportMissingImports]
+        from rich.table import Table as _Table  # pyright: ignore[reportMissingImports]
+        from rich.syntax import Syntax as _Syntax  # pyright: ignore[reportMissingImports]
+        from rich.traceback import install as _install  # pyright: ignore[reportMissingImports]
+        from rich import box as _box  # pyright: ignore[reportMissingImports]
+    except ImportError:
+        _RICH_AVAILABLE = False
+        return False
+
+    Console = _Console
+    Panel = _Panel
+    Table = _Table
+    Syntax = _Syntax
+    _rich_install_traceback = _install
+    box = _box
     _RICH_AVAILABLE = True
     _console = Console()
-except ImportError:
-    Console = None
-    Panel = None
-    Table = None
-    Syntax = None
-    _rich_install_traceback = None
-    box = None
-    _RICH_AVAILABLE = False
-    _console = None
+    return True
 
 
 def _install_tracebacks():
     """Install Rich's traceback handler with locals visible."""
-    if _RICH_AVAILABLE and _rich_install_traceback is not None:
+    if _load_rich() and _rich_install_traceback is not None:
         _rich_install_traceback(show_locals=True)
 
 
@@ -53,7 +70,7 @@ def _make_repl_helpers(console):
     """Return REPL helper functions that use Rich for styled output."""
     import json as _json
 
-    if Syntax is None or Table is None or box is None:
+    if not _load_rich() or Syntax is None or Table is None or box is None:
         raise RuntimeError('Rich helpers require rich to be installed')
 
     syntax_cls = Syntax
@@ -89,6 +106,14 @@ def _make_repl_helpers(console):
 
             get = get_dict
 
+        elif hasattr(first, '_mapping'):
+            cols = list(first._mapping.keys())
+
+            def get_mapping(row, col):
+                return row._mapping[col]
+
+            get = get_mapping
+
         elif hasattr(first, '__table__'):
             cols = [c.name for c in first.__table__.columns]
 
@@ -98,12 +123,37 @@ def _make_repl_helpers(console):
             get = get_table_attr
 
         else:
-            cols = list(vars(first).keys())
+            if hasattr(first, '_asdict'):
+                cols = list(first._asdict().keys())
 
-            def get_object_attr(row, col):
-                return getattr(row, col)
+                def get_namedtuple(row, col):
+                    return row._asdict()[col]
 
-            get = get_object_attr
+                get = get_namedtuple
+            elif isinstance(first, (list, tuple)):
+                cols = [str(index) for index in range(len(first))]
+
+                def get_sequence(row, col):
+                    return row[int(col)]
+
+                get = get_sequence
+            else:
+                try:
+                    attrs = vars(first)
+                except TypeError:
+                    cols = ['value']
+
+                    def get_value(row, col):
+                        return row
+
+                    get = get_value
+                else:
+                    cols = list(attrs.keys())
+
+                    def get_object_attr(row, col):
+                        return getattr(row, col)
+
+                    get = get_object_attr
 
         table = table_cls(title=title, box=box_module.SIMPLE_HEAVY)
         for col in cols:
@@ -126,7 +176,7 @@ def _print_banner_rich(console, app):
     import psutil
     from datetime import datetime
 
-    if Panel is None or Table is None or box is None:
+    if not _load_rich() or Panel is None or Table is None or box is None:
         raise RuntimeError('Rich banner requires rich to be installed')
 
     panel_cls = Panel
@@ -151,7 +201,7 @@ def _print_banner_rich(console, app):
 
 def _print_helpers_table_rich(console, db_enabled: bool):
     """Render the available objects + helper functions as Rich tables."""
-    if Table is None or box is None:
+    if not _load_rich() or Table is None or box is None:
         raise RuntimeError('Rich helper tables require rich to be installed')
 
     table_cls = Table
@@ -224,7 +274,7 @@ class TinkerEnvironment:
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
-                    import nest_asyncio
+                    import nest_asyncio  # pyright: ignore[reportMissingImports]
 
                     nest_asyncio.apply()
                     return loop.run_until_complete(coro)
@@ -254,7 +304,7 @@ class TinkerEnvironment:
             'run_async': run_async,
         }
 
-        if _RICH_AVAILABLE:
+        if _load_rich():
             self.globals.update(_make_repl_helpers(_console))
 
         # Import all models dynamically
@@ -292,7 +342,7 @@ class TinkerEnvironment:
         if self.app.redis_enabled:
             print(f'✓ Redis manager available')
 
-        if _RICH_AVAILABLE:
+        if _load_rich():
             _install_tracebacks()
             _print_banner_rich(_console, self.app)
             _print_helpers_table_rich(_console, Model._is_enabled)
@@ -361,8 +411,8 @@ def start_tinker_sync(env_file='.env'):  # pragma: no cover - interactive IPytho
             await tinker_env.setup()
 
             # Configure IPython for better async support
-            from IPython.terminal.interactiveshell import TerminalInteractiveShell
-            from IPython import get_ipython
+            from IPython.terminal.interactiveshell import TerminalInteractiveShell  # pyright: ignore[reportMissingImports]
+            from IPython import get_ipython  # pyright: ignore[reportMissingImports]
 
             # Get or create IPython instance
             shell = TerminalInteractiveShell.instance()

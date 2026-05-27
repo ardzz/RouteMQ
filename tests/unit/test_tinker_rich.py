@@ -1,4 +1,5 @@
 import unittest
+from collections import namedtuple
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -19,6 +20,16 @@ class TestRichHelpers(unittest.TestCase):
 
         self.console = MagicMock()
         self.helpers = _make_repl_helpers(self.console)
+
+    def _printed_table(self):
+        from rich.table import Table
+
+        args, _ = self.console.print.call_args
+        self.assertIsInstance(args[0], Table)
+        return args[0]
+
+    def _table_cells(self, table):
+        return [list(column.cells) for column in table.columns]
 
     def test_helpers_dict_has_four_callables(self):
         self.assertEqual(set(self.helpers), {'print_rich', 'print_sql', 'print_json', 'print_rows'})
@@ -50,24 +61,52 @@ class TestRichHelpers(unittest.TestCase):
         self.assertIn('No rows in Empty Test', args[0])
 
     def test_print_rows_with_dicts_renders_table(self):
-        from rich.table import Table
-
         rows = [{'id': 1, 'name': 'a'}, {'id': 2, 'name': 'b'}]
         self.helpers['print_rows'](rows, title='Test Table')
-        args, _ = self.console.print.call_args
-        self.assertIsInstance(args[0], Table)
+        self._printed_table()
 
     def test_print_rows_with_objects_renders_table(self):
-        from rich.table import Table
-
         class Row:
             def __init__(self, row_id, name):
                 self.id = row_id
                 self.name = name
 
         self.helpers['print_rows']([Row(1, 'alpha')], title='Object Rows')
-        args, _ = self.console.print.call_args
-        self.assertIsInstance(args[0], Table)
+        self._printed_table()
+
+    def test_print_rows_with_mapping_rows_uses_mapping_keys_and_values(self):
+        class Row:
+            def __init__(self, mapping):
+                self._mapping = mapping
+
+        self.helpers['print_rows']([Row({'id': 1, 'name': 'alpha'})], title='Mapping Rows')
+
+        table = self._printed_table()
+        self.assertEqual([column.header for column in table.columns], ['id', 'name'])
+        self.assertEqual(self._table_cells(table), [['1'], ['alpha']])
+
+    def test_print_rows_with_namedtuple_rows_uses_asdict_keys_and_values(self):
+        Row = namedtuple('Row', ['id', 'name'])
+
+        self.helpers['print_rows']([Row(1, 'alpha')], title='Namedtuple Rows')
+
+        table = self._printed_table()
+        self.assertEqual([column.header for column in table.columns], ['id', 'name'])
+        self.assertEqual(self._table_cells(table), [['1'], ['alpha']])
+
+    def test_print_rows_with_sequence_rows_uses_index_columns_and_values(self):
+        self.helpers['print_rows']([(1, 'alpha')], title='Sequence Rows')
+
+        table = self._printed_table()
+        self.assertEqual([column.header for column in table.columns], ['0', '1'])
+        self.assertEqual(self._table_cells(table), [['1'], ['alpha']])
+
+    def test_print_rows_with_scalar_rows_uses_value_column(self):
+        self.helpers['print_rows']([42], title='Scalar Rows')
+
+        table = self._printed_table()
+        self.assertEqual([column.header for column in table.columns], ['value'])
+        self.assertEqual(self._table_cells(table), [['42']])
 
 
 @unittest.skipUnless(_rich_available(), 'rich not installed')
@@ -97,12 +136,32 @@ class TestBannerHelpers(unittest.TestCase):
         self.assertEqual(console.print.call_count, 3)
 
     def test_install_tracebacks_calls_rich_install(self):
-        with patch('routemq.tinker._rich_install_traceback') as mock_install:
-            from routemq.tinker import _install_tracebacks
+        from routemq.tinker import _install_tracebacks
 
+        with (
+            patch('routemq.tinker._load_rich', return_value=True),
+            patch('routemq.tinker._rich_install_traceback') as mock_install,
+        ):
             _install_tracebacks()
 
         mock_install.assert_called_once_with(show_locals=True)
+
+    def test_load_rich_initializes_cached_console(self):
+        import routemq.tinker as tinker
+
+        with (
+            patch('routemq.tinker._console', None),
+            patch('routemq.tinker.Console', None),
+            patch('routemq.tinker.Panel', None),
+            patch('routemq.tinker.Table', None),
+            patch('routemq.tinker.Syntax', None),
+            patch('routemq.tinker._rich_install_traceback', None),
+            patch('routemq.tinker.box', None),
+            patch('routemq.tinker._RICH_AVAILABLE', False),
+        ):
+            self.assertTrue(tinker._load_rich())
+            self.assertTrue(tinker._RICH_AVAILABLE)
+            self.assertIsNotNone(tinker._console)
 
 
 @unittest.skipUnless(_rich_available(), 'rich not installed')
@@ -190,7 +249,7 @@ class TestTinkerEnvironmentSetup(unittest.IsolatedAsyncioTestCase):
             env = TinkerEnvironment(app)
 
         with (
-            patch('routemq.tinker._RICH_AVAILABLE', False),
+            patch('routemq.tinker._load_rich', return_value=False),
             patch.object(env, '_setup_database_session', new=AsyncMock()),
             patch.object(env, '_print_banner_plain') as mock_plain,
         ):
