@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "routemq"
-version = "0.15.0"
+version = "0.16.0"
 description = "A flexible MQTT routing framework with middleware support"
 readme = "README.md"
 license = {text = "MIT"}

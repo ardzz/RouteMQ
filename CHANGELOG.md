@@ -1,3 +1,9 @@
+## v0.16.0 (2026-05-27)
+
+### Feat
+
+- **tinker**: add Rich FIGlet REPL startup
+
 ## v0.15.0 (2026-05-27)
 
 ### Feat
