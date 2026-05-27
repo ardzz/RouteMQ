@@ -1,3 +1,9 @@
+## v0.14.0 (2026-05-27)
+
+### Feat
+
+- **scaffold**: implement routemq new scaffolder with interactive + non-interactive modes (#47)
+
 ## v0.13.4 (2026-05-27)
 
 ### Refactor
