@@ -1,3 +1,9 @@
+## v0.13.2 (2026-05-27)
+
+### Fix
+
+- migrate declarative_base import to sqlalchemy.orm (silence MovedIn20Warning)
+
 ## v0.13.1 (2026-05-27)
 
 ### Fix
