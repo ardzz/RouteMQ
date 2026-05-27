@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from collections import namedtuple
 from datetime import datetime
@@ -149,10 +150,13 @@ class TestBannerHelpers(unittest.TestCase):
 
         self.assertEqual(console.print.call_count, 2)
         figlet = console.print.call_args_list[0].args[0]
+        summary = console.print.call_args_list[1].args[0]
         self.assertIsInstance(figlet, FakeFiglet)
+        self.assertIsInstance(summary, Table)
         self.assertEqual(figlet.args, ('RouteMQ',))
-        self.assertEqual(figlet.kwargs['border'], 'ROUNDED')
         self.assertEqual(figlet.kwargs['font'], 'standard')
+        self.assertEqual(figlet.kwargs['justify'], 'left')
+        self.assertNotIn('border', figlet.kwargs)
 
     def test_print_banner_rich_falls_back_without_figlet(self):
         import rich.box
@@ -366,6 +370,32 @@ class TestRichFallback(unittest.TestCase):
         printed = '\n'.join(str(call.args[0]) for call in mock_print.call_args_list)
         self.assertIn('Device(device_id', printed)
         self.assertIn('run_async(session.commit())', printed)
+
+
+class TestTinkerStartup(unittest.TestCase):
+    def test_start_tinker_sync_suppresses_standard_application_banner(self):
+        from routemq.tinker import start_tinker_sync
+
+        original_run = asyncio.run
+        app = MagicMock()
+        env = MagicMock()
+        env.globals = {}
+        env.session = None
+        env.setup = AsyncMock()
+        shell = MagicMock()
+
+        with (
+            patch('routemq.tinker.Application', return_value=app) as application,
+            patch('routemq.tinker.TinkerEnvironment', return_value=env),
+            patch('routemq.tinker.TerminalInteractiveShell.instance', return_value=shell),
+            patch('routemq.tinker.embed'),
+            patch('routemq.tinker.asyncio.run', side_effect=original_run),
+            patch('builtins.print'),
+        ):
+            start_tinker_sync(env_file='custom.env')
+
+        application.assert_called_once_with(env_file='custom.env', show_banner=False, log_to_console=False)
+        env.setup.assert_awaited_once()
 
 
 if __name__ == '__main__':

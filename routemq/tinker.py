@@ -184,10 +184,9 @@ def _make_repl_helpers(console):
 
 
 def _print_banner_rich(console, app):
-    """Render the styled startup banner with system info table."""
+    """Render the styled startup banner with compact system info."""
     import platform
     import psutil
-    from datetime import datetime
 
     if not _load_rich() or Panel is None or Table is None or box is None:
         raise RuntimeError('Rich banner requires rich to be installed')
@@ -197,19 +196,21 @@ def _print_banner_rich(console, app):
     box_module = box
     figlet_cls = RichFiglet
 
-    tbl = table_cls(show_header=False, box=box_module.SIMPLE)
-    tbl.add_column('Field', style='dim', width=18)
-    tbl.add_column('Value', style='bold')
-    tbl.add_row('Host', platform.node())
-    tbl.add_row('OS', f'{platform.system()} {platform.release()}')
-    tbl.add_row('Python', platform.python_version())
-    tbl.add_row('RouteMQ', Application.get_version())
-    tbl.add_row('MySQL enabled', '✓' if app.mysql_enabled else '—')
-    tbl.add_row('Redis enabled', '✓' if app.redis_enabled else '—')
-    tbl.add_row('CPU cores', str(psutil.cpu_count(logical=True)))
+    summary = table_cls.grid(padding=(0, 2))
+    summary.add_column(style='dim')
+    summary.add_column(style='bold cyan')
+    summary.add_column(style='dim')
+    summary.add_column(style='bold')
+
     mem_gb = round(psutil.virtual_memory().total / (1024**3), 1)
-    tbl.add_row('RAM', f'{mem_gb} GB')
-    tbl.add_row('Time', datetime.now().isoformat(timespec='seconds'))
+    summary.add_row('RouteMQ', Application.get_version(), 'Host', platform.node() or 'localhost')
+    summary.add_row('OS', f'{platform.system()} {platform.release()}', 'Python', platform.python_version())
+    summary.add_row(
+        'Services',
+        f'MySQL {"on" if app.mysql_enabled else "off"} / Redis {"on" if app.redis_enabled else "off"}',
+        'Machine',
+        f'{psutil.cpu_count(logical=True)} cores / {mem_gb} GB RAM',
+    )
 
     if _RICH_FIGLET_AVAILABLE and figlet_cls is not None:
         console.print(
@@ -217,16 +218,13 @@ def _print_banner_rich(console, app):
                 'RouteMQ',
                 font='standard',
                 colors=['cyan', 'bright_blue'],
-                justify='center',
+                justify='left',
                 remove_blank_lines=True,
-                border='ROUNDED',
-                border_padding=(0, 1),
-                border_color='cyan',
             )
         )
-        console.print(panel_cls(tbl, title='System', border_style='cyan', padding=(0, 1)))
+        console.print(summary)
     else:
-        console.print(panel_cls(tbl, title='🔧 RouteMQ Tinker', border_style='cyan', padding=(0, 1)))
+        console.print(panel_cls(summary, title='RouteMQ Tinker', border_style='cyan', padding=(0, 1)))
 
 
 def _print_helpers_table_rich(console, db_enabled: bool):
@@ -357,7 +355,8 @@ class TinkerEnvironment:
                                 attr = getattr(module, attr_name)
                                 if isinstance(attr, type) and hasattr(attr, '__tablename__') and issubclass(attr, Base):
                                     self.globals[attr_name] = attr
-                                    print(f'✓ Imported model: {attr_name}')
+                                    if not _RICH_AVAILABLE:
+                                        print(f'✓ Imported model: {attr_name}')
                         except ImportError as e:
                             print(f'⚠ Could not import {module_name}: {e}')
         except Exception as e:
@@ -365,6 +364,11 @@ class TinkerEnvironment:
 
     async def setup(self):
         """Async setup for the tinker environment."""
+        rich_loaded = _load_rich()
+        if rich_loaded:
+            _install_tracebacks()
+            _print_banner_rich(_console, self.app)
+
         await self._setup_database_session()
         self.globals['session'] = self.session
 
@@ -372,9 +376,7 @@ class TinkerEnvironment:
         if self.app.redis_enabled:
             print(f'✓ Redis manager available')
 
-        if _load_rich():
-            _install_tracebacks()
-            _print_banner_rich(_console, self.app)
+        if rich_loaded:
             _print_helpers_table_rich(_console, Model._is_enabled)
         else:
             self._print_banner_plain()
@@ -433,8 +435,7 @@ def start_tinker_sync(env_file='.env'):  # pragma: no cover - interactive IPytho
         tinker_env = None
         try:
             # Create application instance
-            print('Initializing RouteMQ application...')
-            app = Application(env_file=env_file)
+            app = Application(env_file=env_file, show_banner=False, log_to_console=False)
 
             # Setup tinker environment
             tinker_env = TinkerEnvironment(app)
