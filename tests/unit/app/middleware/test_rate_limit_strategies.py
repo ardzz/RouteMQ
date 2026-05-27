@@ -123,15 +123,18 @@ class CheckRateLimitDispatchTests(unittest.IsolatedAsyncioTestCase):
         mw = RateLimitMiddleware(max_requests=10, fallback_enabled=True)
         with patch('app.middleware.rate_limit.redis_manager') as mock_redis:
             mock_redis.is_enabled.return_value = True
-            with patch.object(
-                mw,
-                '_check_rate_limit_redis',
-                AsyncMock(side_effect=RuntimeError('redis down')),
-            ), patch.object(
-                mw,
-                '_check_rate_limit_memory',
-                AsyncMock(return_value=(True, 9, 60)),
-            ) as mock_memory_check:
+            with (
+                patch.object(
+                    mw,
+                    '_check_rate_limit_redis',
+                    AsyncMock(side_effect=RuntimeError('redis down')),
+                ),
+                patch.object(
+                    mw,
+                    '_check_rate_limit_memory',
+                    AsyncMock(return_value=(True, 9, 60)),
+                ) as mock_memory_check,
+            ):
                 allowed, remaining, reset = await mw._check_rate_limit('foo')
 
         mock_memory_check.assert_awaited_once()
@@ -181,25 +184,19 @@ class CheckRateLimitDispatchTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_redis_dispatch_routes_to_sliding_window(self) -> None:
         mw = RateLimitMiddleware(max_requests=10, strategy='sliding_window')
-        with patch.object(
-            mw, '_sliding_window_redis', AsyncMock(return_value=(True, 5, 60))
-        ) as mock_method:
+        with patch.object(mw, '_sliding_window_redis', AsyncMock(return_value=(True, 5, 60))) as mock_method:
             await mw._check_rate_limit_redis('k')
         mock_method.assert_awaited_once()
 
     async def test_redis_dispatch_routes_to_fixed_window(self) -> None:
         mw = RateLimitMiddleware(max_requests=10, strategy='fixed_window')
-        with patch.object(
-            mw, '_fixed_window_redis', AsyncMock(return_value=(True, 5, 60))
-        ) as mock_method:
+        with patch.object(mw, '_fixed_window_redis', AsyncMock(return_value=(True, 5, 60))) as mock_method:
             await mw._check_rate_limit_redis('k')
         mock_method.assert_awaited_once()
 
     async def test_redis_dispatch_routes_to_token_bucket(self) -> None:
         mw = RateLimitMiddleware(max_requests=10, strategy='token_bucket')
-        with patch.object(
-            mw, '_token_bucket_redis', AsyncMock(return_value=(True, 5, 60))
-        ) as mock_method:
+        with patch.object(mw, '_token_bucket_redis', AsyncMock(return_value=(True, 5, 60))) as mock_method:
             await mw._check_rate_limit_redis('k')
         mock_method.assert_awaited_once()
 
