@@ -1,3 +1,9 @@
+## v0.15.0 (2026-05-27)
+
+### Feat
+
+- **tinker**: polish REPL with Rich banner, traceback hooks, and styled output helpers (#50)
+
 ## v0.14.0 (2026-05-27)
 
 ### Feat
