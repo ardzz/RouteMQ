@@ -1,3 +1,8 @@
+# DEPRECATED (since v0.14.0):
+#   The canonical install path is now: pip install routemq[cli] && routemq new my-app
+#   See README.md for the recommended workflow.
+#   This script is retained for the "fork the framework" path; will be removed in v0.16.0.
+
 # RouteMQ Project Setup Script (PowerShell)
 # This script initializes a fresh git repository for your project
 

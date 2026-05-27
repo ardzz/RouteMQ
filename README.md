@@ -8,55 +8,30 @@
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/<PROJECT_ID>/badge)](https://www.bestpractices.dev/projects/<PROJECT_ID>)
 -->
 
-An MQTT routing framework with middleware support, dynamic router loading, Redis integration, and horizontal scaling capabilities, inspired by web frameworks.
+A flexible MQTT routing framework with middleware, dynamic routes, queue workers, Redis integration, and horizontal scaling — inspired by Laravel/Django web frameworks.
 
 ## Quick Start
 
-### Option 1: Use as Template
+### 1. Install
 
-Start your own project with a clean git history:
-
-**Using GitHub:**
-1. Click "Use this template" button on GitHub
-2. Create your new repository
-3. Clone your repository:
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git
-   cd YOUR_REPO
-   ```
-
-**Manual Setup:**
 ```bash
-# Download and extract, or clone
-git clone https://github.com/ardzz/RouteMQ.git my-mqtt-project
-cd my-mqtt-project
-
-# Run setup script to initialize fresh repository
-bash setup-project.sh    # Linux/Mac
-# OR
-.\setup-project.ps1      # Windows PowerShell
-
-# Install dependencies
-uv sync
-
-# Initialize project structure
-routemq --init
-
-# Configure .env file with your MQTT broker details
-# Run the application
-uv run routemq --run
+pip install routemq[cli]
 ```
 
-### Option 2: Direct Clone
-
-To explore or contribute to RouteMQ itself:
+### 2. Scaffold a new project
 
 ```bash
-git clone https://github.com/ardzz/RouteMQ.git
-cd RouteMQ
-uv sync
-uv run routemq --init
-uv run routemq --run
+routemq new my-app
+cd my-app
+```
+
+The scaffolder asks about optional features (MySQL, Redis, background queue, Docker). Use `--yes` to accept defaults non-interactively.
+
+### 3. Run
+
+```bash
+# Edit .env with your MQTT broker details
+routemq run
 ```
 
 ## Features
@@ -96,30 +71,31 @@ See the [Installation Guide](./INSTALL.md) for detailed setup instructions.
 
 ## Project Structure
 
+Scaffolded projects follow this layout:
+
 ```
-RouteMQ/
-├── docs/                   # Documentation
+my-app/
 ├── app/                    # Your application code
 │   ├── controllers/        # Route handlers
 │   ├── middleware/         # Custom middleware
-│   ├── models/            # Database models
-│   ├── jobs/              # Background jobs
-│   └── routers/           # Route definitions
-├── routemq/                  # Framework core
-│   ├── queue/             # Queue system
-│   ├── job.py             # Base job class
-│   └── ...                # Other core components
-├── bootstrap/             # Application bootstrap
-├── docker-compose.yml     # Production Docker setup
-└── tests/                 # Test files
+│   ├── models/             # Database models
+│   ├── jobs/               # Background jobs
+│   └── routers/            # Route definitions
+├── bootstrap/              # Application bootstrap
+├── docker-compose.yml      # Optional Docker setup
+├── pyproject.toml          # Project metadata and dependencies
+└── .env                    # Environment configuration
 ```
 
 ## Docker Deployment
 
-RouteMQ includes production-ready Docker Compose configuration with Redis, MySQL, and queue workers:
+RouteMQ can scaffold Docker support for Redis, MySQL, app runtime, and queue workers:
 
 ```bash
-# Start all services (app + 3 queue workers + Redis + MySQL)
+routemq new my-app --with-docker --with-redis --with-mysql --with-queue
+cd my-app
+
+# Start services from the scaffolded project
 docker compose up -d
 
 # View logs
@@ -127,11 +103,6 @@ docker compose logs -f
 
 # Scale workers
 docker compose up -d --scale queue-worker-default=5
-
-# Or use Makefile
-make up      # Start all services
-make logs    # View logs
-make ps      # Show status
 ```
 
 See [Docker Deployment Guide](./docs/docker-deployment.md) for detailed instructions.
@@ -158,12 +129,28 @@ from routemq.queue.queue_manager import dispatch
 job = SendEmailJob()
 job.to = "user@example.com"
 await dispatch(job)
-
-# Run queue worker
-routemq --queue-work --queue emails
 ```
 
-See [Queue System Documentation](./docs/queue/README.md) for complete guide.
+Run a worker from your scaffolded app:
+
+```bash
+routemq queue-work --queue emails
+```
+
+See [Queue System Documentation](./docs/queue/README.md) for the complete guide.
+
+## Advanced: Fork the framework
+
+If you want to modify the framework internals directly (rather than depend on the published wheel), see [TEMPLATE.md](./TEMPLATE.md). This path is deprecated as the primary workflow; `pip install routemq[cli]` is recommended for application development.
+
+For direct framework development:
+
+```bash
+git clone https://github.com/ardzz/RouteMQ.git
+cd RouteMQ
+uv sync --all-extras --dev
+uv run python run_tests.py
+```
 
 ## Contributing
 
