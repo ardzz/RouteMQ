@@ -2,9 +2,8 @@ import logging
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.future import select
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 Base = declarative_base()
 logger = logging.getLogger('RouteMQ.Model')
