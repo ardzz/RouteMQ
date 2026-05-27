@@ -16,4 +16,4 @@ nest-asyncio==1.6.0
 
 # Optional: For development and testing
 pytest==7.4.3
-pytest-asyncio==0.21.1
+pytest-asyncio==1.4.0
