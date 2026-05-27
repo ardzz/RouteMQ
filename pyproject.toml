@@ -176,7 +176,6 @@ omit = [
     "tests/*",
     "*/__init__.py",
     "routemq/cli.py",
-    "routemq/tinker.py",
     "app/jobs/example_*.py",
     "app/controllers/example_*.py",
     "app/middleware/example_*.py",
