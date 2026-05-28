@@ -2,7 +2,17 @@ import re
 from typing import Callable, List, Any
 
 from .middleware import Middleware
-from .observability import enrich_context, get_correlation_id, lifecycle, reset_context, snapshot_context
+from .observability import enrich_context, get_correlation_id, lifecycle, reset_context, snapshot_context, start_span
+
+
+def _callable_name(handler: Callable) -> str:
+    name = getattr(handler, '__qualname__', None)
+    if isinstance(name, str):
+        return name
+    name = getattr(handler, '__name__', None)
+    if isinstance(name, str):
+        return name
+    return handler.__class__.__name__
 
 
 class Route:
@@ -119,20 +129,43 @@ class Router:
                     'route_pattern': route.topic,
                 }
                 token = enrich_context(**route_attributes)
+                span_attributes = {
+                    'messaging.system': 'mqtt',
+                    'messaging.destination': topic,
+                    'messaging.destination.template': route.topic,
+                    'routemq.route.pattern': route.topic,
+                }
+                handler_name = _callable_name(route.handler)
 
                 async def execute_handler(ctx):
-                    return await route.handler(**ctx['params'], payload=ctx['payload'], client=ctx['client'])
+                    with start_span(
+                        'router.handler',
+                        {**span_attributes, 'routemq.handler.name': handler_name},
+                        kind='internal',
+                    ):
+                        return await route.handler(**ctx['params'], payload=ctx['payload'], client=ctx['client'])
 
                 handler = execute_handler
 
+                def wrap_middleware(middleware: Middleware, next_handler: Callable) -> Callable:
+                    async def middleware_handler(ctx):
+                        with start_span(
+                            'router.middleware',
+                            {**span_attributes, 'routemq.middleware.name': middleware.__class__.__name__},
+                            kind='internal',
+                        ):
+                            return await middleware.handle(ctx, next_handler)
+
+                    return middleware_handler
+
                 for middleware in reversed(route.middleware):
-                    next_handler = handler
-                    handler = lambda ctx, m=middleware, nh=next_handler: m.handle(ctx, nh)
+                    handler = wrap_middleware(middleware, handler)
 
                 try:
-                    lifecycle('router.dispatch.started', route_attributes)
-                    result = await handler(context)
-                    lifecycle('router.dispatch.succeeded', route_attributes)
+                    with start_span('router.dispatch', span_attributes, kind='internal'):
+                        lifecycle('router.dispatch.started', route_attributes)
+                        result = await handler(context)
+                        lifecycle('router.dispatch.succeeded', route_attributes)
                     return result
                 except Exception as exc:
                     lifecycle('router.dispatch.failed', {**route_attributes, 'error': exc.__class__.__name__})

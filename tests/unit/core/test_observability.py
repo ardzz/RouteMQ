@@ -217,6 +217,8 @@ class RouterObservabilityTests(ObservabilityTestCase):
         router = Router()
         client = MagicMock()
         seen_context: dict[str, Any] = {}
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
 
         class CaptureMiddleware(Middleware):
             async def handle(self, context: dict[str, Any], next_handler: Any) -> Any:
@@ -241,6 +243,15 @@ class RouterObservabilityTests(ObservabilityTestCase):
         self.assertEqual(seen_context['handler_correlation_id'], 'router-corr')
         self.assertEqual(seen_context['handler_device_id'], '123')
         self.assertIsNone(observability.get_correlation_id())
+        self.assertEqual([span.name for span in spans], ['router.handler', 'router.middleware', 'router.dispatch'])
+        handler_span, middleware_span, dispatch_span = spans
+        self.assertEqual(handler_span.trace_id, dispatch_span.trace_id)
+        self.assertEqual(middleware_span.trace_id, dispatch_span.trace_id)
+        self.assertEqual(middleware_span.parent_span_id, dispatch_span.span_id)
+        self.assertEqual(handler_span.parent_span_id, middleware_span.span_id)
+        self.assertEqual(dispatch_span.attributes['messaging.destination.template'], 'devices/{device_id}/status')
+        self.assertEqual(handler_span.attributes['routemq.handler.name'], handler.__qualname__)
+        self.assertEqual(middleware_span.attributes['routemq.middleware.name'], 'CaptureMiddleware')
 
     async def test_noop_hooks_do_not_mask_handler_errors(self) -> None:
         router = Router()
