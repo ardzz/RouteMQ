@@ -252,12 +252,13 @@ class WorkerProcessMainEntryTests(unittest.TestCase):
     def test_worker_process_main_constructs_and_runs(self) -> None:
         with (
             patch('routemq.worker_manager.WorkerProcess') as mock_cls,
-            patch('routemq.worker_manager.logging.basicConfig'),
+            patch('routemq.worker_manager.configure_logging') as configure_logging,
         ):
             instance = MagicMock()
             mock_cls.return_value = instance
             worker_process_main(7, 'r', [], {'broker': 'h', 'port': '1883'}, 'group')
 
+        configure_logging.assert_called_once_with(log_to_console=True)
         mock_cls.assert_called_once_with(7, 'r', [], {'broker': 'h', 'port': '1883'}, 'group')
         instance.run.assert_called_once_with()
 

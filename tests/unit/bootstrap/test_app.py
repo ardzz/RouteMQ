@@ -1,4 +1,5 @@
 import logging
+import logging.handlers
 import os
 import tempfile
 import unittest
@@ -24,7 +25,11 @@ class TestApplicationInitialization(unittest.TestCase):
             patch('bootstrap.app.asyncio.new_event_loop', return_value=MagicMock(name='loop')),
             patch('bootstrap.app.asyncio.set_event_loop'),
             patch('bootstrap.app.WorkerManager') as worker_manager,
-            patch.dict(os.environ, {'ENABLE_MYSQL': 'false', 'ENABLE_REDIS': 'false'}, clear=True),
+            patch.dict(
+                os.environ,
+                {'ENABLE_MYSQL': 'false', 'ENABLE_REDIS': 'false', 'LOG_FORMATTER': 'plain'},
+                clear=True,
+            ),
         ):
             app = Application(router=router, env_file='custom.env', router_directory='custom.routers')
 
@@ -48,6 +53,28 @@ class TestApplicationInitialization(unittest.TestCase):
             patch.dict(os.environ, {'ENABLE_MYSQL': 'false', 'ENABLE_REDIS': 'false'}, clear=True),
         ):
             Application(router=router, show_banner=False)
+
+        print_banner.assert_not_called()
+        setup_database.assert_not_called()
+
+    def test_constructor_skips_banner_when_json_logging_enabled(self) -> None:
+        """JSON logging keeps stdout as NDJSON by suppressing banner text."""
+        router = MagicMock(name='router')
+
+        with (
+            patch.object(Application, 'print_banner') as print_banner,
+            patch.object(Application, '_setup_logging', lambda app, **_: setattr(app, 'logger', MagicMock())),
+            patch.object(Application, '_setup_database') as setup_database,
+            patch('bootstrap.app.asyncio.new_event_loop', return_value=MagicMock()),
+            patch('bootstrap.app.asyncio.set_event_loop'),
+            patch('bootstrap.app.WorkerManager'),
+            patch.dict(
+                os.environ,
+                {'ENABLE_MYSQL': 'false', 'ENABLE_REDIS': 'false', 'LOG_FORMATTER': 'json'},
+                clear=True,
+            ),
+        ):
+            Application(router=router, show_banner=True)
 
         print_banner.assert_not_called()
         setup_database.assert_not_called()
@@ -140,7 +167,7 @@ class TestApplicationLogging(unittest.TestCase):
         app = object.__new__(Application)
 
         with (
-            patch('bootstrap.app.logging.basicConfig') as basic_config,
+            patch('routemq.logging_config.logging.basicConfig') as basic_config,
             patch.dict(
                 os.environ,
                 {'LOG_LEVEL': 'debug', 'LOG_TO_FILE': 'false', 'LOG_FORMAT': '%(levelname)s:%(message)s'},
@@ -151,9 +178,14 @@ class TestApplicationLogging(unittest.TestCase):
 
         basic_config.assert_called_once()
         self.assertEqual(basic_config.call_args.kwargs['level'], logging.DEBUG)
-        self.assertEqual(basic_config.call_args.kwargs['format'], '%(levelname)s:%(message)s')
         handlers = basic_config.call_args.kwargs['handlers']
         self.assertTrue(any(type(handler) is logging.StreamHandler for handler in handlers))
+        stream_handler = next(handler for handler in handlers if type(handler) is logging.StreamHandler)
+        formatter = stream_handler.formatter
+        self.assertIsNotNone(formatter)
+        assert formatter is not None
+        record = logging.LogRecord('RouteMQ.Test', logging.INFO, __file__, 1, 'hello', (), None)
+        self.assertEqual(formatter.format(record), 'INFO:hello')
 
     def test_setup_logging_can_omit_console_handler(self) -> None:
         """Quiet embedded startup keeps file logging without a console stream."""
@@ -162,7 +194,7 @@ class TestApplicationLogging(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             log_file = str(Path(tmpdir) / 'app.log')
             with (
-                patch('bootstrap.app.logging.basicConfig') as basic_config,
+                patch('routemq.logging_config.logging.basicConfig') as basic_config,
                 patch.dict(os.environ, {'LOG_FILE': log_file, 'LOG_TO_FILE': 'true'}, clear=True),
             ):
                 app._setup_logging(log_to_console=False)
@@ -178,7 +210,7 @@ class TestApplicationLogging(unittest.TestCase):
         app = object.__new__(Application)
 
         with (
-            patch('bootstrap.app.logging.basicConfig') as basic_config,
+            patch('routemq.logging_config.logging.basicConfig') as basic_config,
             patch.dict(os.environ, {'LOG_TO_FILE': 'false'}, clear=True),
         ):
             app._setup_logging(log_to_console=False)
@@ -193,10 +225,19 @@ class TestApplicationLogging(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             log_file = str(Path(tmpdir) / 'app.log')
-            with patch.dict(os.environ, {'LOG_FILE': log_file, 'LOG_TO_FILE': 'true'}, clear=True):
+            with (
+                patch('routemq.logging_config.logging.basicConfig') as basic_config,
+                patch.dict(
+                    os.environ,
+                    {'LOG_FILE': log_file, 'LOG_TO_FILE': 'true', 'LOG_TO_CONSOLE': 'false'},
+                    clear=True,
+                ),
+            ):
                 app._setup_logging()
 
         self.assertEqual(logging.getLogger('RouteMQ.Application').name, app.logger.name)
+        for handler in basic_config.call_args.kwargs['handlers']:
+            handler.close()
 
 
 class TestApplicationConnections(unittest.IsolatedAsyncioTestCase):

@@ -7,6 +7,7 @@ from typing import List, Dict, Any
 
 from .router import Router
 from .router_registry import RouterRegistry
+from .logging_config import configure_logging
 from .observability import lifecycle, reset_context, set_context
 from .mqtt_utils import (
     build_worker_broker_config,
@@ -213,9 +214,7 @@ def worker_process_main(
     worker_id: int, router_directory: str, shared_routes: List[Dict], broker_config: Dict, group_name: str
 ):
     """Main function for worker process."""
-    logging.basicConfig(
-        level=logging.INFO, format=f'%(asctime)s - Worker-{worker_id} - %(name)s - %(levelname)s - %(message)s'
-    )
+    configure_logging(log_to_console=True)
 
     worker = WorkerProcess(worker_id, router_directory, shared_routes, broker_config, group_name)
     worker.run()

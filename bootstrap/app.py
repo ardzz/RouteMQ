@@ -1,17 +1,16 @@
 import asyncio
 import logging
-import logging.handlers
 import os
 import platform
 import psutil
 import signal
 from importlib import import_module
-from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 
 from routemq.health import HealthStatus, health_server_from_env
+from routemq.logging_config import configure_logging, json_logging_enabled
 from routemq.model import Model
 from routemq.router import Router
 from routemq.router_registry import RouterRegistry
@@ -80,12 +79,12 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
             show_banner: Whether to print the standard RouteMQ startup banner
             log_to_console: Whether startup logging should include a console handler
         """
-        if show_banner:
-            self.print_banner()
-
         load_dotenv(env_file)
 
         self._setup_logging(log_to_console=log_to_console)
+
+        if show_banner and not json_logging_enabled():
+            self.print_banner()
 
         self.router_directory = router_directory
         self.router: Any = router
@@ -122,71 +121,17 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
         self._shutdown_requested = False
 
     def _setup_logging(self, log_to_console: bool = True):
-        """Configure logging based on environment variables with file rotation support."""
-        log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
-        log_format = os.getenv('LOG_FORMAT', '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
-        log_to_file = os.getenv('LOG_TO_FILE', 'true').lower() == 'true'
-        log_file = os.getenv('LOG_FILE', 'logs/app.log')
-
-        log_rotation_type = os.getenv('LOG_ROTATION_TYPE', 'size').lower()  # 'size' or 'time'
-
-        max_bytes = int(os.getenv('LOG_MAX_BYTES', '10485760'))  # 10 MB default
-        backup_count = int(os.getenv('LOG_BACKUP_COUNT', '5'))
-
-        rotation_when = os.getenv('LOG_ROTATION_WHEN', 'midnight').lower()  # 'midnight', 'D', 'H', etc.
-        rotation_interval = int(os.getenv('LOG_ROTATION_INTERVAL', '1'))
-
-        date_format = os.getenv('LOG_DATE_FORMAT', '%Y-%m-%d')
-
-        handlers: list[logging.Handler] = []
-        if log_to_console:
-            handlers.append(logging.StreamHandler())
-
-        if log_to_file:
-            log_path = Path(log_file)
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-
-            try:
-                if log_rotation_type == 'time':
-                    file_handler = logging.handlers.TimedRotatingFileHandler(
-                        filename=log_file,
-                        when=rotation_when,
-                        interval=rotation_interval,
-                        backupCount=backup_count,
-                        encoding='utf-8',
-                    )
-                    file_handler.suffix = date_format
-                else:
-                    file_handler = logging.handlers.RotatingFileHandler(
-                        filename=log_file, maxBytes=max_bytes, backupCount=backup_count, encoding='utf-8'
-                    )
-
-                file_handler.setFormatter(logging.Formatter(log_format))
-                handlers.append(file_handler)
-
-            except Exception as e:
-                if log_to_console:
-                    print(f'Warning: Could not setup file logging: {e}')
-                    print('Falling back to console logging only')
-
-        if not handlers:
-            handlers.append(logging.NullHandler())
-
-        logging.basicConfig(level=getattr(logging, log_level), format=log_format, handlers=handlers, force=True)
-
+        """Configure logging based on environment variables."""
+        settings = configure_logging(log_to_console=log_to_console)
         self.logger = logging.getLogger('RouteMQ.Application')
-
-        if log_to_file:
-            self.logger.info(f'Logging configured - File: {log_file}, Rotation: {log_rotation_type}')
-            if log_rotation_type == 'size':
-                self.logger.info(f'Size rotation - Max: {max_bytes} bytes, Backups: {backup_count}')
-            else:
-                self.logger.info(
-                    f'Time rotation - When: {rotation_when}, Interval: {rotation_interval}, Backups: {backup_count}'
-                )
-        else:
-            self.logger.info('File logging disabled - Console only')
+        self.logger.info(
+            'Logging configured',
+            extra={
+                'formatter': settings.formatter,
+                'field_profile': settings.field_profile,
+                'lifecycle_events': settings.lifecycle_events,
+            },
+        )
 
     def _setup_database(self):
         """Configure database connection."""
