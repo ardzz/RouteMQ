@@ -361,6 +361,28 @@ class TestApplicationMqtt(unittest.TestCase):
         app.router.dispatch.assert_not_called()
         run_threadsafe.call_args.args[0].close()
 
+    def test_on_message_logs_and_lifecycles_scheduling_failure(self) -> None:
+        """Scheduling failures emit a failed lifecycle before being swallowed by Paho."""
+        app = object.__new__(Application)
+        app.logger = logging.getLogger('RouteMQ.Application')
+        app.loop = MagicMock(name='loop')
+        app.router = MagicMock(name='router')
+        msg = MagicMock(topic='devices/1', payload=b'{}')
+
+        with (
+            patch('bootstrap.app.asyncio.run_coroutine_threadsafe', side_effect=RuntimeError('loop down')),
+            patch('bootstrap.app.observability.lifecycle') as lifecycle,
+            self.assertLogs('RouteMQ.Application', level='ERROR') as logs,
+        ):
+            app._on_message(MagicMock(), None, msg)
+
+        lifecycle.assert_called_once_with(
+            'mqtt.message.failed',
+            {'process': 'main', 'error': 'RuntimeError', 'mqtt_topic': 'devices/1'},
+        )
+        self.assertIn('Error processing message on topic devices/1', logs.output[0])
+        self.assertIsNotNone(logs.records[0].exc_info)
+
     def test_run_drives_loop_lifecycle_and_cleanup(self) -> None:
         """Run uses the stored event loop and always stops client and workers."""
         app = object.__new__(Application)

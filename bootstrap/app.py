@@ -37,6 +37,7 @@ class Application:
         try:
             return version('routemq')
         except PackageNotFoundError:
+            # Audit Accept: source checkout fallback; see docs/monitoring/error-handling-audit.md.
             return '0.0.0+dev'
 
     @staticmethod
@@ -95,6 +96,7 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
                 self.logger.info(f'Router loaded dynamically from {self.router_directory}')
             except Exception as e:
                 self.router = Router()
+                # Audit Accept: router auto-discovery fallback keeps manual router registration usable.
                 self.logger.warning(f'Could not load routers dynamically: {str(e)}')
                 self.logger.info('Using empty router. Register routes manually.')
 
@@ -202,7 +204,16 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
                 raise
 
         except Exception as e:
-            self.logger.error(f'Error processing message: {str(e)}')
+            topic = getattr(msg, 'topic', 'unknown')
+            observability.lifecycle(
+                'mqtt.message.failed',
+                {'process': 'main', 'error': e.__class__.__name__, 'mqtt_topic': topic},
+            )
+            self.logger.error(
+                f'Error processing message on topic {topic}: {str(e)}',
+                exc_info=True,
+                extra={'mqtt_topic': topic, 'error': e.__class__.__name__},
+            )
 
     async def _dispatch_mqtt_message(self, topic: str, payload: Any, client: Any, context: dict[str, Any]) -> None:
         """Restore MQTT correlation context inside the application event loop."""
@@ -262,6 +273,7 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
             previous_handlers[signal.SIGTERM] = signal.getsignal(signal.SIGTERM)
             signal.signal(signal.SIGTERM, self._request_shutdown)
         except (ValueError, RuntimeError):
+            # Audit Accept: signal handlers can only be installed on the main thread.
             self.logger.debug('SIGTERM handler not installed outside the main thread')
         return previous_handlers
 
@@ -270,6 +282,7 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
             try:
                 signal.signal(signum, handler)
             except (ValueError, RuntimeError):
+                # Audit Accept: best-effort signal restore during shutdown; see audit doc.
                 pass
 
     def start_workers(self):
@@ -305,6 +318,7 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
             self.loop.run_forever()
 
         except KeyboardInterrupt:
+            # Audit Accept: Ctrl+C is the expected graceful shutdown path.
             self.logger.info('Shutting down...')
             self.health_status.shutting_down = True
 
