@@ -4,6 +4,9 @@ import os
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, Set, Type
 
+from .observability import snapshot_context
+from .retry import BackoffConfig, bounded_exponential_backoff
+
 logger = logging.getLogger('RouteMQ.Job')
 
 _DENY_SETATTR: Set[str] = {'_allowed_classes'}
@@ -23,6 +26,13 @@ class Job(ABC):
 
     # Number of seconds to wait before retrying the job after a failure
     retry_after: int = 0
+
+    # Opt-in exponential retry delay. False preserves legacy fixed retry_after.
+    retry_backoff_enabled: bool = False
+
+    # Optional per-job retry backoff cap/jitter. None delegates to worker/env defaults.
+    retry_backoff_max_delay: float | None = None
+    retry_backoff_jitter: float | None = None
 
     # The name of the queue the job should be sent to
     queue: str = 'default'
@@ -80,12 +90,59 @@ class Job(ABC):
         job_data = {
             'class': f'{self.__class__.__module__}.{self.__class__.__name__}',
             'data': self.get_data(),
+            'observability': self.get_observability_context(),
             'max_tries': self.max_tries,
             'timeout': self.timeout,
             'retry_after': self.retry_after,
+            'retry_backoff_enabled': self.retry_backoff_enabled,
+            'retry_backoff_max_delay': self.retry_backoff_max_delay,
+            'retry_backoff_jitter': self.retry_backoff_jitter,
             'queue': self.queue,
         }
         return json.dumps(job_data)
+
+    def get_retry_delay(
+        self,
+        attempts: int,
+        *,
+        backoff_enabled: bool = False,
+        max_delay: float | None = None,
+        jitter: float = 0.0,
+        rng=None,
+    ) -> float:
+        """Return the retry delay for a failed attempt.
+
+        Backoff is opt-in at the job or worker/env layer. Without opt-in, this
+        returns the historical fixed ``retry_after`` value.
+        """
+
+        if not (self.retry_backoff_enabled or backoff_enabled):
+            return self.retry_after
+
+        min_delay = float(self.retry_after or 0)
+        configured_max_delay = self.retry_backoff_max_delay if self.retry_backoff_max_delay is not None else max_delay
+        if configured_max_delay is None:
+            configured_max_delay = min_delay
+        configured_jitter = self.retry_backoff_jitter if self.retry_backoff_jitter is not None else jitter
+        config = BackoffConfig(
+            min_delay=min_delay,
+            max_delay=max(float(configured_max_delay), min_delay),
+            jitter=float(configured_jitter),
+        )
+        return bounded_exponential_backoff(max(1, attempts), config, rng)
+
+    def capture_observability_context(self, extra: Dict[str, Any] | None = None) -> None:
+        """Attach the current observability context to this job envelope."""
+
+        self._observability_context = snapshot_context(extra)
+
+    def get_observability_context(self) -> Dict[str, Any]:
+        """Return context metadata that should travel with this job."""
+
+        context = getattr(self, '_observability_context', None)
+        if isinstance(context, dict):
+            return dict(context)
+        return snapshot_context()
 
     def get_data(self) -> Dict[str, Any]:
         """
@@ -142,6 +199,9 @@ class Job(ABC):
         job.max_tries = job_data.get('max_tries', 3)
         job.timeout = job_data.get('timeout', 60)
         job.retry_after = job_data.get('retry_after', 0)
+        job.retry_backoff_enabled = bool(job_data.get('retry_backoff_enabled', False))
+        job.retry_backoff_max_delay = job_data.get('retry_backoff_max_delay')
+        job.retry_backoff_jitter = job_data.get('retry_backoff_jitter')
         job.queue = job_data.get('queue', 'default')
 
         data = job_data.get('data', {})
@@ -149,6 +209,9 @@ class Job(ABC):
             if key.startswith('_') or key in _DENY_SETATTR:
                 continue
             setattr(job, key, value)
+
+        observability_context = job_data.get('observability', {})
+        job._observability_context = observability_context if isinstance(observability_context, dict) else {}
 
         return job
 

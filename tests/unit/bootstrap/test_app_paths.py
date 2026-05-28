@@ -235,8 +235,8 @@ class RunCleanupTests(unittest.TestCase):
         app.initialize_redis = MagicMock(return_value=None)
 
         with (
-            patch('bootstrap.app.redis_manager.disconnect') as disconnect,
-            patch('bootstrap.app.Model.cleanup') as cleanup,
+            patch('bootstrap.app.redis_manager.disconnect', new=MagicMock()) as disconnect,
+            patch('bootstrap.app.Model.cleanup', new=MagicMock()) as cleanup,
         ):
             app.run()
 

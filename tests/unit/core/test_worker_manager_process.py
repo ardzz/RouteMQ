@@ -69,7 +69,7 @@ class WorkerProcessSetupClientTests(unittest.TestCase):
     def test_setup_client_configures_callbacks(self) -> None:
         worker = _make_worker(broker_config={'broker': 'h', 'port': '1883'})
         fake_client = MagicMock()
-        with patch('paho.mqtt.client.Client', return_value=fake_client) as mock_cls:
+        with patch('routemq.mqtt_utils.mqtt_client.Client', return_value=fake_client) as mock_cls:
             worker.setup_client()
         self.assertIs(worker.client, fake_client)
         self.assertEqual(fake_client.on_connect, worker._on_connect)
@@ -80,7 +80,7 @@ class WorkerProcessSetupClientTests(unittest.TestCase):
     def test_setup_client_applies_credentials_when_provided(self) -> None:
         worker = _make_worker(broker_config={'broker': 'h', 'port': '1883', 'username': 'u', 'password': 'p'})
         fake_client = MagicMock()
-        with patch('paho.mqtt.client.Client', return_value=fake_client):
+        with patch('routemq.mqtt_utils.mqtt_client.Client', return_value=fake_client):
             worker.setup_client()
         fake_client.username_pw_set.assert_called_once_with('u', 'p')
 
@@ -129,6 +129,7 @@ class WorkerProcessOnMessageTests(unittest.TestCase):
         msg.payload = b'{"state": "ok"}'
 
         worker._on_message(MagicMock(), None, msg)
+        self.addCleanup(worker._stop_dispatch_loop)
 
         self.assertEqual(captured['topic'], 'devices/abc/status')
         self.assertEqual(captured['payload'], {'state': 'ok'})
@@ -149,6 +150,7 @@ class WorkerProcessOnMessageTests(unittest.TestCase):
         msg.payload = b'\xff\xfe binary'
 
         worker._on_message(MagicMock(), None, msg)
+        self.addCleanup(worker._stop_dispatch_loop)
         self.assertEqual(captured['payload'], b'\xff\xfe binary')
 
     def test_on_message_swallows_dispatch_exceptions(self) -> None:
@@ -166,6 +168,29 @@ class WorkerProcessOnMessageTests(unittest.TestCase):
         msg.payload = b'{}'
 
         worker._on_message(MagicMock(), None, msg)
+        self.addCleanup(worker._stop_dispatch_loop)
+
+    def test_on_message_reuses_persistent_loop_for_multiple_messages(self) -> None:
+        worker = _make_worker(group_name='workers')
+        captured: list[str] = []
+
+        async def fake_dispatch(topic: str, payload: Any, client: Any) -> None:
+            captured.append(topic)
+
+        router_mock = MagicMock()
+        router_mock.dispatch = fake_dispatch
+        worker.router = router_mock
+
+        first = MagicMock(topic='plain/one', payload=b'{}')
+        second = MagicMock(topic='plain/two', payload=b'{}')
+
+        worker._on_message(MagicMock(), None, first)
+        first_loop = worker.loop
+        worker._on_message(MagicMock(), None, second)
+        self.addCleanup(worker._stop_dispatch_loop)
+
+        self.assertIs(worker.loop, first_loop)
+        self.assertEqual(captured, ['plain/one', 'plain/two'])
 
 
 class WorkerProcessRunTests(unittest.TestCase):
@@ -180,7 +205,7 @@ class WorkerProcessRunTests(unittest.TestCase):
         fake_client = MagicMock()
 
         with (
-            patch('paho.mqtt.client.Client', return_value=fake_client),
+            patch('routemq.mqtt_utils.mqtt_client.Client', return_value=fake_client),
             patch('routemq.worker_manager.time.sleep', side_effect=KeyboardInterrupt()),
             patch.object(worker, 'setup_router'),
         ):
@@ -190,6 +215,37 @@ class WorkerProcessRunTests(unittest.TestCase):
         fake_client.loop_start.assert_called_once()
         fake_client.loop_stop.assert_called_once()
         fake_client.disconnect.assert_called_once()
+
+    def test_run_logs_expected_broker_connect_failure_without_loop_cleanup(self) -> None:
+        worker = _make_worker(broker_config={'broker': 'h', 'port': '1883'})
+        fake_client = MagicMock()
+        fake_client.connect.side_effect = ConnectionRefusedError(111, 'Connection refused')
+
+        with (
+            patch('routemq.mqtt_utils.mqtt_client.Client', return_value=fake_client),
+            patch.object(worker, 'setup_router'),
+            self.assertLogs('RouteMQ.Worker-0', level='ERROR') as logs,
+        ):
+            worker.run()
+
+        self.assertTrue(any('could not connect to MQTT broker at h:1883' in message for message in logs.output))
+        fake_client.loop_start.assert_not_called()
+        fake_client.loop_stop.assert_not_called()
+        fake_client.disconnect.assert_not_called()
+
+    def test_run_propagates_non_network_connect_failure(self) -> None:
+        worker = _make_worker(broker_config={'broker': 'h', 'port': '1883'})
+        fake_client = MagicMock()
+        fake_client.connect.side_effect = OSError(28, 'No space left on device')
+
+        with (
+            patch('routemq.mqtt_utils.mqtt_client.Client', return_value=fake_client),
+            patch.object(worker, 'setup_router'),
+            self.assertRaises(OSError),
+        ):
+            worker.run()
+
+        fake_client.loop_start.assert_not_called()
 
 
 class WorkerProcessMainEntryTests(unittest.TestCase):

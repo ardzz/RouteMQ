@@ -2,6 +2,7 @@ import re
 from typing import Callable, List, Any
 
 from .middleware import Middleware
+from .observability import enrich_context, get_correlation_id, lifecycle, reset_context, snapshot_context
 
 
 class Route:
@@ -10,7 +11,7 @@ class Route:
         topic: str,
         handler: Callable,
         qos: int = 0,
-        middleware: List[Middleware] = None,
+        middleware: List[Middleware] | None = None,
         shared: bool = False,
         worker_count: int = 1,
     ):
@@ -40,7 +41,7 @@ class Route:
             return match.groupdict()
         return None
 
-    def get_subscription_topic(self, group_name: str = None) -> str:
+    def get_subscription_topic(self, group_name: str | None = None) -> str:
         """Get the MQTT subscription topic, with shared prefix if needed."""
         if self.shared and group_name:
             return f'$share/{group_name}/{self.mqtt_topic}'
@@ -48,7 +49,7 @@ class Route:
 
 
 class RouterGroup:
-    def __init__(self, router, prefix: str = '', middleware: List[Middleware] = None):
+    def __init__(self, router, prefix: str = '', middleware: List[Middleware] | None = None):
         self.router = router
         self.prefix = prefix
         self.middleware = middleware or []
@@ -58,7 +59,7 @@ class RouterGroup:
         topic: str,
         handler: Callable,
         qos: int = 0,
-        middleware: List[Middleware] = None,
+        middleware: List[Middleware] | None = None,
         shared: bool = False,
         worker_count: int = 1,
     ) -> None:
@@ -86,7 +87,7 @@ class Router:
         topic: str,
         handler: Callable,
         qos: int = 0,
-        middleware: List[Middleware] = None,
+        middleware: List[Middleware] | None = None,
         shared: bool = False,
         worker_count: int = 1,
     ) -> None:
@@ -94,7 +95,7 @@ class Router:
         route = Route(topic, handler, qos, middleware, shared, worker_count)
         self.routes.append(route)
 
-    def group(self, prefix: str = '', middleware: List[Middleware] = None):
+    def group(self, prefix: str = '', middleware: List[Middleware] | None = None):
         """Create a route group with shared prefix and middleware."""
         return RouterGroup(self, prefix, middleware)
 
@@ -103,7 +104,21 @@ class Router:
         for route in self.routes:
             params = route.matches(topic)
             if params is not None:
-                context = {'topic': topic, 'payload': payload, 'params': params, 'client': client}
+                route_attributes = {
+                    'route_pattern': route.topic,
+                    'mqtt_subscription_topic': route.mqtt_topic,
+                    'route_shared': route.shared,
+                }
+                context = {
+                    'topic': topic,
+                    'payload': payload,
+                    'params': params,
+                    'client': client,
+                    'observability': snapshot_context(route_attributes),
+                    'correlation_id': get_correlation_id(),
+                    'route_pattern': route.topic,
+                }
+                token = enrich_context(**route_attributes)
 
                 async def execute_handler(ctx):
                     return await route.handler(**ctx['params'], payload=ctx['payload'], client=ctx['client'])
@@ -114,8 +129,18 @@ class Router:
                     next_handler = handler
                     handler = lambda ctx, m=middleware, nh=next_handler: m.handle(ctx, nh)
 
-                return await handler(context)
+                try:
+                    lifecycle('router.dispatch.started', route_attributes)
+                    result = await handler(context)
+                    lifecycle('router.dispatch.succeeded', route_attributes)
+                    return result
+                except Exception as exc:
+                    lifecycle('router.dispatch.failed', {**route_attributes, 'error': exc.__class__.__name__})
+                    raise
+                finally:
+                    reset_context(token)
 
+        lifecycle('router.dispatch.missed', {'route_found': False})
         raise ValueError(f'No route found for topic: {topic}')
 
     def get_total_workers_needed(self) -> int:

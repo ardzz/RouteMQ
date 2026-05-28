@@ -5,8 +5,10 @@ RouteMQ - A flexible MQTT routing framework with middleware support
 
 import argparse
 import os
+import sys
 
 from bootstrap.app import Application
+from routemq.mqtt_utils import is_network_startup_error
 
 
 def create_app(router=None, env_file='.env'):
@@ -181,7 +183,19 @@ def _cmd_run() -> None:
     """Run the MQTT application."""
     create_env_file()
     app = create_app()
-    app.connect()
+    try:
+        app.connect()
+    except OSError as exc:
+        if not is_network_startup_error(exc):
+            raise
+        broker = os.getenv('MQTT_BROKER', 'localhost')
+        port = os.getenv('MQTT_PORT', '1883')
+        print(
+            f'Error: Could not connect to MQTT broker at {broker}:{port} ({exc}). '
+            'Please verify the broker is running and the address/port are correct.',
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
     app.run()
 
 
