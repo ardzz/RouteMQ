@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 import signal
 import traceback
 from typing import Optional
@@ -8,20 +7,10 @@ from typing import Optional
 from routemq.job import Job
 from routemq.queue.queue_driver import QueueDriver
 from routemq.queue.queue_manager import QueueManager
+from routemq.settings import load_queue_retry_settings
 from ..observability import lifecycle, reset_context, set_context
 
 logger = logging.getLogger('RouteMQ.QueueWorker')
-
-
-def _env_bool(name: str, default: bool = False) -> bool:
-    return os.getenv(name, str(default)).lower() in {'1', 'true', 'yes', 'on'}
-
-
-def _env_float(name: str, default: float) -> float:
-    try:
-        return float(os.getenv(name, str(default)))
-    except ValueError:
-        return default
 
 
 class QueueWorker:
@@ -59,9 +48,10 @@ class QueueWorker:
         self.sleep = sleep
         self.max_tries = max_tries
         self.timeout = timeout
-        self.retry_backoff_enabled = _env_bool('QUEUE_RETRY_BACKOFF_ENABLED', False)
-        self.retry_backoff_max_delay = _env_float('QUEUE_RETRY_MAX_DELAY', 60.0)
-        self.retry_backoff_jitter = _env_float('QUEUE_RETRY_JITTER', 0.0)
+        retry_settings = load_queue_retry_settings()
+        self.retry_backoff_enabled = retry_settings.backoff_enabled
+        self.retry_backoff_max_delay = retry_settings.max_delay
+        self.retry_backoff_jitter = retry_settings.jitter
 
         self.should_quit = False
         self.paused = False

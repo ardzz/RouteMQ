@@ -1,4 +1,5 @@
 import logging
+import os
 import unittest
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -45,6 +46,38 @@ class _WorkerSignalGuard(unittest.IsolatedAsyncioTestCase):
 
 
 class QueueWorkerControlsTests(_WorkerSignalGuard):
+    def test_worker_reads_retry_backoff_settings(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                'QUEUE_RETRY_BACKOFF_ENABLED': 'true',
+                'QUEUE_RETRY_MAX_DELAY': '12.5',
+                'QUEUE_RETRY_JITTER': '0.75',
+            },
+            clear=True,
+        ):
+            worker = self._make_worker()
+
+        self.assertTrue(worker.retry_backoff_enabled)
+        self.assertEqual(worker.retry_backoff_max_delay, 12.5)
+        self.assertEqual(worker.retry_backoff_jitter, 0.75)
+
+    def test_worker_retry_backoff_settings_fall_back_on_invalid_numbers(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                'QUEUE_RETRY_BACKOFF_ENABLED': 'false',
+                'QUEUE_RETRY_MAX_DELAY': 'invalid',
+                'QUEUE_RETRY_JITTER': 'invalid',
+            },
+            clear=True,
+        ):
+            worker = self._make_worker()
+
+        self.assertFalse(worker.retry_backoff_enabled)
+        self.assertEqual(worker.retry_backoff_max_delay, 60.0)
+        self.assertEqual(worker.retry_backoff_jitter, 0.0)
+
     def test_pause_sets_flag(self) -> None:
         worker = self._make_worker()
         worker.pause()

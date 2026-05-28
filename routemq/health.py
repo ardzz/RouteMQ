@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
-import os
 import threading
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
+
+from .settings import load_health_http_settings
 
 
 @dataclass
@@ -88,12 +89,7 @@ class HealthServer:
 
 
 def health_server_from_env(status: HealthStatus) -> HealthServer | None:
-    enabled = os.getenv('HEALTH_HTTP_ENABLED', 'false').lower() in {'1', 'true', 'yes', 'on'}
-    if not enabled:
+    settings = load_health_http_settings()
+    if not settings.enabled:
         return None
-    host = os.getenv('HEALTH_HTTP_HOST', '127.0.0.1')
-    try:
-        port = int(os.getenv('HEALTH_HTTP_PORT', '8080'))
-    except ValueError:
-        port = 8080
-    return HealthServer(status, host=host, port=port)
+    return HealthServer(status, host=settings.host, port=settings.port)

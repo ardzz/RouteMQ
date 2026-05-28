@@ -1,6 +1,5 @@
 import errno
 import json
-import os
 import socket
 import time
 import uuid
@@ -12,6 +11,7 @@ from paho.mqtt import client as mqtt_client
 
 from .observability import lifecycle
 from .retry import RetryConfig, retry_sync
+from .settings import load_mqtt_settings
 
 
 @dataclass(frozen=True)
@@ -39,61 +39,46 @@ def parse_mqtt_payload(payload: bytes) -> Any:
 
 
 def get_mqtt_connection_config() -> MqttConnectionConfig:
+    config = load_mqtt_settings().connection
     return MqttConnectionConfig(
-        broker=os.getenv('MQTT_BROKER', 'localhost'),
-        port=int(os.getenv('MQTT_PORT', '1883')),
-        username=os.getenv('MQTT_USERNAME'),
-        password=os.getenv('MQTT_PASSWORD'),
+        broker=config.broker,
+        port=config.port,
+        username=config.username,
+        password=config.password,
     )
 
 
-def _env_bool(name: str, default: bool = False) -> bool:
-    return os.getenv(name, str(default)).lower() in {'1', 'true', 'yes', 'on'}
-
-
-def _env_int(name: str, default: int) -> int:
-    try:
-        return int(os.getenv(name, str(default)))
-    except ValueError:
-        return default
-
-
-def _env_float(name: str, default: float) -> float:
-    try:
-        return float(os.getenv(name, str(default)))
-    except ValueError:
-        return default
-
-
 def get_mqtt_tls_config() -> MqttTlsConfig:
+    config = load_mqtt_settings().tls
     return MqttTlsConfig(
-        enabled=_env_bool('MQTT_TLS_ENABLED', False),
-        ca_certs=os.getenv('MQTT_TLS_CA_CERTS'),
-        certfile=os.getenv('MQTT_TLS_CERTFILE'),
-        keyfile=os.getenv('MQTT_TLS_KEYFILE'),
-        insecure=_env_bool('MQTT_TLS_INSECURE', False),
+        enabled=config.enabled,
+        ca_certs=config.ca_certs,
+        certfile=config.certfile,
+        keyfile=config.keyfile,
+        insecure=config.insecure,
     )
 
 
 def get_mqtt_retry_config() -> RetryConfig:
+    config = load_mqtt_settings().retry
     return RetryConfig(
-        max_attempts=_env_int('MQTT_CONNECT_RETRIES', 1),
-        min_delay=_env_float('MQTT_RETRY_MIN_DELAY', 1.0),
-        max_delay=_env_float('MQTT_RETRY_MAX_DELAY', 30.0),
-        jitter=_env_float('MQTT_RETRY_JITTER', 0.0),
+        max_attempts=config.max_attempts,
+        min_delay=config.min_delay,
+        max_delay=config.max_delay,
+        jitter=config.jitter,
     )
 
 
 def get_main_client_id() -> str:
-    return os.getenv('MQTT_CLIENT_ID', f'mqtt-framework-main-{os.getpid()}')
+    return load_mqtt_settings().main_client_id
 
 
 def get_worker_client_id_prefix() -> str:
-    return os.getenv('MQTT_CLIENT_ID', 'mqtt-worker')
+    return load_mqtt_settings().worker_client_id_prefix
 
 
 def get_mqtt_group_name() -> str:
-    return os.getenv('MQTT_GROUP_NAME', 'mqtt_framework_group')
+    return load_mqtt_settings().group_name
 
 
 def build_worker_broker_config() -> dict[str, Any]:
