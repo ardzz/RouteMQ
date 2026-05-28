@@ -1,9 +1,11 @@
 import unittest
 from unittest.mock import patch
 
+from routemq.metrics.registry import DEFAULT_HISTOGRAM_BUCKETS
 from routemq.settings import (
     load_database_pool_settings,
     load_health_http_settings,
+    load_metrics_http_settings,
     load_mqtt_settings,
     load_queue_retry_settings,
 )
@@ -166,6 +168,67 @@ class DatabasePoolSettingsTests(unittest.TestCase):
         settings = load_database_pool_settings({'DB_POOL_CLASS': 'garbage'})
 
         self.assertEqual(settings.pool_class, 'default')
+
+
+class MetricsHttpSettingsTests(unittest.TestCase):
+    def test_load_metrics_http_settings_defaults(self) -> None:
+        settings = load_metrics_http_settings({})
+
+        self.assertFalse(settings.enabled)
+        self.assertEqual(settings.path, '/metrics')
+        self.assertFalse(settings.separate)
+        self.assertEqual(settings.host, '127.0.0.1')
+        self.assertEqual(settings.port, 8080)
+        self.assertEqual(settings.namespace, 'routemq')
+        self.assertEqual(settings.histogram_buckets, DEFAULT_HISTOGRAM_BUCKETS)
+        self.assertEqual(settings.default_labels, {})
+
+    def test_load_metrics_http_settings_parses_all_fields(self) -> None:
+        settings = load_metrics_http_settings(
+            {
+                'METRICS_HTTP_ENABLED': 'true',
+                'METRICS_HTTP_PATH': '/internal/metrics',
+                'METRICS_HTTP_SEPARATE': 'yes',
+                'METRICS_HTTP_HOST': '0.0.0.0',
+                'METRICS_HTTP_PORT': '9090',
+                'METRICS_NAMESPACE': 'custom',
+                'METRICS_HISTOGRAM_BUCKETS': '0.1, 0.5, 1.0',
+                'METRICS_DEFAULT_LABELS': 'env=prod, region=us-east-1,broken,no_key=,=missing',
+            }
+        )
+
+        self.assertTrue(settings.enabled)
+        self.assertEqual(settings.path, '/internal/metrics')
+        self.assertTrue(settings.separate)
+        self.assertEqual(settings.host, '0.0.0.0')
+        self.assertEqual(settings.port, 9090)
+        self.assertEqual(settings.namespace, 'custom')
+        self.assertEqual(settings.histogram_buckets, (0.1, 0.5, 1.0))
+        self.assertEqual(settings.default_labels, {'env': 'prod', 'region': 'us-east-1', 'no_key': ''})
+
+    def test_load_metrics_http_settings_inherits_health_bind_defaults(self) -> None:
+        settings = load_metrics_http_settings(
+            {
+                'HEALTH_HTTP_HOST': '127.0.0.2',
+                'HEALTH_HTTP_PORT': '8181',
+            }
+        )
+
+        self.assertEqual(settings.host, '127.0.0.2')
+        self.assertEqual(settings.port, 8181)
+
+    def test_load_metrics_http_settings_falls_back_for_invalid_numbers(self) -> None:
+        settings = load_metrics_http_settings(
+            {
+                'METRICS_HTTP_ENABLED': 'true',
+                'METRICS_HTTP_PORT': 'invalid',
+                'METRICS_HISTOGRAM_BUCKETS': '0.1,invalid',
+            }
+        )
+
+        self.assertTrue(settings.enabled)
+        self.assertEqual(settings.port, 8080)
+        self.assertEqual(settings.histogram_buckets, DEFAULT_HISTOGRAM_BUCKETS)
 
 
 class QueueRetrySettingsTests(unittest.TestCase):

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from routemq.metrics.registry import DEFAULT_HISTOGRAM_BUCKETS
 
 
 _TRUE_VALUES = {'1', 'true', 'yes', 'on'}
@@ -114,6 +116,18 @@ class DatabasePoolSettings:
 
 
 @dataclass(frozen=True, slots=True)
+class MetricsHttpSettings:
+    enabled: bool = False
+    path: str = '/metrics'
+    separate: bool = False
+    host: str = '127.0.0.1'
+    port: int = 8080
+    namespace: str = 'routemq'
+    histogram_buckets: tuple[float, ...] = DEFAULT_HISTOGRAM_BUCKETS
+    default_labels: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
 class QueueRetrySettings:
     backoff_enabled: bool = False
     max_delay: float = 60.0
@@ -184,6 +198,47 @@ def load_database_pool_settings(env: Mapping[str, str] | None = None) -> Databas
         pool_use_lifo=_parse_bool_env(values, 'DB_POOL_USE_LIFO', False),
         pool_class=pool_class,
     )
+
+
+def load_metrics_http_settings(env: Mapping[str, str] | None = None) -> MetricsHttpSettings:
+    """Load metrics HTTP endpoint settings from an environment mapping."""
+
+    values = _environment(env)
+    health_host = env_str(values, 'HEALTH_HTTP_HOST', '127.0.0.1')
+    health_port = env_int(values, 'HEALTH_HTTP_PORT', 8080, fallback_on_invalid=True)
+    return MetricsHttpSettings(
+        enabled=env_bool(values, 'METRICS_HTTP_ENABLED', False),
+        path=env_str(values, 'METRICS_HTTP_PATH', '/metrics'),
+        separate=env_bool(values, 'METRICS_HTTP_SEPARATE', False),
+        host=env_str(values, 'METRICS_HTTP_HOST', health_host),
+        port=env_int(values, 'METRICS_HTTP_PORT', health_port, fallback_on_invalid=True),
+        namespace=env_str(values, 'METRICS_NAMESPACE', 'routemq'),
+        histogram_buckets=_parse_histogram_buckets(values.get('METRICS_HISTOGRAM_BUCKETS')),
+        default_labels=_parse_default_labels(values.get('METRICS_DEFAULT_LABELS')),
+    )
+
+
+def _parse_histogram_buckets(value: str | None) -> tuple[float, ...]:
+    if value is None or not value.strip():
+        return DEFAULT_HISTOGRAM_BUCKETS
+    try:
+        buckets = tuple(float(part.strip()) for part in value.split(',') if part.strip())
+    except ValueError:
+        return DEFAULT_HISTOGRAM_BUCKETS
+    return buckets or DEFAULT_HISTOGRAM_BUCKETS
+
+
+def _parse_default_labels(value: str | None) -> dict[str, str]:
+    if not value:
+        return {}
+    labels: dict[str, str] = {}
+    for part in value.split(','):
+        key, separator, raw_label_value = part.partition('=')
+        key = key.strip()
+        if not separator or not key:
+            continue
+        labels[key] = raw_label_value.strip()
+    return labels
 
 
 def load_queue_retry_settings(env: Mapping[str, str] | None = None) -> QueueRetrySettings:

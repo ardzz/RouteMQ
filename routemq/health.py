@@ -52,11 +52,13 @@ class HealthServer:
         host: str = '127.0.0.1',
         port: int = 8080,
         metrics_renderer: MetricsRenderer | None = None,
+        metrics_path: str = '/metrics',
     ):
         self.status = status
         self.host = host
         self.port = port
         self.metrics_renderer = metrics_renderer
+        self.metrics_path = metrics_path or '/metrics'
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -66,6 +68,7 @@ class HealthServer:
 
         status = self.status
         metrics_renderer = self.metrics_renderer
+        metrics_path = self.metrics_path
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self) -> None:
@@ -73,7 +76,7 @@ class HealthServer:
                     code, payload = status.health_payload()
                 elif self.path == '/ready':
                     code, payload = status.readiness_payload()
-                elif self.path == '/metrics' and metrics_renderer is not None:
+                elif self.path == metrics_path and metrics_renderer is not None:
                     content_type, body = metrics_renderer(self.headers.get('Accept'))
                     self.send_response(200)
                     self.send_header('Content-Type', content_type)
@@ -91,7 +94,7 @@ class HealthServer:
                 self.wfile.write(body)
 
             def do_POST(self) -> None:
-                if self.path == '/metrics' and metrics_renderer is not None:
+                if self.path == metrics_path and metrics_renderer is not None:
                     body = b''
                     self.send_response(405)
                     self.send_header('Content-Length', str(len(body)))
@@ -119,9 +122,13 @@ class HealthServer:
 
 
 def health_server_from_env(
-    status: HealthStatus, metrics_renderer: MetricsRenderer | None = None
+    status: HealthStatus,
+    metrics_renderer: MetricsRenderer | None = None,
+    metrics_path: str = '/metrics',
 ) -> HealthServer | None:
     settings = load_health_http_settings()
     if not settings.enabled:
         return None
-    return HealthServer(status, host=settings.host, port=settings.port, metrics_renderer=metrics_renderer)
+    return HealthServer(
+        status, host=settings.host, port=settings.port, metrics_renderer=metrics_renderer, metrics_path=metrics_path
+    )
