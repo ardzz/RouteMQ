@@ -1,3 +1,9 @@
+## v0.19.0 (2026-05-28)
+
+### Feat
+
+- complete Sprint 06 observability (logs-first + tracing spans) (#61)
+
 ## v0.18.0 (2026-05-28)
 
 ### Feat
