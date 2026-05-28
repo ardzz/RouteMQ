@@ -63,6 +63,14 @@ class HistogramTests(unittest.TestCase):
         self.assertAlmostEqual(sum_sample.value, 2.45)
         self.assertEqual(count_sample.value, 3.0)
 
+    def test_infinite_bucket_bound_formats_as_plus_inf(self) -> None:
+        histogram = Histogram(name='latency', help='latency', bucket_bounds=(float('inf'),))
+        histogram.observe(99.0)
+
+        buckets = {sample.label_key: sample.value for sample in histogram.collect() if sample.name_suffix == '_bucket'}
+
+        self.assertEqual(buckets[(('le', '+Inf'),)], 1.0)
+
     def test_histogram_rejects_nan(self) -> None:
         histogram = Histogram(name='latency', help='latency')
         with self.assertRaises(ValueError):
@@ -103,11 +111,23 @@ class RegistryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             registry.histogram('latency', help='h', bucket_bounds=(0.5,))
 
+    def test_histogram_rejects_mismatched_labels(self) -> None:
+        registry = MetricsRegistry()
+        registry.histogram('latency', help='h', label_names=('route',))
+        with self.assertRaises(ValueError):
+            registry.histogram('latency', help='h', label_names=('route', 'status'))
+
     def test_metric_name_is_unique_across_types(self) -> None:
         registry = MetricsRegistry()
         registry.counter('shared', help='h')
         with self.assertRaises(ValueError):
             registry.histogram('shared', help='h')
+
+    def test_counter_rejects_name_already_registered_as_histogram(self) -> None:
+        registry = MetricsRegistry()
+        registry.histogram('shared', help='h')
+        with self.assertRaises(ValueError):
+            registry.counter('shared', help='h')
 
     def test_collect_yields_counters_then_histograms(self) -> None:
         registry = MetricsRegistry()
