@@ -4,11 +4,16 @@ RouteMQ - A flexible MQTT routing framework with middleware support
 """
 
 import argparse
+import logging
 import os
 import sys
 
 from bootstrap.app import Application
+from routemq.logging_config import json_logging_enabled
 from routemq.mqtt_utils import is_network_startup_error
+
+
+logger = logging.getLogger('RouteMQ.CLI')
 
 
 def create_app(router=None, env_file='.env'):
@@ -46,9 +51,17 @@ TIMEZONE=Asia/Jakarta
 
 # Logging Configuration
 LOG_LEVEL=INFO
-LOG_FORMAT=%(asctime)s - %(name)s - %(levelname)s - %(message)s
+LOG_FORMATTER=json
+LOG_FIELD_PROFILE=otel
+LOG_TO_CONSOLE=true
+LOG_STREAM=stdout
+LOG_TO_FILE=false
+LOG_INCLUDE_CONTEXT=true
+LOG_LIFECYCLE_EVENTS=true
+LOG_LIFECYCLE_LEVEL=INFO
 """)
-        print('Created default .env file')
+        if not json_logging_enabled():
+            print('Created default .env file', file=sys.stderr)
 
 
 def setup_example():
@@ -190,11 +203,14 @@ def _cmd_run() -> None:
             raise
         broker = os.getenv('MQTT_BROKER', 'localhost')
         port = os.getenv('MQTT_PORT', '1883')
-        print(
+        message = (
             f'Error: Could not connect to MQTT broker at {broker}:{port} ({exc}). '
-            'Please verify the broker is running and the address/port are correct.',
-            file=sys.stderr,
+            'Please verify the broker is running and the address/port are correct.'
         )
+        if json_logging_enabled():
+            logger.error(message, extra={'broker': broker, 'port': port, 'error': exc.__class__.__name__})
+        else:
+            print(message, file=sys.stderr)
         raise SystemExit(1)
     app.run()
 
@@ -239,10 +255,10 @@ def _cmd_queue_work(
                 timeout=timeout,
             )
 
-            print(f'Starting queue worker for queue: {queue}')
-            print(f'Connection: {connection or "default"}')
-            print(f'Sleep when idle: {sleep}s')
-            print(f'Press Ctrl+C to stop gracefully\n')
+            logger.info(
+                'Starting queue worker',
+                extra={'queue': queue, 'connection': connection or 'default', 'sleep': sleep},
+            )
 
             await worker.work()
 
