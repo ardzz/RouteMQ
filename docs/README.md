@@ -16,6 +16,7 @@ Welcome to the RouteMQ Framework documentation! This guide will help you get sta
 * [Routing](routing/) - Route definition, parameters, and organization
 * [Controllers](controllers/) - Creating and organizing business logic
 * [Middleware](middleware/) - Request processing and middleware chains
+* [Queue System](queue/) - Background task processing and pluggable queue drivers
 * [Redis Integration](redis/) - Caching, sessions, and distributed features
 * [Rate Limiting](rate-limiting/) - Advanced rate limiting strategies
 * [Database](database/) - MySQL integration and models
@@ -31,6 +32,8 @@ Welcome to the RouteMQ Framework documentation! This guide will help you get sta
 * [Installation Guide](getting-started/installation.md)
 * [Your First Route](getting-started/first-route.md)
 * [Configuration Reference](configuration/environment-variables.md)
+* [Queue Drivers](queue/drivers.md)
+* [Integration Tests](testing/integration-tests.md)
 * [Best Practices](best-practices.md)
 * [FAQ](faq.md)
 

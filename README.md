@@ -62,6 +62,7 @@ See the [Installation Guide](./INSTALL.md) for detailed setup instructions.
 - **[Controllers](./docs/controllers/README.md)** - Creating and organizing business logic
 - **[Middleware](./docs/middleware/README.md)** - Request processing and middleware chains
 - **[Queue System](./docs/queue/README.md)** - Background task processing and job queues
+- **[Testing](./docs/testing/README.md)** - Unit and Docker-backed integration testing
 - **[Docker Deployment](./docs/docker-deployment.md)** - Production deployment with Docker
 - **[Redis Integration](./docs/redis/README.md)** - Caching, sessions, and distributed features
 - **[Rate Limiting](./docs/rate-limiting/README.md)** - Advanced rate limiting strategies

@@ -8,7 +8,7 @@ The queue system consists of several components:
 
 - **Job**: A class that defines a task to be executed in the background
 - **Queue Manager**: Dispatches jobs to queues
-- **Queue Driver**: Handles storage and retrieval of jobs (Redis or Database)
+- **Queue Driver**: Handles storage and retrieval of jobs (Redis, Database, or registered custom drivers)
 - **Queue Worker**: Processes jobs from the queue
 
 ### Architecture
@@ -26,7 +26,7 @@ The queue system consists of several components:
        ▼
 ┌─────────────────┐
 │  Queue Driver   │
-│ (Redis/Database)│
+│Redis/DB/Custom  │
 └──────┬──────────┘
        │ pop
        ▼
@@ -70,7 +70,8 @@ await dispatch(job)
 ## Key Features
 
 - ✅ **Laravel-style API** - Familiar syntax for Laravel developers
-- ✅ **Two Queue Drivers** - Redis (fast) or Database (persistent)
+- ✅ **Built-in Queue Drivers** - Redis (fast) or Database (persistent)
+- ✅ **Custom Queue Drivers** - Register drivers in code or with Python package entry points
 - ✅ **Automatic Retries** - Configurable retry logic with delays
 - ✅ **Multiple Queues** - Organize jobs by priority or type
 - ✅ **Delayed Jobs** - Schedule jobs to run later

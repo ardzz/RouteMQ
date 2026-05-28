@@ -1,6 +1,6 @@
 # Queue Drivers
 
-RouteMQ supports two queue drivers: Redis and Database. This guide explains how they work and when to use each.
+RouteMQ ships with Redis and Database queue drivers, and it can load custom drivers through the queue driver registry. This guide explains how the built-in drivers work, when to use each, and how to register a custom backend.
 
 ## Overview
 
@@ -10,6 +10,16 @@ Queue drivers handle the storage and retrieval of jobs. The driver you choose af
 - **Persistence** - Whether jobs survive crashes
 - **Infrastructure** - What services you need to run
 - **Scalability** - How well it handles high job volumes
+- **Extensibility** - Whether you need a custom backend such as SQS, RabbitMQ, or another broker
+
+Built-in drivers use these connection names:
+
+| Connection | Driver | Backend |
+|------------|--------|---------|
+| `redis` | `RedisQueue` | Redis lists and sorted sets |
+| `database` | `DatabaseQueue` | MySQL tables via SQLAlchemy |
+
+Custom drivers use the same connection-name model through `QueueManager.register_driver()` or Python package entry points.
 
 ## Redis Queue Driver
 
@@ -257,6 +267,85 @@ QUEUE_CONNECTION=redis  # or 'database'
 - Jobs in the old driver won't be transferred
 - Complete existing jobs before switching
 - Or manually migrate jobs between drivers
+
+## Custom Queue Drivers
+
+Custom queue drivers let you use another backend without modifying RouteMQ internals. A driver must inherit `QueueDriver` and implement the async driver contract.
+
+```python
+from routemq.queue import QueueDriver, QueueManager
+
+
+class SqsQueue(QueueDriver):
+    async def push(self, payload: str, queue: str = "default", delay: int = 0) -> None:
+        ...
+
+    async def pop(self, queue: str = "default") -> dict | None:
+        ...
+
+    async def release(self, job_id: int | str, queue: str, delay: int = 0) -> None:
+        ...
+
+    async def delete(self, job_id: int | str, queue: str) -> None:
+        ...
+
+    async def failed(self, connection: str, queue: str, payload: str, exception: str) -> None:
+        ...
+
+    async def size(self, queue: str = "default") -> int:
+        ...
+
+
+QueueManager.register_driver("sqs", SqsQueue)
+```
+
+Use the registered connection like any built-in driver:
+
+```env
+QUEUE_CONNECTION=sqs
+```
+
+Or request it explicitly:
+
+```python
+from routemq.queue import queue
+
+await queue.push(job, connection="sqs")
+```
+
+Run a worker against the custom connection:
+
+```bash
+routemq queue-work --queue default --connection sqs
+```
+
+### Package Entry Points
+
+Third-party packages should expose drivers with Python package entry points:
+
+```toml
+[project.entry-points."routemq.queue_drivers"]
+sqs = "routemq_sqs:SqsQueue"
+```
+
+RouteMQ loads `routemq.queue_drivers` entry points on first driver resolution. Built-in names (`redis`, `database`) are reserved; entry points with those names are skipped.
+
+You can inspect available driver names at runtime:
+
+```python
+from routemq.queue import QueueManager
+
+print(QueueManager.registered_drivers())
+```
+
+### Driver Contract Notes
+
+- All methods are async.
+- `pop()` should return `{id, payload, attempts}` or `None`.
+- `release()` should make a reserved job available again, optionally after `delay` seconds.
+- `delete()` should remove a successfully completed reserved job.
+- `failed()` should persist enough failure detail for debugging.
+- `size()` should count pending jobs for a queue.
 
 ## Performance Tips
 

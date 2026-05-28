@@ -8,7 +8,7 @@ Install RouteMQ with development dependencies:
 
 ```bash
 # Install with development dependencies
-uv sync --extra dev
+uv sync --all-extras --dev
 ```
 
 This includes additional tools for testing, linting, and development.
@@ -25,7 +25,7 @@ uv add package-name
 uv add --optional redis redis
 
 # Add a development dependency
-uv add --dev pytest-cov
+uv add --dev coverage
 ```
 
 ### Removing Dependencies
@@ -48,26 +48,29 @@ uv run routemq --run --config custom.env
 
 ```bash
 # Run all tests
-uv run pytest
+uv run python run_tests.py
 
-# Run specific test file
-uv run pytest tests/unit/test_router.py
+# Run a specific unittest module
+uv run python -m unittest tests.unit.test_router
 
-# Run with coverage
-uv run pytest --cov=core --cov-report=html
+# Run Docker-backed integration tests
+RUN_INTEGRATION_TESTS=1 uv run python -m unittest tests.integration.test_queue_backends tests.integration.test_mqtt_end_to_end
+
+# Run with coverage using pyproject configuration
+uv run coverage run && uv run coverage report -m
 ```
 
 ## Development Commands
 
 ```bash
 # Run tests
-python run_tests.py
+uv run python run_tests.py
 
-# Check code style (if configured)
-uv run flake8 .
+# Check code style
+uv run ruff check .
 
-# Format code (if black is installed)
-uv run black .
+# Check formatting
+uv run ruff format --check .
 ```
 
 ## Project Structure

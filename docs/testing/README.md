@@ -12,13 +12,16 @@ Learn how to write and run tests for your RouteMQ application.
 
 ## Quick Overview
 
-Run the test suite:
+Run the default test suite:
 
 ```bash
-python run_tests.py
+uv run python run_tests.py
+```
 
-# Or using uv
-uv run pytest
+Run Docker-backed integration tests explicitly:
+
+```bash
+RUN_INTEGRATION_TESTS=1 uv run python -m unittest tests.integration.test_queue_backends tests.integration.test_mqtt_end_to_end
 ```
 
 ## Writing Tests
@@ -31,7 +34,7 @@ from unittest.mock import Mock, AsyncMock, patch
 from app.controllers.sensor_controller import SensorController
 from app.middleware.rate_limit import RateLimitMiddleware
 
-class TestSensorController(unittest.TestCase):
+class TestSensorController(unittest.IsolatedAsyncioTestCase):
     async def test_handle_temperature(self):
         # Mock client and Redis
         client = Mock()
@@ -48,7 +51,7 @@ class TestSensorController(unittest.TestCase):
         self.assertEqual(result["status"], "processed")
         self.assertEqual(result["sensor_id"], sensor_id)
 
-class TestRateLimitMiddleware(unittest.TestCase):
+class TestRateLimitMiddleware(unittest.IsolatedAsyncioTestCase):
     async def test_rate_limiting(self):
         # Create rate limiter
         rate_limiter = RateLimitMiddleware(max_requests=2, window_seconds=60)
@@ -75,20 +78,21 @@ class TestRateLimitMiddleware(unittest.TestCase):
 tests/
 ├── __init__.py
 ├── unit/
-│   ├── test_controller.py
-│   ├── test_middleware.py
-│   └── test_router.py
+│   └── core/
+│       ├── test_controller.py
+│       ├── test_middleware.py
+│       └── test_router.py
 ├── integration/
-│   ├── test_full_workflow.py
-│   └── test_redis_integration.py
-└── fixtures/
-    └── test_data.json
+│   ├── helpers.py
+│   ├── test_mqtt_end_to_end.py
+│   └── test_queue_backends.py
 ```
 
 ## Best Practices
 
 - **Test Each Component**: Controllers, middleware, models separately
 - **Mock External Dependencies**: Redis, database, MQTT client
+- **Gate Docker Tests**: Use `RUN_INTEGRATION_TESTS=1` for real service tests
 - **Use Descriptive Names**: Clear test method names
 - **Test Edge Cases**: Error conditions and boundary values
 - **Keep Tests Fast**: Use mocks to avoid slow operations
