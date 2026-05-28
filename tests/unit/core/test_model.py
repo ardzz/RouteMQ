@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.pool import NullPool
 
 from routemq.model import Base, Model
 
@@ -71,6 +72,32 @@ class TestModelLifecycle(unittest.IsolatedAsyncioTestCase):
                 _, kwargs = create_async_engine.call_args
                 self.assertEqual(kwargs, DEFAULT_ENGINE_KWARGS | overrides)
 
+    def test_configure_uses_null_pool_without_queue_pool_size_kwargs(self) -> None:
+        engine = MagicMock(name='engine')
+        with (
+            patch('routemq.model.create_async_engine', return_value=engine) as create_async_engine,
+            patch('routemq.model.sessionmaker'),
+        ):
+            Model.configure(
+                'mysql+aiomysql://user:pass@db:3306/app',
+                pool_size=0,
+                max_overflow=0,
+                pool_timeout=12,
+                pool_recycle=300,
+                pool_pre_ping=False,
+                pool_use_lifo=True,
+                pool_class='null',
+            )
+
+        create_async_engine.assert_called_once_with(
+            'mysql+aiomysql://user:pass@db:3306/app',
+            pool_timeout=12,
+            pool_recycle=300,
+            pool_pre_ping=False,
+            pool_use_lifo=True,
+            poolclass=NullPool,
+        )
+
     def test_configure_called_twice_replaces_existing_state(self) -> None:
         first_engine = MagicMock(name='first_engine')
         second_engine = MagicMock(name='second_engine')
@@ -135,6 +162,16 @@ class TestModelLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(Model._session_factory)
         self.assertFalse(Model._is_enabled)
 
+    async def test_cleanup_is_noop_without_engine(self) -> None:
+        Model._engine = None
+        Model._session_factory = MagicMock(name='session_factory')
+        Model._is_enabled = True
+
+        await Model.cleanup()
+
+        self.assertIsNotNone(Model._session_factory)
+        self.assertTrue(Model._is_enabled)
+
     def test_enable_mysql_false_does_not_change_configure_contract(self) -> None:
         engine = MagicMock(name='engine')
         session_factory = MagicMock(name='session_factory')
@@ -191,6 +228,105 @@ class TestModelLifecycle(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNone(session)
         Model._session_factory.assert_not_called()
+
+    async def test_get_session_raises_when_enabled_without_factory(self) -> None:
+        Model._session_factory = None
+        Model._is_enabled = True
+
+        with self.assertRaises(RuntimeError):
+            await Model.get_session()
+
+    async def test_find_returns_first_record(self) -> None:
+        class LookupModel(Model):
+            __tablename__ = 'lookup_model_lifecycle'
+
+            id = Column(Integer, primary_key=True)
+
+        record = object()
+        result = MagicMock(name='result')
+        result.scalars.return_value.first.return_value = record
+        session = MagicMock(name='session')
+        session.__aenter__ = AsyncMock(return_value=session)
+        session.__aexit__ = AsyncMock(return_value=None)
+        session.execute = AsyncMock(return_value=result)
+        Model._is_enabled = True
+
+        try:
+            with patch.object(Model, 'get_session', AsyncMock(return_value=session)):
+                found = await Model.find(LookupModel, 123)
+        finally:
+            Base.metadata.remove(LookupModel.__table__)
+
+        self.assertIs(found, record)
+        session.execute.assert_awaited_once()
+
+    async def test_all_returns_records(self) -> None:
+        class ListedModel(Model):
+            __tablename__ = 'listed_model_lifecycle'
+
+            id = Column(Integer, primary_key=True)
+
+        records = [object(), object()]
+        result = MagicMock(name='result')
+        result.scalars.return_value.all.return_value = records
+        session = MagicMock(name='session')
+        session.__aenter__ = AsyncMock(return_value=session)
+        session.__aexit__ = AsyncMock(return_value=None)
+        session.execute = AsyncMock(return_value=result)
+        Model._is_enabled = True
+
+        try:
+            with patch.object(Model, 'get_session', AsyncMock(return_value=session)):
+                found = await Model.all(ListedModel)
+        finally:
+            Base.metadata.remove(ListedModel.__table__)
+
+        self.assertEqual(found, records)
+        session.execute.assert_awaited_once()
+
+    async def test_create_persists_and_refreshes_object(self) -> None:
+        class CreatedModel:
+            def __init__(self, **kwargs: Any):
+                self.values = kwargs
+
+        session = MagicMock(name='session')
+        session.__aenter__ = AsyncMock(return_value=session)
+        session.__aexit__ = AsyncMock(return_value=None)
+        session.commit = AsyncMock()
+        session.refresh = AsyncMock()
+        Model._is_enabled = True
+
+        with patch.object(Model, 'get_session', AsyncMock(return_value=session)):
+            created = await Model.create(CreatedModel, name='demo')
+
+        self.assertIsNotNone(created)
+        self.assertIsInstance(created, CreatedModel)
+        assert created is not None
+        self.assertEqual(created.values, {'name': 'demo'})
+        session.add.assert_called_once_with(created)
+        session.commit.assert_awaited_once_with()
+        session.refresh.assert_awaited_once_with(created)
+
+    async def test_find_all_create_return_disabled_defaults(self) -> None:
+        class DisabledModel:
+            pass
+
+        Model._is_enabled = False
+
+        self.assertIsNone(await Model.find(DisabledModel, 1))
+        self.assertEqual(await Model.all(DisabledModel), [])
+        self.assertIsNone(await Model.create(DisabledModel))
+
+    async def test_find_all_create_handle_missing_session(self) -> None:
+        class MissingSessionModel:
+            pass
+
+        Model._is_enabled = True
+
+        with patch.object(Model, 'get_session', AsyncMock(return_value=None)):
+            self.assertIsNone(await Model.find(MissingSessionModel, 1))
+            self.assertEqual(await Model.all(MissingSessionModel), [])
+            self.assertIsNone(await Model.create(MissingSessionModel))
 
 
 if __name__ == '__main__':
