@@ -67,6 +67,7 @@ _KNOWN_CONTEXT_FIELDS = {
     'job_id',
     'mqtt_subscription_topic',
     'mqtt_topic',
+    'parent_span_id',
     'process',
     'queue',
     'reason',
@@ -293,6 +294,7 @@ class RouteMQJsonFormatter(logging.Formatter):
             'trace_id': known.get('trace_id'),
             'span_id': known.get('span_id'),
             'trace_flags': known.get('trace_flags'),
+            'parent_span_id': known.get('parent_span_id'),
             'event.name': event_name,
             'event.domain': event_domain,
             'exception.type': exception.get('exception.type'),
@@ -451,8 +453,9 @@ class RouteMQJsonFormatter(logging.Formatter):
 def build_formatter(formatter_name: str | None = None, field_profile: str | None = None) -> logging.Formatter:
     name = (formatter_name or get_formatter_name()).lower()
     if name == 'json':
+        resolved_profile: str = field_profile or os.getenv('LOG_FIELD_PROFILE') or 'otel'
         return RouteMQJsonFormatter(
-            field_profile=field_profile or os.getenv('LOG_FIELD_PROFILE', 'otel'),
+            field_profile=resolved_profile,
             include_context=env_bool('LOG_INCLUDE_CONTEXT', True),
         )
     log_format = os.getenv('LOG_FORMAT', '%(asctime)s - %(name)s - %(levelname)s - %(message)s')

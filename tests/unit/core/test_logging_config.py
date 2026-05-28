@@ -49,6 +49,24 @@ class RouteMQJsonFormatterTests(unittest.TestCase):
         self.assertEqual(payload['attributes']['tenant'], 'acme')
         self.assertEqual(payload['attributes']['custom_value'], 'kept')
 
+    def test_otel_profile_includes_active_span_context(self) -> None:
+        formatter = RouteMQJsonFormatter(field_profile='otel')
+        with patch.dict(os.environ, {'ENABLE_TRACING': 'true'}):
+            with observability.start_span('log.span') as span:
+                self.assertIsNotNone(span)
+                span_context = observability.snapshot_context()
+                trace_id = span_context['trace_id']
+                span_id = span_context['span_id']
+                record = logging.getLogger('RouteMQ.Test').makeRecord(
+                    'RouteMQ.Test', logging.INFO, __file__, 10, 'span log', (), None
+                )
+                payload = json.loads(formatter.format(record))
+
+        self.assertEqual(payload['trace_id'], trace_id)
+        self.assertEqual(payload['span_id'], span_id)
+        self.assertEqual(payload['trace_flags'], '01')
+        self.assertIsNone(payload['parent_span_id'])
+
     def test_ecs_profile_emits_elastic_aliases(self) -> None:
         formatter = RouteMQJsonFormatter(field_profile='ecs')
         record = logging.getLogger('RouteMQ.Test').makeRecord(
