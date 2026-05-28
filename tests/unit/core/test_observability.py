@@ -348,6 +348,8 @@ class QueueObservabilityTests(ObservabilityTestCase):
         manager = QueueManager()
         driver = MagicMock(spec=QueueDriver)
         driver.push = AsyncMock()
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
         token = observability.set_context({'correlation_id': 'queue-corr', 'tenant': 'tenant-q'})
         try:
             with patch.object(manager, 'get_driver', return_value=driver):
@@ -356,9 +358,16 @@ class QueueObservabilityTests(ObservabilityTestCase):
             observability.reset_context(token)
 
         payload = json.loads(driver.push.await_args.args[0])
+        enqueue_span = spans[0]
         self.assertEqual(payload['observability']['correlation_id'], 'queue-corr')
         self.assertEqual(payload['observability']['tenant'], 'tenant-q')
         self.assertEqual(payload['observability']['queue'], 'observed')
+        self.assertEqual(payload['observability']['trace_id'], enqueue_span.trace_id)
+        self.assertEqual(payload['observability']['span_id'], enqueue_span.span_id)
+        self.assertEqual(enqueue_span.name, 'queue.enqueue')
+        self.assertEqual(enqueue_span.kind, 'producer')
+        self.assertEqual(enqueue_span.attributes['messaging.destination'], 'observed')
+        self.assertEqual(enqueue_span.attributes['routemq.job.name'], 'ObservableJob')
         self.assertNotIn('observability', payload['data'])
 
     async def test_queue_worker_restores_job_context_and_resets_after_success(self) -> None:
@@ -378,6 +387,36 @@ class QueueObservabilityTests(ObservabilityTestCase):
         self.assertEqual(ObservableJob.seen_contexts[-1]['job_id'], 'job-1')
         self.assertEqual(ObservableJob.seen_contexts[-1]['queue'], 'observed')
         self.assertIsNone(observability.get_correlation_id())
+
+    async def test_queue_worker_creates_job_span_from_enqueued_trace_context(self) -> None:
+        manager = QueueManager()
+        driver = MagicMock(spec=QueueDriver)
+        driver.push = AsyncMock()
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
+
+        with patch.object(manager, 'get_driver', return_value=driver):
+            await manager.push(ObservableJob(), queue='observed')
+
+        payload = driver.push.await_args.args[0]
+        worker = QueueWorker(queue_name='observed', sleep=0)
+        worker_driver = MagicMock(spec=QueueDriver)
+        worker_driver.delete = AsyncMock()
+        worker_driver.release = AsyncMock()
+        worker_driver.failed = AsyncMock()
+        worker.driver = worker_driver
+
+        await worker._process_job({'id': 'job-linked', 'payload': payload, 'attempts': 1})
+
+        enqueue_span = next(span for span in spans if span.name == 'queue.enqueue')
+        job_span = next(span for span in spans if span.name == 'queue.job')
+        self.assertEqual(job_span.trace_id, enqueue_span.trace_id)
+        self.assertEqual(job_span.parent_span_id, enqueue_span.span_id)
+        self.assertEqual(job_span.attributes['messaging.destination'], 'observed')
+        self.assertEqual(job_span.attributes['routemq.job.name'], 'ObservableJob')
+        self.assertEqual(ObservableJob.seen_contexts[-1]['trace_id'], job_span.trace_id)
+        self.assertEqual(ObservableJob.seen_contexts[-1]['span_id'], job_span.span_id)
+        self.assertEqual(ObservableJob.seen_contexts[-1]['parent_span_id'], enqueue_span.span_id)
 
 
 if __name__ == '__main__':
