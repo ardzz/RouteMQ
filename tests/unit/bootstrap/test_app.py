@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 from bootstrap.app import Application
 from routemq.health import HealthStatus
+from routemq.settings import DatabasePoolSettings
 
 
 class TestApplicationInitialization(unittest.TestCase):
@@ -241,6 +242,47 @@ class TestApplicationLogging(unittest.TestCase):
 
 
 class TestApplicationConnections(unittest.IsolatedAsyncioTestCase):
+    def test_setup_database_passes_pool_settings_to_model(self) -> None:
+        app = object.__new__(Application)
+        pool_settings = DatabasePoolSettings(
+            pool_size=7,
+            max_overflow=3,
+            pool_timeout=11,
+            pool_recycle=600,
+            pool_pre_ping=False,
+            pool_use_lifo=True,
+            pool_class='null',
+        )
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    'DB_HOST': 'db',
+                    'DB_PORT': '3307',
+                    'DB_NAME': 'app_db',
+                    'DB_USER': 'app_user',
+                    'DB_PASS': 'secret',
+                },
+                clear=True,
+            ),
+            patch('bootstrap.app.load_database_pool_settings', return_value=pool_settings) as load_pool_settings,
+            patch('bootstrap.app.Model.configure') as configure,
+        ):
+            app._setup_database()
+
+        load_pool_settings.assert_called_once_with()
+        configure.assert_called_once_with(
+            'mysql+aiomysql://app_user:secret@db:3307/app_db',
+            pool_size=7,
+            max_overflow=3,
+            pool_timeout=11,
+            pool_recycle=600,
+            pool_pre_ping=False,
+            pool_use_lifo=True,
+            pool_class='null',
+        )
+
     async def test_initialize_database_skips_when_mysql_disabled(self) -> None:
         """Database initialization is gated by mysql_enabled."""
         app = object.__new__(Application)
