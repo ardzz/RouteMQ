@@ -8,7 +8,7 @@ a properly formatted GitBook-style table of contents.
 import os
 import re
 from pathlib import Path
-from typing import List, Dict, Tuple
+from typing import Dict, List
 
 
 class SummaryGenerator:
@@ -19,6 +19,11 @@ class SummaryGenerator:
 
         # Files to exclude from the summary
         self.excluded_files = {'SUMMARY.md', '.gitkeep'}
+
+        # Local/private working docs to exclude from published GitBook navigation.
+        # Keep this aligned with .gitignore so generated SUMMARY.md never links
+        # private planning/specification files that are not meant for git.
+        self.excluded_dirs = {'plans', 'superpowers'}
 
         # Priority order for main sections (will appear first)
         self.priority_sections = [
@@ -84,7 +89,7 @@ class SummaryGenerator:
         # Capitalize words
         return ' '.join(word.capitalize() for word in title.split())
 
-    def scan_directory(self, directory: Path, relative_to: Path = None) -> List[Dict]:
+    def scan_directory(self, directory: Path, relative_to: Path | None = None) -> List[Dict]:
         """Recursively scan directory for markdown files and subdirectories."""
         if relative_to is None:
             relative_to = self.docs_dir
@@ -103,7 +108,11 @@ class SummaryGenerator:
             for item in all_items
             if item.is_file() and item.suffix == '.md' and item.name not in self.excluded_files
         ]
-        directories = [item for item in all_items if item.is_dir() and not item.name.startswith('.')]
+        directories = [
+            item
+            for item in all_items
+            if item.is_dir() and not item.name.startswith('.') and item.name not in self.excluded_dirs
+        ]
 
         # Process README.md first if it exists
         readme_file = directory / 'README.md'
