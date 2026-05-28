@@ -55,3 +55,28 @@ Findings count: 13 candidates above 80% confidence.
 
 The underlying architecture and release decisions are recorded in ADR-0001 through ADR-0009, including
 distribution, logging, observability, pooling, benchmarking, error handling, and supply-chain provenance.
+
+## Submitting the OpenSSF Best Practices badge
+
+Submit RouteMQ to BadgeApp at <https://www.bestpractices.dev/en/projects/new>.
+
+Use these required fields:
+
+- Project name: `RouteMQ`
+- Project URL: `https://github.com/ardzz/RouteMQ`
+- License: `MIT`
+
+BadgeApp auto-detects most GitHub-observable criteria from repository metadata and files. The operator should answer the remaining MUST, SHOULD, and SUGGESTED items manually based on the current repository state and hosted settings.
+
+After submission returns a project ID, replace the placeholder in `README.md` with the real ID, for example:
+
+```bash
+sed -i 's|<PROJECT_ID>|12345|g' README.md
+```
+
+Then remove the surrounding `<!-- TODO(sprint-15-followup): ... -->` HTML comment block so the badge renders normally. The placeholder in `README.md` and this section remain active until the operator completes the BadgeApp submission.
+
+Hosted security-setting follow-ups:
+
+- Private vulnerability reporting was enabled on 2026-05-29 with `gh api`.
+- Dependabot security updates could not be enabled automatically because GitHub returned `422 Vulnerability alerts must be enabled to configure automated security fixes`; the operator should enable vulnerability alerts, then enable Dependabot security updates.
