@@ -4,16 +4,19 @@ import logging.handlers
 import os
 import platform
 import psutil
+import signal
 from importlib import import_module
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 
+from routemq.health import HealthStatus, health_server_from_env
 from routemq.model import Model
 from routemq.router import Router
 from routemq.router_registry import RouterRegistry
 from routemq.mqtt_utils import (
+    connect_mqtt_client_with_retries,
     create_mqtt_client,
     get_main_client_id,
     get_mqtt_connection_config,
@@ -114,6 +117,9 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
         asyncio.set_event_loop(self.loop)
 
         self.worker_manager = WorkerManager(self.router, self.group_name, self.router_directory)
+        self.health_status = HealthStatus()
+        self.health_server = health_server_from_env(self.health_status)
+        self._shutdown_requested = False
 
     def _setup_logging(self, log_to_console: bool = True):
         """Configure logging based on environment variables with file rotation support."""
@@ -222,6 +228,8 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
     def _on_connect(self, client, userdata, flags, rc):
         """Callback for when the client receives a CONNACK response from the server."""
         self.logger.info(f'Main client connected with result code {rc}')
+        if hasattr(self, 'health_status'):
+            self.health_status.mqtt_connected = rc == 0
 
         for route in self.router.routes:
             if not route.shared:
@@ -273,12 +281,45 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
             client_id,
             on_connect=self._on_connect,
             on_message=self._on_message,
+            on_disconnect=self._on_disconnect,
             username=config.username,
             password=config.password,
         )
 
         self.logger.info(f'Connecting main client to {config.broker}:{config.port}')
-        self.client.connect(config.broker, config.port)
+        connect_mqtt_client_with_retries(self.client, config.broker, config.port, process='main')
+
+    def _on_disconnect(self, client, userdata, rc):
+        """Callback for when the client disconnects from the broker."""
+        self.logger.info(f'Main client disconnected with result code {rc}')
+        if hasattr(self, 'health_status'):
+            self.health_status.mqtt_connected = False
+
+    def _request_shutdown(self, signum: int | None = None, frame: Any = None) -> None:
+        """Request a graceful application shutdown from a signal handler."""
+        signal_name = signal.Signals(signum).name if signum is not None else 'internal'
+        self.logger.info(f'Received {signal_name}; requesting graceful shutdown...')
+        self._shutdown_requested = True
+        self.health_status.shutting_down = True
+        if self.loop.is_running():
+            self.loop.call_soon_threadsafe(self.loop.stop)
+
+    def _install_signal_handlers(self) -> dict[int, Any]:
+        """Install SIGTERM handler where the platform/thread allows it."""
+        previous_handlers: dict[int, Any] = {}
+        try:
+            previous_handlers[signal.SIGTERM] = signal.getsignal(signal.SIGTERM)
+            signal.signal(signal.SIGTERM, self._request_shutdown)
+        except (ValueError, RuntimeError):
+            self.logger.debug('SIGTERM handler not installed outside the main thread')
+        return previous_handlers
+
+    def _restore_signal_handlers(self, previous_handlers: dict[int, Any]) -> None:
+        for signum, handler in previous_handlers.items():
+            try:
+                signal.signal(signum, handler)
+            except (ValueError, RuntimeError):
+                pass
 
     def start_workers(self):
         """Start worker processes for shared subscriptions."""
@@ -291,28 +332,45 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
 
     def run(self):
         """Run the application."""
+        if not hasattr(self, 'health_status'):
+            self.health_status = HealthStatus()
+        if not hasattr(self, 'health_server'):
+            self.health_server = None
+        if not hasattr(self, '_shutdown_requested'):
+            self._shutdown_requested = False
+        previous_handlers = self._install_signal_handlers()
         self.start_workers()
-        self.client.loop_start()
+        if self.health_server is not None:
+            self.health_server.start()
+        if self.client is not None:
+            self.client.loop_start()
 
         try:
             self.loop.run_until_complete(self.initialize_database())
             self.loop.run_until_complete(self.initialize_redis())
+            self.health_status.startup_complete = True
             self.logger.info('Application started. Press Ctrl+C to exit.')
             self.logger.info(f'Active workers: {self.worker_manager.get_worker_count()}')
             self.loop.run_forever()
 
         except KeyboardInterrupt:
             self.logger.info('Shutting down...')
+            self.health_status.shutting_down = True
 
         finally:
+            self.logger.info('Application cleanup started')
+            self.health_status.shutting_down = True
             self.worker_manager.stop_workers()
-
             if self.redis_enabled:
                 self.loop.run_until_complete(redis_manager.disconnect())
-
             if self.mysql_enabled:
                 self.loop.run_until_complete(Model.cleanup())
-
-            self.client.loop_stop()
-            self.client.disconnect()
+            if self.health_server is not None:
+                self.health_server.stop()
+            if self.client is not None:
+                self.client.loop_stop()
+                self.client.disconnect()
+            self.health_status.alive = False
+            self._restore_signal_handlers(previous_handlers)
             self.loop.close()
+            self.logger.info('Application cleanup completed')

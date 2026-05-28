@@ -8,6 +8,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 from bootstrap.app import Application
+from routemq.health import HealthStatus
 
 
 class TestApplicationInitialization(unittest.TestCase):
@@ -333,12 +334,28 @@ class TestApplicationMqtt(unittest.TestCase):
         app.start_workers = MagicMock()
         app.initialize_database = MagicMock(return_value=None)
         app.initialize_redis = MagicMock(return_value=None)
+        app._cleanup_connections = MagicMock(return_value=None)
+        app.health_status = HealthStatus()
+        app.health_server = None
 
         app.run()
 
         app.start_workers.assert_called_once_with()
         app.client.loop_stop.assert_called_once_with()
         app.worker_manager.stop_workers.assert_called_once_with()
+
+    def test_request_shutdown_marks_not_ready_and_stops_running_loop(self) -> None:
+        app = object.__new__(Application)
+        app.logger = MagicMock()
+        app.health_status = HealthStatus(startup_complete=True, mqtt_connected=True)
+        app.loop = MagicMock()
+        app.loop.is_running.return_value = True
+
+        app._request_shutdown(15, None)
+
+        self.assertTrue(app._shutdown_requested)
+        self.assertTrue(app.health_status.shutting_down)
+        app.loop.call_soon_threadsafe.assert_called_once_with(app.loop.stop)
 
 
 if __name__ == '__main__':
