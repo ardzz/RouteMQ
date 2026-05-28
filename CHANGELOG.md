@@ -1,3 +1,9 @@
+## v0.17.1 (2026-05-28)
+
+### Fix
+
+- **release**: stop stale release drafter drafts (#56)
+
 ## v0.17.0 (2026-05-28)
 
 ### Feat
