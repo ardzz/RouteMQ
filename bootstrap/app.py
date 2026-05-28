@@ -14,6 +14,7 @@ from routemq.logging_config import configure_logging, json_logging_enabled
 from routemq.model import Model
 from routemq.router import Router
 from routemq.router_registry import RouterRegistry
+from routemq.settings import load_database_pool_settings
 from routemq.mqtt_utils import (
     connect_mqtt_client_with_retries,
     create_mqtt_client,
@@ -142,9 +143,19 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
         db_name = os.getenv('DB_NAME', 'mqtt_framework')
         db_user = os.getenv('DB_USER', 'root')
         db_pass = os.getenv('DB_PASS', '')
+        pool_settings = load_database_pool_settings()
 
         conn_str = f'mysql+aiomysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}'
-        Model.configure(conn_str)
+        Model.configure(
+            conn_str,
+            pool_size=pool_settings.pool_size,
+            max_overflow=pool_settings.max_overflow,
+            pool_timeout=pool_settings.pool_timeout,
+            pool_recycle=pool_settings.pool_recycle,
+            pool_pre_ping=pool_settings.pool_pre_ping,
+            pool_use_lifo=pool_settings.pool_use_lifo,
+            pool_class=pool_settings.pool_class,
+        )
 
     async def initialize_database(self):
         """Create database tables."""
