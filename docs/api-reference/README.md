@@ -9,6 +9,7 @@ Complete API documentation for RouteMQ framework components.
 - [Middleware API](middleware-api.md) - Middleware interface and methods
 - [Redis Manager API](redis-manager-api.md) - Redis operations and methods
 - [Worker Manager API](worker-manager-api.md) - Worker process management
+- [Health and Observability API](health-observability-api.md) - Health server and trace/metric hooks
 
 ## Quick Reference
 
@@ -97,3 +98,4 @@ async def hget(self, name: str, key: str) -> str
 - [Router API](router-api.md) - Detailed router documentation
 - [Controller API](controller-api.md) - Controller class reference
 - [Middleware API](middleware-api.md) - Middleware development guide
+- [Health and Observability API](health-observability-api.md) - Runtime health and instrumentation hooks

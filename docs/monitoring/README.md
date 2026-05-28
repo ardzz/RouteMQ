@@ -1,69 +1,46 @@
 # Monitoring and Metrics
 
-Monitor your RouteMQ application performance and health.
+Monitor RouteMQ health, readiness, logs, and stdlib observability hooks. RouteMQ currently ships a
+small built-in health server and backend-neutral trace/metric hook seam; it does not bundle a
+mandatory Prometheus or OpenTelemetry exporter.
 
 ## Topics
 
-- [Health Checks](health-checks.md) - Application health monitoring
-- [Metrics Collection](metrics.md) - Performance metrics and statistics
-- [Redis Monitoring](redis-monitoring.md) - Redis performance tracking
-- [MQTT Monitoring](mqtt-monitoring.md) - MQTT broker monitoring
+- [Health Checks](health-checks.md) - Built-in `/health` and `/ready` endpoints
+- [Metrics Collection](metrics.md) - Observability hook seam and custom metric collection
+- [Redis Monitoring](redis-monitoring.md) - Redis operations to monitor when Redis is enabled
+- [MQTT Monitoring](mqtt-monitoring.md) - MQTT connectivity, readiness, and broker signals
 
-## Health Check Endpoint
+## Built-in health endpoints
 
-```python
-from routemq.redis_manager import redis_manager
-from routemq.controller import Controller
+Set `HEALTH_HTTP_ENABLED=true` to expose a small HTTP server from the running application process.
+The server provides:
 
-class HealthController(Controller):
-    @staticmethod
-    async def health_check(payload, client):
-        health_status = {
-            "status": "healthy",
-            "timestamp": time.time(),
-            "services": {}
-        }
-        
-        # Check Redis
-        if redis_manager.is_enabled():
-            try:
-                await redis_manager.set("health_check", "ok", ex=10)
-                health_status["services"]["redis"] = "healthy"
-            except:
-                health_status["services"]["redis"] = "unhealthy"
-                health_status["status"] = "degraded"
-        
-        return health_status
-```
+- `GET /health` - liveness; returns `200` while the process is alive.
+- `GET /ready` - readiness; returns `200` only after startup completes and MQTT is connected.
 
-## Redis-Based Metrics
+Configuration lives in the environment variables documented in
+[Environment Variables](../configuration/environment-variables.md#health-and-readiness).
+
+## Observability hooks
 
 ```python
-from routemq.redis_manager import redis_manager
+from routemq.observability import register_metric_hook, register_trace_hook
 
-class MetricsMiddleware(Middleware):
-    async def handle(self, context, next_handler):
-        topic = context['topic']
-        
-        # Track message counts
-        await redis_manager.incr(f"metrics:messages:{topic}")
-        await redis_manager.incr("metrics:messages:total")
-        
-        # Track processing time
-        start_time = time.time()
-        result = await next_handler(context)
-        processing_time = time.time() - start_time
-        
-        # Store processing time metrics
-        await redis_manager.set_json(f"metrics:processing_time:{topic}", {
-            "last": processing_time,
-            "timestamp": time.time()
-        }, ex=3600)
-        
-        return result
+def trace_hook(name, attributes):
+    print("trace", name, attributes)
+
+def metric_hook(name, value, attributes):
+    print("metric", name, value, attributes)
+
+unregister_trace = register_trace_hook(trace_hook)
+unregister_metric = register_metric_hook(metric_hook)
 ```
 
-## Performance Monitoring
+Hook failures are swallowed and logged at debug level so observability integrations do not break
+message processing.
+
+## Performance monitoring
 
 Monitor your application performance:
 
