@@ -1,12 +1,22 @@
 import os
-import unittest
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock, patch
+import unittest
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from routemq.model import Base, Model
+
+
+DEFAULT_ENGINE_KWARGS = {
+    'pool_size': 5,
+    'max_overflow': 10,
+    'pool_timeout': 30,
+    'pool_recycle': 1800,
+    'pool_pre_ping': True,
+    'pool_use_lifo': False,
+}
 
 
 class TestModelLifecycle(unittest.IsolatedAsyncioTestCase):
@@ -33,11 +43,33 @@ class TestModelLifecycle(unittest.IsolatedAsyncioTestCase):
         ):
             Model.configure('mysql+aiomysql://user:pass@db:3306/app')
 
-        create_async_engine.assert_called_once_with('mysql+aiomysql://user:pass@db:3306/app')
+        create_async_engine.assert_called_once_with('mysql+aiomysql://user:pass@db:3306/app', **DEFAULT_ENGINE_KWARGS)
         sessionmaker.assert_called_once_with(engine, expire_on_commit=False, class_=AsyncSession)
         self.assertIs(Model._engine, engine)
         self.assertIs(Model._session_factory, session_factory)
         self.assertTrue(Model._is_enabled)
+
+    def test_configure_passes_pool_kwargs_to_engine(self) -> None:
+        cases = {
+            'pool_size': {'pool_size': 8},
+            'max_overflow': {'max_overflow': 4},
+            'pool_timeout': {'pool_timeout': 12},
+            'pool_recycle': {'pool_recycle': 900},
+            'pool_pre_ping': {'pool_pre_ping': False},
+            'pool_use_lifo': {'pool_use_lifo': True},
+        }
+
+        for name, overrides in cases.items():
+            with self.subTest(name=name):
+                engine = MagicMock(name=f'{name}_engine')
+                with (
+                    patch('routemq.model.create_async_engine', return_value=engine) as create_async_engine,
+                    patch('routemq.model.sessionmaker'),
+                ):
+                    Model.configure('mysql+aiomysql://user:pass@db:3306/app', **overrides)
+
+                _, kwargs = create_async_engine.call_args
+                self.assertEqual(kwargs, DEFAULT_ENGINE_KWARGS | overrides)
 
     def test_configure_called_twice_replaces_existing_state(self) -> None:
         first_engine = MagicMock(name='first_engine')
@@ -54,7 +86,11 @@ class TestModelLifecycle(unittest.IsolatedAsyncioTestCase):
             Model.configure('mysql+aiomysql://first')
             Model.configure('mysql+aiomysql://second')
 
-        self.assertEqual(create_async_engine.call_count, 2)
+        expected_calls = [
+            call('mysql+aiomysql://first', **DEFAULT_ENGINE_KWARGS),
+            call('mysql+aiomysql://second', **DEFAULT_ENGINE_KWARGS),
+        ]
+        self.assertEqual(create_async_engine.call_args_list, expected_calls)
         self.assertEqual(sessionmaker.call_count, 2)
         self.assertIs(Model._engine, second_engine)
         self.assertIs(Model._session_factory, second_factory)
@@ -110,7 +146,7 @@ class TestModelLifecycle(unittest.IsolatedAsyncioTestCase):
         ):
             Model.configure('mysql+aiomysql://user:pass@db:3306/app')
 
-        create_async_engine.assert_called_once_with('mysql+aiomysql://user:pass@db:3306/app')
+        create_async_engine.assert_called_once_with('mysql+aiomysql://user:pass@db:3306/app', **DEFAULT_ENGINE_KWARGS)
         self.assertIs(Model._engine, engine)
         self.assertTrue(Model._is_enabled)
 

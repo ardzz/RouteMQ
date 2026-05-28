@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Any, Optional, cast
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.future import select
@@ -15,14 +15,40 @@ class Model(Base):
     __abstract__ = True
 
     # This will be set by the application bootstrap
-    _engine = None
-    _session_factory = None
+    _engine: Any = None
+    _session_factory: Any = None
     _is_enabled = False
 
     @classmethod
-    def configure(cls, connection_string: str):
+    def configure(
+        cls,
+        connection_string: str,
+        *,
+        pool_size: int = 5,
+        max_overflow: int = 10,
+        pool_timeout: int = 30,
+        pool_recycle: int = 1800,
+        pool_pre_ping: bool = True,
+        pool_use_lifo: bool = False,
+        pool_class: str = 'default',
+    ) -> None:
         """Configure the database connection."""
-        cls._engine = create_async_engine(connection_string)
+        engine_kwargs: dict[str, object] = {
+            'pool_size': pool_size,
+            'max_overflow': max_overflow,
+            'pool_timeout': pool_timeout,
+            'pool_recycle': pool_recycle,
+            'pool_pre_ping': pool_pre_ping,
+            'pool_use_lifo': pool_use_lifo,
+        }
+        if pool_class == 'null':
+            from sqlalchemy.pool import NullPool
+
+            engine_kwargs.pop('pool_size')
+            engine_kwargs.pop('max_overflow')
+            engine_kwargs['poolclass'] = NullPool
+
+        cls._engine = create_async_engine(connection_string, **engine_kwargs)
         cls._session_factory = sessionmaker(cls._engine, expire_on_commit=False, class_=AsyncSession)
         cls._is_enabled = True
         logger.info('Database connection configured')
@@ -46,7 +72,7 @@ class Model(Base):
 
         if cls._session_factory is None:
             raise RuntimeError('Database not configured. Call Model.configure() first.')
-        return cls._session_factory()
+        return cast(AsyncSession, cls._session_factory())
 
     @classmethod
     async def create_tables(cls):
@@ -55,7 +81,8 @@ class Model(Base):
             logger.info('Skipping table creation as MySQL is disabled')
             return
 
-        async with cls._engine.begin() as conn:
+        engine = cls._engine
+        async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             logger.info('Database tables created')
 
@@ -66,7 +93,11 @@ class Model(Base):
             logger.warning(f'Find operation on {model_class.__name__} skipped - MySQL disabled')
             return None
 
-        async with await cls.get_session() as session:
+        session = await cls.get_session()
+        if session is None:
+            return None
+
+        async with session:
             result = await session.execute(select(model_class).where(model_class.id == id_value))
             return result.scalars().first()
 
@@ -77,7 +108,11 @@ class Model(Base):
             logger.warning(f'All records query on {model_class.__name__} skipped - MySQL disabled')
             return []
 
-        async with await cls.get_session() as session:
+        session = await cls.get_session()
+        if session is None:
+            return []
+
+        async with session:
             result = await session.execute(select(model_class))
             return result.scalars().all()
 
@@ -88,7 +123,11 @@ class Model(Base):
             logger.warning(f'Create operation on {model_class.__name__} skipped - MySQL disabled')
             return None
 
-        async with await cls.get_session() as session:
+        session = await cls.get_session()
+        if session is None:
+            return None
+
+        async with session:
             obj = model_class(**kwargs)
             session.add(obj)
             await session.commit()
