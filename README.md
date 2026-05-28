@@ -62,12 +62,23 @@ See the [Installation Guide](./INSTALL.md) for detailed setup instructions.
 - **[Controllers](./docs/controllers/README.md)** - Creating and organizing business logic
 - **[Middleware](./docs/middleware/README.md)** - Request processing and middleware chains
 - **[Queue System](./docs/queue/README.md)** - Background task processing and job queues
+- **[Testing](./docs/testing/README.md)** - Unit and Docker-backed integration testing
 - **[Docker Deployment](./docs/docker-deployment.md)** - Production deployment with Docker
 - **[Redis Integration](./docs/redis/README.md)** - Caching, sessions, and distributed features
 - **[Rate Limiting](./docs/rate-limiting/README.md)** - Advanced rate limiting strategies
 - **[Examples](./docs/examples/README.md)** - Practical examples and use cases
 - **[API Reference](./docs/api-reference/README.md)** - Complete API documentation
+- **[Monitoring](./docs/monitoring/README.md)** - Health, readiness, and observability hooks
+- **[Release Conformance](./docs/release-conformance.md)** - SLSA, Scorecard, SBOM, and SemVer evidence
 - **[FAQ](./docs/faq.md)** - Frequently asked questions
+
+### Project Health
+
+- **[Security Policy](./SECURITY.md)** - Private vulnerability reporting and supported versions
+- **[Contributing Guide](./CONTRIBUTING.md)** - Issue reports, pull requests, tests, and coding standards
+- **[Code of Conduct](./CODE_OF_CONDUCT.md)** - Community expectations and enforcement
+- **[Changelog](./CHANGELOG.md)** - Release history
+- **[Issue Tracker](https://github.com/ardzz/RouteMQ/issues)** - Bug reports and feature requests
 
 ## Project Structure
 

@@ -52,8 +52,7 @@ Adopt the Django distribution model in a single repository:
 
 ## References
 
-- Spec: `docs/superpowers/specs/2026-05-27-pypi-package-distribution-design.md`
-- Plan: `docs/plans/sprints/SPRINT-19-pypi-distribution.md`
+- Implementation record: PR #44, PR #45, PR #47, and this ADR.
 - Hatchling docs (Context7 `/pypa/hatch`)
 - Questionary docs (Context7 `/tmbo/questionary`)
 - Python `importlib.metadata` docs

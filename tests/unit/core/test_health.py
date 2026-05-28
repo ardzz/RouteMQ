@@ -1,9 +1,11 @@
 import json
+import os
 import socket
 import unittest
+from unittest.mock import patch
 from urllib.request import urlopen
 
-from routemq.health import HealthServer, HealthStatus
+from routemq.health import HealthServer, HealthStatus, health_server_from_env
 
 
 class HealthStatusTests(unittest.TestCase):
@@ -47,6 +49,24 @@ class HealthServerTests(unittest.TestCase):
 
         self.assertEqual(health['status'], 'ok')
         self.assertEqual(ready['status'], 'ready')
+
+    def test_health_server_from_env_returns_none_by_default(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            server = health_server_from_env(HealthStatus())
+
+        self.assertIsNone(server)
+
+    def test_health_server_from_env_uses_central_settings_parser(self) -> None:
+        with patch.dict(
+            os.environ,
+            {'HEALTH_HTTP_ENABLED': 'yes', 'HEALTH_HTTP_HOST': '0.0.0.0', 'HEALTH_HTTP_PORT': 'invalid'},
+            clear=True,
+        ):
+            server = health_server_from_env(HealthStatus())
+
+        assert server is not None
+        self.assertEqual(server.host, '0.0.0.0')
+        self.assertEqual(server.port, 8080)
 
 
 if __name__ == '__main__':

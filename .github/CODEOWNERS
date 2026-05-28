@@ -1,0 +1,4 @@
+# Default code owners for RouteMQ. GitHub branch protection can require
+# review from code owners when this file is present.
+
+* @ardzz

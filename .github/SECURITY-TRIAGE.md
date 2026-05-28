@@ -52,13 +52,13 @@
 
 - First reviewer: PR author who introduced the dependency or code path.
 - Escalation: CODEOWNERS for the affected module. See `.github/CODEOWNERS`.
-- Security questions: security-team@<org-placeholder> or open an issue with the `security` label.
+- Security questions: use GitHub Security Advisories for private reports, or email the maintainer listed in
+  `SECURITY.md` when the advisory form is unavailable.
 
 ## Re-Validation Cadence
 
 - Suppressions and accepted-risk entries are reviewed quarterly on the first Monday of each quarter.
-- A scheduled GitHub Action runs `pip-audit` and `bandit` on `master` weekly to catch newly disclosed
-  vulnerabilities in already-deployed dependencies.
+- A scheduled GitHub Action runs CI weekly to catch newly disclosed dependency and SAST findings in already-deployed dependencies.
 - Failed scheduled scans open an issue automatically in a future sprint.
 
 ## Reporting

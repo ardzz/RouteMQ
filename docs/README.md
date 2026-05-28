@@ -16,12 +16,15 @@ Welcome to the RouteMQ Framework documentation! This guide will help you get sta
 * [Routing](routing/) - Route definition, parameters, and organization
 * [Controllers](controllers/) - Creating and organizing business logic
 * [Middleware](middleware/) - Request processing and middleware chains
+* [Queue System](queue/) - Background task processing and pluggable queue drivers
 * [Redis Integration](redis/) - Caching, sessions, and distributed features
 * [Rate Limiting](rate-limiting/) - Advanced rate limiting strategies
 * [Database](database/) - MySQL integration and models
 * [Testing](testing/) - Writing and running tests
 * [Deployment](deployment/) - Docker, production setup, and scaling
 * [Monitoring](monitoring/) - Metrics, health checks, and debugging
+* [Security](security.md) - Vulnerability reporting and security controls
+* [Release Conformance](release-conformance.md) - Release evidence and external checks
 * [API Reference](api-reference/) - Complete API documentation
 * [Examples](examples/) - Practical examples and use cases
 * [Troubleshooting](troubleshooting/) - Common issues and solutions
@@ -31,6 +34,10 @@ Welcome to the RouteMQ Framework documentation! This guide will help you get sta
 * [Installation Guide](getting-started/installation.md)
 * [Your First Route](getting-started/first-route.md)
 * [Configuration Reference](configuration/environment-variables.md)
+* [Queue Drivers](queue/drivers.md)
+* [Integration Tests](testing/integration-tests.md)
+* [Security Policy](../SECURITY.md)
+* [Release Conformance](release-conformance.md)
 * [Best Practices](best-practices.md)
 * [FAQ](faq.md)
 

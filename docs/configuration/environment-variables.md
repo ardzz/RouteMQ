@@ -10,8 +10,27 @@ Complete reference for all RouteMQ configuration options.
 | `MQTT_PORT` | 1883 | MQTT broker port |
 | `MQTT_USERNAME` | None | MQTT username (optional) |
 | `MQTT_PASSWORD` | None | MQTT password (optional) |
-| `MQTT_CLIENT_ID` | mqtt-framework-main | MQTT client ID prefix |
+| `MQTT_CLIENT_ID` | mqtt-framework-main-&lt;pid&gt; | MQTT main client ID; also used as the worker client ID prefix when set |
 | `MQTT_GROUP_NAME` | mqtt_framework_group | Shared subscription group name |
+
+## MQTT TLS Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MQTT_TLS_ENABLED` | false | Enable TLS for MQTT client connections |
+| `MQTT_TLS_CA_CERTS` | None | CA certificate bundle path passed to the MQTT client |
+| `MQTT_TLS_CERTFILE` | None | Client certificate file path |
+| `MQTT_TLS_KEYFILE` | None | Client private key file path |
+| `MQTT_TLS_INSECURE` | false | Disable MQTT TLS certificate verification |
+
+## MQTT Startup Retry Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MQTT_CONNECT_RETRIES` | 1 | Maximum MQTT startup connection attempts |
+| `MQTT_RETRY_MIN_DELAY` | 1.0 | Minimum retry delay in seconds |
+| `MQTT_RETRY_MAX_DELAY` | 30.0 | Maximum retry delay in seconds |
+| `MQTT_RETRY_JITTER` | 0.0 | Random jitter factor added to MQTT retry delays |
 
 ## Database Configuration
 
@@ -36,6 +55,28 @@ Complete reference for all RouteMQ configuration options.
 | `REDIS_USERNAME` | None | Redis username (optional) |
 | `REDIS_MAX_CONNECTIONS` | 10 | Redis connection pool size |
 | `REDIS_SOCKET_TIMEOUT` | 5.0 | Redis socket timeout |
+
+## Queue Retry Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `QUEUE_RETRY_BACKOFF_ENABLED` | false | Enable exponential retry backoff for failed queue jobs |
+| `QUEUE_RETRY_MAX_DELAY` | 60.0 | Maximum queue retry delay in seconds when backoff is enabled |
+| `QUEUE_RETRY_JITTER` | 0.0 | Random jitter factor added to queue retry delays |
+
+## Health HTTP Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HEALTH_HTTP_ENABLED` | false | Start the optional HTTP health endpoint |
+| `HEALTH_HTTP_HOST` | 127.0.0.1 | Bind host for the health HTTP endpoint |
+| `HEALTH_HTTP_PORT` | 8080 | Bind port for the health HTTP endpoint |
+
+## Parsing Notes
+
+- Boolean values are enabled only by `1`, `true`, `yes`, or `on` (case-insensitive). Other values are treated as `false`.
+- Invalid `MQTT_PORT` values raise a startup error.
+- Invalid retry and health HTTP numeric values fall back to their defaults for compatibility.
 
 ## Timezone Configuration
 
@@ -76,6 +117,19 @@ MQTT_PASSWORD=your_password
 MQTT_CLIENT_ID=mqtt-framework-main
 MQTT_GROUP_NAME=mqtt_framework_group
 
+# MQTT TLS Configuration
+MQTT_TLS_ENABLED=false
+MQTT_TLS_CA_CERTS=/path/to/ca.pem
+MQTT_TLS_CERTFILE=/path/to/client.pem
+MQTT_TLS_KEYFILE=/path/to/client.key
+MQTT_TLS_INSECURE=false
+
+# MQTT Startup Retry Configuration
+MQTT_CONNECT_RETRIES=1
+MQTT_RETRY_MIN_DELAY=1.0
+MQTT_RETRY_MAX_DELAY=30.0
+MQTT_RETRY_JITTER=0.0
+
 # Database Configuration
 ENABLE_MYSQL=true
 DB_HOST=localhost
@@ -93,6 +147,16 @@ REDIS_PASSWORD=your_redis_password
 REDIS_USERNAME=your_redis_username
 REDIS_MAX_CONNECTIONS=10
 REDIS_SOCKET_TIMEOUT=5.0
+
+# Queue Retry Configuration
+QUEUE_RETRY_BACKOFF_ENABLED=false
+QUEUE_RETRY_MAX_DELAY=60.0
+QUEUE_RETRY_JITTER=0.0
+
+# Health HTTP Configuration
+HEALTH_HTTP_ENABLED=false
+HEALTH_HTTP_HOST=127.0.0.1
+HEALTH_HTTP_PORT=8080
 
 # Timezone Configuration
 TIMEZONE=Asia/Jakarta

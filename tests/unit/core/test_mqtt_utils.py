@@ -6,12 +6,40 @@ from routemq.mqtt_utils import (
     MqttTlsConfig,
     connect_mqtt_client_with_retries,
     create_mqtt_client,
+    get_main_client_id,
+    get_mqtt_connection_config,
+    get_mqtt_group_name,
     get_mqtt_retry_config,
     get_mqtt_tls_config,
+    get_worker_client_id_prefix,
 )
 
 
 class MqttTlsConfigTests(unittest.TestCase):
+    def test_connection_config_reads_central_settings(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                'MQTT_BROKER': 'broker.local',
+                'MQTT_PORT': '1884',
+                'MQTT_USERNAME': 'user',
+                'MQTT_PASSWORD': 'secret',
+            },
+            clear=True,
+        ):
+            config = get_mqtt_connection_config()
+
+        self.assertEqual(config.broker, 'broker.local')
+        self.assertEqual(config.port, 1884)
+        self.assertEqual(config.username, 'user')
+        self.assertEqual(config.password, 'secret')
+
+    def test_client_id_and_group_helpers_read_central_settings(self) -> None:
+        with patch.dict(os.environ, {'MQTT_CLIENT_ID': 'client', 'MQTT_GROUP_NAME': 'group'}, clear=True):
+            self.assertEqual(get_main_client_id(), 'client')
+            self.assertEqual(get_worker_client_id_prefix(), 'client')
+            self.assertEqual(get_mqtt_group_name(), 'group')
+
     def test_tls_config_defaults_to_disabled(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             config = get_mqtt_tls_config()

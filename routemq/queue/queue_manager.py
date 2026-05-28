@@ -1,5 +1,8 @@
 import logging
 import os
+from collections.abc import Callable
+from importlib import import_module
+from importlib.metadata import entry_points
 from typing import Optional
 
 from routemq.job import Job
@@ -8,9 +11,16 @@ from routemq.queue.redis_queue import RedisQueue
 from routemq.queue.database_queue import DatabaseQueue
 from routemq.redis_manager import RedisManager
 from routemq.model import Model
-from ..observability import lifecycle
 
 logger = logging.getLogger('RouteMQ.QueueManager')
+
+QueueDriverFactory = Callable[[], QueueDriver]
+QUEUE_DRIVER_ENTRY_POINT_GROUP = 'routemq.queue_drivers'
+
+
+def _lifecycle(event: str, attributes: dict) -> None:
+    """Emit an observability lifecycle event."""
+    import_module('routemq.observability').lifecycle(event, attributes)
 
 
 class QueueManager:
@@ -22,6 +32,8 @@ class QueueManager:
     _instance: Optional['QueueManager'] = None
     _driver: Optional[QueueDriver] = None
     _default_connection: str = 'redis'
+    _driver_factories: dict[str, QueueDriverFactory] = {}
+    _entry_points_loaded: bool = False
 
     def __new__(cls) -> 'QueueManager':
         """Singleton pattern to ensure one queue manager instance."""
@@ -51,18 +63,78 @@ class QueueManager:
         Raises:
             RuntimeError: If the requested driver is not available
         """
+        self._ensure_driver_registry_loaded()
         connection = self._resolve_connection(connection)
+        factory = self._driver_factories[connection]
+        driver = factory()
 
-        if connection == 'redis':
-            return RedisQueue()
+        if not isinstance(driver, QueueDriver):
+            raise TypeError(f"Queue driver factory for '{connection}' did not return a QueueDriver instance")
 
-        if connection == 'database':
-            return DatabaseQueue()
+        return driver
 
-        raise RuntimeError(f'Unknown queue connection: {connection}')
+    @classmethod
+    def register_driver(cls, name: str, factory: type[QueueDriver] | QueueDriverFactory) -> None:
+        """
+        Register a queue driver factory.
+
+        Args:
+            name: Connection name used by QUEUE_CONNECTION or get_driver().
+            factory: QueueDriver subclass or zero-argument factory returning a QueueDriver.
+
+        Raises:
+            ValueError: If the driver name is empty.
+            TypeError: If the factory is not callable or the class does not inherit QueueDriver.
+        """
+        normalized = name.strip()
+        if not normalized:
+            raise ValueError('Queue driver name cannot be empty')
+
+        if isinstance(factory, type):
+            if not issubclass(factory, QueueDriver):
+                raise TypeError(f"Queue driver '{normalized}' must inherit QueueDriver")
+            cls._driver_factories[normalized] = factory
+            return
+
+        if not callable(factory):
+            raise TypeError(f"Queue driver factory for '{normalized}' must be callable")
+
+        cls._driver_factories[normalized] = factory
+
+    @classmethod
+    def registered_drivers(cls) -> tuple[str, ...]:
+        """Return the currently registered queue driver names."""
+        cls._ensure_driver_registry_loaded()
+        return tuple(sorted(cls._driver_factories))
+
+    @classmethod
+    def _ensure_driver_registry_loaded(cls) -> None:
+        """Register built-in and entry-point queue drivers once."""
+        cls._register_builtin_drivers()
+
+        if cls._entry_points_loaded:
+            return
+
+        cls._entry_points_loaded = True
+        for entry_point in entry_points(group=QUEUE_DRIVER_ENTRY_POINT_GROUP):
+            if entry_point.name in cls._driver_factories:
+                logger.debug(
+                    "Skipping queue driver entry point '%s' because that name is already registered",
+                    entry_point.name,
+                )
+                continue
+
+            cls.register_driver(entry_point.name, entry_point.load())
+
+    @classmethod
+    def _register_builtin_drivers(cls) -> None:
+        """Register built-in queue drivers without overriding explicit registrations."""
+        cls._driver_factories.setdefault('redis', RedisQueue)
+        cls._driver_factories.setdefault('database', DatabaseQueue)
 
     def _resolve_connection(self, connection: Optional[str] = None) -> str:
         """Resolve the requested queue connection, including Redis-to-database fallback."""
+        self._ensure_driver_registry_loaded()
         resolved = connection or self._default_connection
 
         if resolved == 'redis':
@@ -80,6 +152,9 @@ class QueueManager:
                     'Enable MySQL or configure Redis as queue connection.'
                 )
             return 'database'
+
+        if resolved in self._driver_factories:
+            return resolved
 
         raise RuntimeError(f'Unknown queue connection: {resolved}')
 
@@ -107,14 +182,14 @@ class QueueManager:
         }
         job.capture_observability_context(attributes)
         payload = job.serialize()
-        lifecycle('queue.enqueue.started', attributes)
+        _lifecycle('queue.enqueue.started', attributes)
         try:
             await driver.push(payload, queue)
         except Exception as exc:
-            lifecycle('queue.enqueue.failed', {**attributes, 'error': exc.__class__.__name__})
+            _lifecycle('queue.enqueue.failed', {**attributes, 'error': exc.__class__.__name__})
             raise
         else:
-            lifecycle('queue.enqueue.succeeded', attributes)
+            _lifecycle('queue.enqueue.succeeded', attributes)
 
         logger.info(f"Job {job.__class__.__name__} dispatched to queue '{queue}'")
 
@@ -145,14 +220,14 @@ class QueueManager:
         }
         job.capture_observability_context(attributes)
         payload = job.serialize()
-        lifecycle('queue.enqueue.started', attributes)
+        _lifecycle('queue.enqueue.started', attributes)
         try:
             await driver.push(payload, queue, delay)
         except Exception as exc:
-            lifecycle('queue.enqueue.failed', {**attributes, 'error': exc.__class__.__name__})
+            _lifecycle('queue.enqueue.failed', {**attributes, 'error': exc.__class__.__name__})
             raise
         else:
-            lifecycle('queue.enqueue.succeeded', attributes)
+            _lifecycle('queue.enqueue.succeeded', attributes)
 
         logger.info(f"Job {job.__class__.__name__} scheduled to queue '{queue}' with {delay}s delay")
 
@@ -182,14 +257,14 @@ class QueueManager:
             }
             job.capture_observability_context(attributes)
             payload = job.serialize()
-            lifecycle('queue.enqueue.started', attributes)
+            _lifecycle('queue.enqueue.started', attributes)
             try:
                 await driver.push(payload, q)
             except Exception as exc:
-                lifecycle('queue.enqueue.failed', {**attributes, 'error': exc.__class__.__name__})
+                _lifecycle('queue.enqueue.failed', {**attributes, 'error': exc.__class__.__name__})
                 raise
             else:
-                lifecycle('queue.enqueue.succeeded', attributes)
+                _lifecycle('queue.enqueue.succeeded', attributes)
 
         logger.info(f'Bulk dispatched {len(jobs)} jobs to queue')
 
