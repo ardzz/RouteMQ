@@ -7,7 +7,8 @@ from typing import List, Dict, Any
 
 from .router import Router
 from .router_registry import RouterRegistry
-from .observability import lifecycle, reset_context, set_context
+from .logging_config import configure_logging
+from .observability import lifecycle, reset_context, set_context, start_span
 from .mqtt_utils import (
     build_worker_broker_config,
     build_worker_client_id,
@@ -131,9 +132,16 @@ class WorkerProcess:
         """Restore per-message observability context inside the worker loop."""
         token = set_context(context)
         try:
-            lifecycle('mqtt.message.received', {'process': 'worker'})
-            await self.router.dispatch(topic, payload, client)
-            lifecycle('mqtt.message.succeeded', {'process': 'worker'})
+            span_attributes = {
+                'messaging.system': 'mqtt',
+                'messaging.destination': topic,
+                'routemq.process.role': 'worker',
+                'routemq.worker.id': self.worker_id,
+            }
+            with start_span('mqtt.receive', span_attributes, kind='consumer'):
+                lifecycle('mqtt.message.received', {'process': 'worker'})
+                await self.router.dispatch(topic, payload, client)
+                lifecycle('mqtt.message.succeeded', {'process': 'worker'})
         except Exception as exc:
             lifecycle('mqtt.message.failed', {'process': 'worker', 'error': exc.__class__.__name__})
             raise
@@ -213,9 +221,7 @@ def worker_process_main(
     worker_id: int, router_directory: str, shared_routes: List[Dict], broker_config: Dict, group_name: str
 ):
     """Main function for worker process."""
-    logging.basicConfig(
-        level=logging.INFO, format=f'%(asctime)s - Worker-{worker_id} - %(name)s - %(levelname)s - %(message)s'
-    )
+    configure_logging(log_to_console=True)
 
     worker = WorkerProcess(worker_id, router_directory, shared_routes, broker_config, group_name)
     worker.run()

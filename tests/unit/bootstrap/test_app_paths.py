@@ -62,7 +62,7 @@ class SetupLoggingExtraPathsTests(unittest.TestCase):
     def test_setup_logging_time_rotation(self) -> None:
         app = object.__new__(Application)
         with (
-            patch('bootstrap.app.logging.basicConfig'),
+            patch('routemq.logging_config.logging.basicConfig') as basic_config,
             patch.dict(
                 os.environ,
                 {
@@ -74,24 +74,26 @@ class SetupLoggingExtraPathsTests(unittest.TestCase):
                 },
                 clear=True,
             ),
-            patch('bootstrap.app.Path') as path_cls,
+            patch('routemq.logging_config.Path') as path_cls,
         ):
             path_cls.return_value.parent.mkdir = MagicMock()
             app._setup_logging()
 
         self.assertEqual(app.logger.name, 'RouteMQ.Application')
+        for handler in basic_config.call_args.kwargs['handlers']:
+            handler.close()
 
     def test_setup_logging_file_handler_failure_falls_back(self) -> None:
         app = object.__new__(Application)
         with (
-            patch('bootstrap.app.logging.basicConfig'),
-            patch('bootstrap.app.logging.handlers.RotatingFileHandler', side_effect=OSError('no disk')),
+            patch('routemq.logging_config.logging.basicConfig'),
+            patch('routemq.logging_config.logging.handlers.RotatingFileHandler', side_effect=OSError('no disk')),
             patch.dict(
                 os.environ,
                 {'LOG_TO_FILE': 'true', 'LOG_FILE': '/tmp/test-routemq.log'},
                 clear=True,
             ),
-            patch('bootstrap.app.Path') as path_cls,
+            patch('routemq.logging_config.Path') as path_cls,
             patch('builtins.print'),
         ):
             path_cls.return_value.parent.mkdir = MagicMock()

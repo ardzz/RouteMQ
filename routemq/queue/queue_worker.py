@@ -8,7 +8,7 @@ from routemq.job import Job
 from routemq.queue.queue_driver import QueueDriver
 from routemq.queue.queue_manager import QueueManager
 from routemq.settings import load_queue_retry_settings
-from ..observability import lifecycle, reset_context, set_context
+from ..observability import lifecycle, reset_context, set_context, start_span
 
 logger = logging.getLogger('RouteMQ.QueueWorker')
 
@@ -141,30 +141,36 @@ class QueueWorker:
             }
             job_context = job.get_observability_context() if hasattr(job, 'get_observability_context') else {}
             token = set_context(job_context, **attributes)
+            span_attributes = {
+                'messaging.system': 'routemq.queue',
+                'messaging.destination': self.queue_name,
+                'routemq.job.name': job.__class__.__name__,
+                'routemq.process.role': 'queue-worker',
+            }
+            with start_span('queue.job', span_attributes, kind='consumer'):
+                # Check if we've exceeded max tries
+                max_tries = self.max_tries or job.max_tries
+                if attempts > max_tries:
+                    logger.warning(f'Job {job_id} exceeded max tries ({max_tries}), moving to failed queue')
+                    lifecycle('queue.job.dead_lettered', {**attributes, 'reason': 'max_tries_exceeded'})
+                    await self._fail_job(job, Exception('Max tries exceeded'))
+                    await driver.delete(job_id, self.queue_name)
+                    return
 
-            # Check if we've exceeded max tries
-            max_tries = self.max_tries or job.max_tries
-            if attempts > max_tries:
-                logger.warning(f'Job {job_id} exceeded max tries ({max_tries}), moving to failed queue')
-                lifecycle('queue.job.dead_lettered', {**attributes, 'reason': 'max_tries_exceeded'})
-                await self._fail_job(job, Exception('Max tries exceeded'))
-                await driver.delete(job_id, self.queue_name)
-                return
+                # Execute the job with timeout
+                try:
+                    lifecycle('queue.job.started', attributes)
+                    await asyncio.wait_for(job.handle(), timeout=job.timeout or self.timeout)
 
-            # Execute the job with timeout
-            try:
-                lifecycle('queue.job.started', attributes)
-                await asyncio.wait_for(job.handle(), timeout=job.timeout or self.timeout)
+                    # Job succeeded, delete from queue
+                    await driver.delete(job_id, self.queue_name)
+                    lifecycle('queue.job.succeeded', attributes)
+                    logger.info(f'Job {job_id} completed successfully')
 
-                # Job succeeded, delete from queue
-                await driver.delete(job_id, self.queue_name)
-                lifecycle('queue.job.succeeded', attributes)
-                logger.info(f'Job {job_id} completed successfully')
-
-            except asyncio.TimeoutError:
-                logger.error(f'Job {job_id} timed out after {job.timeout}s')
-                lifecycle('queue.job.timed_out', attributes)
-                raise Exception(f'Job timed out after {job.timeout} seconds')
+                except asyncio.TimeoutError:
+                    logger.error(f'Job {job_id} timed out after {job.timeout}s')
+                    lifecycle('queue.job.timed_out', attributes)
+                    raise Exception(f'Job timed out after {job.timeout} seconds')
 
         except Exception as e:
             logger.error(f'Job {job_id} failed: {str(e)}')

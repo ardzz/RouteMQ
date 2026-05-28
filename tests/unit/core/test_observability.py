@@ -1,4 +1,5 @@
 import json
+import os
 import unittest
 from importlib import import_module
 from typing import Any
@@ -27,8 +28,15 @@ Job.register(ObservableJob)
 
 
 class ObservabilityTestCase(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self._tracing_env = patch.dict(os.environ, {'ENABLE_TRACING': 'true'})
+        self._tracing_env.start()
+
     def tearDown(self) -> None:
         observability.clear_hooks()
+        self._tracing_env.stop()
+        super().tearDown()
 
 
 class ObservabilityUtilitiesTests(ObservabilityTestCase):
@@ -61,12 +69,156 @@ class ObservabilityUtilitiesTests(ObservabilityTestCase):
 
         self.assertEqual(calls, ['test.event', 'test.event:2.0'])
 
+    def test_span_context_ids_snapshot_and_copied_hook_payloads(self) -> None:
+        first_hook: list[Any] = []
+        second_hook: list[Any] = []
+
+        def mutate_snapshot(snapshot: Any) -> None:
+            snapshot.attributes['mutated'] = True
+            first_hook.append(snapshot)
+
+        def capture_snapshot(snapshot: Any) -> None:
+            second_hook.append(snapshot)
+
+        observability.register_span_hook(mutate_snapshot)
+        observability.register_span_hook(capture_snapshot)
+
+        with observability.start_span('test.span', {'component': 'unit'}, kind='consumer') as span:
+            self.assertIsNotNone(span)
+            active = observability.current_span()
+            self.assertIs(active, span)
+            context = observability.snapshot_context()
+            self.assertEqual(context['trace_id'], span.trace_id)
+            self.assertEqual(context['span_id'], span.span_id)
+            self.assertEqual(context['trace_flags'], '01')
+            self.assertIsNone(context['parent_span_id'])
+
+        self.assertIsNone(observability.current_span())
+        self.assertEqual(len(first_hook), 1)
+        self.assertEqual(len(second_hook), 1)
+        emitted = second_hook[0]
+        self.assertEqual(emitted.name, 'test.span')
+        self.assertEqual(emitted.status, 'OK')
+        self.assertEqual(len(emitted.trace_id), 32)
+        self.assertEqual(len(emitted.span_id), 16)
+        self.assertEqual(emitted.attributes['component'], 'unit')
+        self.assertNotIn('mutated', emitted.attributes)
+
+    def test_span_records_exception_status_and_isolates_hook_failures(self) -> None:
+        spans: list[Any] = []
+
+        def broken_hook(snapshot: Any) -> None:
+            raise RuntimeError('span hook failed')
+
+        observability.register_span_hook(broken_hook)
+        observability.register_span_hook(spans.append)
+
+        with self.assertRaisesRegex(ValueError, 'boom'):
+            with observability.start_span('test.error'):
+                raise ValueError('boom')
+
+        self.assertEqual(len(spans), 1)
+        self.assertEqual(spans[0].status, 'ERROR')
+        self.assertEqual(spans[0].status_message, 'ValueError')
+        self.assertEqual(spans[0].attributes['error.type'], 'ValueError')
+        self.assertEqual(spans[0].events[0].attributes['error.type'], 'ValueError')
+
+    def test_start_span_is_noop_when_tracing_is_disabled(self) -> None:
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
+
+        with patch.dict(os.environ, {'ENABLE_TRACING': 'false'}):
+            with observability.start_span('disabled') as span:
+                self.assertIsNone(span)
+                self.assertIsNone(observability.current_span())
+                self.assertNotIn('trace_id', observability.snapshot_context())
+
+        self.assertEqual(spans, [])
+
+    def test_span_handles_preexisting_collections_and_lazy_initialization(self) -> None:
+        seeded_events = (observability.SpanEvent(name='seeded', attributes={'k': 'v'}, timestamp_ns=1),)
+        span = observability.Span(
+            name='preset',
+            trace_id='a' * 32,
+            span_id='b' * 16,
+            parent_span_id=None,
+            attributes={'preset': True},
+            events=list(seeded_events),
+        )
+        self.assertEqual(span.attributes, {'preset': True})
+        self.assertEqual(len(span.events or []), 1)
+
+        span.attributes = None  # type: ignore[assignment]
+        span.set_attribute('lazy_attr', 1)
+        self.assertEqual(span.attributes, {'lazy_attr': 1})
+
+        span.events = None  # type: ignore[assignment]
+        span.add_event('lazy_event')
+        self.assertEqual(len((span.events or [])), 1)
+
+        explicit_end = span.start_time_ns + 5
+        span.end_time_ns = explicit_end
+        snapshot = span.end()
+        self.assertEqual(snapshot.end_time_ns, explicit_end)
+
+    def test_validators_reject_non_hex_input_and_short_flags(self) -> None:
+        self.assertFalse(observability._valid_hex('nothex' * 5 + 'xx', 32))
+        self.assertFalse(observability._valid_hex(123, 32))  # type: ignore[arg-type]
+        self.assertFalse(observability._valid_trace_flags('zz'))
+        self.assertFalse(observability._valid_trace_flags('012'))
+        self.assertFalse(observability._valid_trace_flags(None))  # type: ignore[arg-type]
+
+    def test_correlation_helpers_set_and_reset_explicit_values(self) -> None:
+        token = observability.set_correlation_id('explicit-corr')
+        try:
+            self.assertEqual(observability.get_correlation_id(), 'explicit-corr')
+        finally:
+            observability.reset_correlation_id(token)
+        self.assertIsNone(observability.get_correlation_id())
+
+    def test_job_context_from_payload_handles_bad_payloads(self) -> None:
+        self.assertEqual(observability.job_context_from_payload('not json'), {})
+        self.assertEqual(observability.job_context_from_payload(json.dumps({})), {})
+        self.assertEqual(
+            observability.job_context_from_payload(json.dumps({'observability': 'string'})),
+            {},
+        )
+        good = json.dumps({'observability': {'trace_id': 'x'}})
+        self.assertEqual(observability.job_context_from_payload(good), {'trace_id': 'x'})
+
+    def test_hook_unregister_idempotent_across_kinds(self) -> None:
+        events: list[str] = []
+        unregister_trace = observability.register_trace_hook(lambda name, attrs: events.append(f't:{name}'))
+        unregister_metric = observability.register_metric_hook(
+            lambda name, value, attrs: events.append(f'm:{name}:{value}')
+        )
+        unregister_span = observability.register_span_hook(lambda snapshot: events.append(f's:{snapshot.name}'))
+
+        observability.lifecycle('once', {'k': 'v'})
+        with observability.start_span('unreg.span'):
+            pass
+
+        unregister_trace()
+        unregister_metric()
+        unregister_span()
+        unregister_trace()
+        unregister_metric()
+        unregister_span()
+
+        observability.lifecycle('twice', {'k': 'v'})
+        with observability.start_span('unreg.span.2'):
+            pass
+
+        self.assertEqual(events, ['t:once', 'm:once:1.0', 's:unreg.span'])
+
 
 class RouterObservabilityTests(ObservabilityTestCase):
     async def test_router_enriches_middleware_context_and_resets_after_dispatch(self) -> None:
         router = Router()
         client = MagicMock()
         seen_context: dict[str, Any] = {}
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
 
         class CaptureMiddleware(Middleware):
             async def handle(self, context: dict[str, Any], next_handler: Any) -> Any:
@@ -91,6 +243,15 @@ class RouterObservabilityTests(ObservabilityTestCase):
         self.assertEqual(seen_context['handler_correlation_id'], 'router-corr')
         self.assertEqual(seen_context['handler_device_id'], '123')
         self.assertIsNone(observability.get_correlation_id())
+        self.assertEqual([span.name for span in spans], ['router.handler', 'router.middleware', 'router.dispatch'])
+        handler_span, middleware_span, dispatch_span = spans
+        self.assertEqual(handler_span.trace_id, dispatch_span.trace_id)
+        self.assertEqual(middleware_span.trace_id, dispatch_span.trace_id)
+        self.assertEqual(middleware_span.parent_span_id, dispatch_span.span_id)
+        self.assertEqual(handler_span.parent_span_id, middleware_span.span_id)
+        self.assertEqual(dispatch_span.attributes['messaging.destination.template'], 'devices/{device_id}/status')
+        self.assertEqual(handler_span.attributes['routemq.handler.name'], handler.__qualname__)
+        self.assertEqual(middleware_span.attributes['routemq.middleware.name'], 'CaptureMiddleware')
 
     async def test_noop_hooks_do_not_mask_handler_errors(self) -> None:
         router = Router()
@@ -111,6 +272,8 @@ class MqttObservabilityTests(ObservabilityTestCase):
         app = object.__new__(Application)
         app.router = MagicMock()
         seen: dict[str, Any] = {}
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
 
         async def dispatch(topic: str, payload: Any, client: Any) -> None:
             seen.update(observability.snapshot_context())
@@ -121,6 +284,13 @@ class MqttObservabilityTests(ObservabilityTestCase):
 
         self.assertEqual(seen['mqtt_topic'], 'devices/1')
         self.assertIsInstance(seen['correlation_id'], str)
+        self.assertEqual(seen['trace_id'], spans[0].trace_id)
+        self.assertEqual(seen['span_id'], spans[0].span_id)
+        self.assertEqual(spans[0].name, 'mqtt.receive')
+        self.assertEqual(spans[0].kind, 'consumer')
+        self.assertEqual(spans[0].attributes['messaging.system'], 'mqtt')
+        self.assertEqual(spans[0].attributes['messaging.destination'], 'devices/1')
+        self.assertEqual(spans[0].attributes['routemq.process.role'], 'main')
         self.assertIsNone(observability.get_correlation_id())
 
     def test_worker_message_wrapper_sets_worker_context_and_resets(self) -> None:
@@ -132,6 +302,8 @@ class MqttObservabilityTests(ObservabilityTestCase):
             group_name='workers',
         )
         seen: dict[str, Any] = {}
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
 
         async def dispatch(topic: str, payload: Any, client: Any) -> None:
             seen.update(observability.snapshot_context())
@@ -148,6 +320,11 @@ class MqttObservabilityTests(ObservabilityTestCase):
         self.assertEqual(seen['actual_topic'], 'devices/9/status')
         self.assertEqual(seen['group_name'], 'workers')
         self.assertEqual(seen['topic_arg'], 'devices/9/status')
+        self.assertEqual(seen['trace_id'], spans[0].trace_id)
+        self.assertEqual(seen['span_id'], spans[0].span_id)
+        self.assertEqual(spans[0].name, 'mqtt.receive')
+        self.assertEqual(spans[0].attributes['routemq.process.role'], 'worker')
+        self.assertEqual(spans[0].attributes['routemq.worker.id'], 7)
         self.assertIsNone(observability.get_correlation_id())
 
 
@@ -171,6 +348,8 @@ class QueueObservabilityTests(ObservabilityTestCase):
         manager = QueueManager()
         driver = MagicMock(spec=QueueDriver)
         driver.push = AsyncMock()
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
         token = observability.set_context({'correlation_id': 'queue-corr', 'tenant': 'tenant-q'})
         try:
             with patch.object(manager, 'get_driver', return_value=driver):
@@ -179,9 +358,16 @@ class QueueObservabilityTests(ObservabilityTestCase):
             observability.reset_context(token)
 
         payload = json.loads(driver.push.await_args.args[0])
+        enqueue_span = spans[0]
         self.assertEqual(payload['observability']['correlation_id'], 'queue-corr')
         self.assertEqual(payload['observability']['tenant'], 'tenant-q')
         self.assertEqual(payload['observability']['queue'], 'observed')
+        self.assertEqual(payload['observability']['trace_id'], enqueue_span.trace_id)
+        self.assertEqual(payload['observability']['span_id'], enqueue_span.span_id)
+        self.assertEqual(enqueue_span.name, 'queue.enqueue')
+        self.assertEqual(enqueue_span.kind, 'producer')
+        self.assertEqual(enqueue_span.attributes['messaging.destination'], 'observed')
+        self.assertEqual(enqueue_span.attributes['routemq.job.name'], 'ObservableJob')
         self.assertNotIn('observability', payload['data'])
 
     async def test_queue_worker_restores_job_context_and_resets_after_success(self) -> None:
@@ -201,6 +387,36 @@ class QueueObservabilityTests(ObservabilityTestCase):
         self.assertEqual(ObservableJob.seen_contexts[-1]['job_id'], 'job-1')
         self.assertEqual(ObservableJob.seen_contexts[-1]['queue'], 'observed')
         self.assertIsNone(observability.get_correlation_id())
+
+    async def test_queue_worker_creates_job_span_from_enqueued_trace_context(self) -> None:
+        manager = QueueManager()
+        driver = MagicMock(spec=QueueDriver)
+        driver.push = AsyncMock()
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
+
+        with patch.object(manager, 'get_driver', return_value=driver):
+            await manager.push(ObservableJob(), queue='observed')
+
+        payload = driver.push.await_args.args[0]
+        worker = QueueWorker(queue_name='observed', sleep=0)
+        worker_driver = MagicMock(spec=QueueDriver)
+        worker_driver.delete = AsyncMock()
+        worker_driver.release = AsyncMock()
+        worker_driver.failed = AsyncMock()
+        worker.driver = worker_driver
+
+        await worker._process_job({'id': 'job-linked', 'payload': payload, 'attempts': 1})
+
+        enqueue_span = next(span for span in spans if span.name == 'queue.enqueue')
+        job_span = next(span for span in spans if span.name == 'queue.job')
+        self.assertEqual(job_span.trace_id, enqueue_span.trace_id)
+        self.assertEqual(job_span.parent_span_id, enqueue_span.span_id)
+        self.assertEqual(job_span.attributes['messaging.destination'], 'observed')
+        self.assertEqual(job_span.attributes['routemq.job.name'], 'ObservableJob')
+        self.assertEqual(ObservableJob.seen_contexts[-1]['trace_id'], job_span.trace_id)
+        self.assertEqual(ObservableJob.seen_contexts[-1]['span_id'], job_span.span_id)
+        self.assertEqual(ObservableJob.seen_contexts[-1]['parent_span_id'], enqueue_span.span_id)
 
 
 if __name__ == '__main__':

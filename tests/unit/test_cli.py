@@ -1,5 +1,6 @@
 import errno
 import io
+import os
 import socket
 import sys
 import unittest
@@ -89,6 +90,7 @@ class TestCliSubcommands(unittest.TestCase):
         with (
             patch('routemq.cli.create_app') as mock_create,
             patch('routemq.cli.create_env_file'),
+            patch.dict(os.environ, {'LOG_FORMATTER': 'plain'}, clear=True),
             patch('sys.stderr', new_callable=io.StringIO) as mock_stderr,
         ):
             mock_app = MagicMock()
@@ -109,6 +111,7 @@ class TestCliSubcommands(unittest.TestCase):
         with (
             patch('routemq.cli.create_app') as mock_create,
             patch('routemq.cli.create_env_file'),
+            patch.dict(os.environ, {'LOG_FORMATTER': 'plain'}, clear=True),
             patch('sys.stderr', new_callable=io.StringIO),
         ):
             mock_app = MagicMock()
@@ -125,6 +128,7 @@ class TestCliSubcommands(unittest.TestCase):
         with (
             patch('routemq.cli.create_app') as mock_create,
             patch('routemq.cli.create_env_file'),
+            patch.dict(os.environ, {'LOG_FORMATTER': 'plain'}, clear=True),
             patch('sys.stderr', new_callable=io.StringIO),
         ):
             mock_app = MagicMock()
@@ -141,6 +145,7 @@ class TestCliSubcommands(unittest.TestCase):
         with (
             patch('routemq.cli.create_app') as mock_create,
             patch('routemq.cli.create_env_file'),
+            patch.dict(os.environ, {'LOG_FORMATTER': 'plain'}, clear=True),
             patch('sys.stderr', new_callable=io.StringIO),
         ):
             mock_app = MagicMock()
@@ -180,6 +185,7 @@ class TestCliSubcommands(unittest.TestCase):
         with (
             patch('routemq.cli.create_app') as mock_create,
             patch('routemq.cli.create_env_file'),
+            patch.dict(os.environ, {'LOG_FORMATTER': 'plain'}, clear=True),
             patch('sys.stderr', new_callable=io.StringIO),
         ):
             mock_app = MagicMock()
@@ -192,6 +198,26 @@ class TestCliSubcommands(unittest.TestCase):
             self.assertEqual(cm.exception.code, 1)
             mock_app.connect.assert_called_once()
             mock_app.run.assert_not_called()
+
+    def test_run_subcommand_logs_network_error_when_json_logging_enabled(self):
+        with (
+            patch('routemq.cli.create_app') as mock_create,
+            patch('routemq.cli.create_env_file'),
+            patch('routemq.cli.logger.error') as log_error,
+            patch.dict(os.environ, {'LOG_FORMATTER': 'json', 'MQTT_BROKER': 'mqtt', 'MQTT_PORT': '1884'}, clear=True),
+            patch('sys.stderr', new_callable=io.StringIO) as mock_stderr,
+        ):
+            mock_app = MagicMock()
+            mock_app.connect.side_effect = ConnectionRefusedError(111, 'Connection refused')
+            mock_create.return_value = mock_app
+
+            with self.assertRaises(SystemExit) as cm:
+                self._run_with_argv(['run'])
+
+            self.assertEqual(cm.exception.code, 1)
+            log_error.assert_called_once()
+            self.assertEqual(mock_stderr.getvalue(), '')
+            self.assertEqual(log_error.call_args.kwargs['extra']['broker'], 'mqtt')
 
     def test_network_startup_error_classifier_preserves_cli_cases(self):
         self.assertTrue(is_network_startup_error(ConnectionRefusedError(111, 'Connection refused')))

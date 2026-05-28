@@ -23,6 +23,12 @@ def _lifecycle(event: str, attributes: dict) -> None:
     import_module('routemq.observability').lifecycle(event, attributes)
 
 
+def _start_span(name: str, attributes: dict, *, kind: str):
+    """Start an observability span without importing at module load time."""
+
+    return import_module('routemq.observability').start_span(name, attributes, kind=kind)
+
+
 class QueueManager:
     """
     Queue Manager for dispatching jobs to queues.
@@ -180,16 +186,22 @@ class QueueManager:
             'queue': queue,
             'connection': connection or self._default_connection,
         }
-        job.capture_observability_context(attributes)
-        payload = job.serialize()
-        _lifecycle('queue.enqueue.started', attributes)
-        try:
-            await driver.push(payload, queue)
-        except Exception as exc:
-            _lifecycle('queue.enqueue.failed', {**attributes, 'error': exc.__class__.__name__})
-            raise
-        else:
-            _lifecycle('queue.enqueue.succeeded', attributes)
+        span_attributes = {
+            'messaging.system': 'routemq.queue',
+            'messaging.destination': queue,
+            'routemq.job.name': job.__class__.__name__,
+        }
+        with _start_span('queue.enqueue', span_attributes, kind='producer'):
+            job.capture_observability_context(attributes)
+            payload = job.serialize()
+            _lifecycle('queue.enqueue.started', attributes)
+            try:
+                await driver.push(payload, queue)
+            except Exception as exc:
+                _lifecycle('queue.enqueue.failed', {**attributes, 'error': exc.__class__.__name__})
+                raise
+            else:
+                _lifecycle('queue.enqueue.succeeded', attributes)
 
         logger.info(f"Job {job.__class__.__name__} dispatched to queue '{queue}'")
 
@@ -218,16 +230,22 @@ class QueueManager:
             'connection': connection or self._default_connection,
             'delay': delay,
         }
-        job.capture_observability_context(attributes)
-        payload = job.serialize()
-        _lifecycle('queue.enqueue.started', attributes)
-        try:
-            await driver.push(payload, queue, delay)
-        except Exception as exc:
-            _lifecycle('queue.enqueue.failed', {**attributes, 'error': exc.__class__.__name__})
-            raise
-        else:
-            _lifecycle('queue.enqueue.succeeded', attributes)
+        span_attributes = {
+            'messaging.system': 'routemq.queue',
+            'messaging.destination': queue,
+            'routemq.job.name': job.__class__.__name__,
+        }
+        with _start_span('queue.enqueue', span_attributes, kind='producer'):
+            job.capture_observability_context(attributes)
+            payload = job.serialize()
+            _lifecycle('queue.enqueue.started', attributes)
+            try:
+                await driver.push(payload, queue, delay)
+            except Exception as exc:
+                _lifecycle('queue.enqueue.failed', {**attributes, 'error': exc.__class__.__name__})
+                raise
+            else:
+                _lifecycle('queue.enqueue.succeeded', attributes)
 
         logger.info(f"Job {job.__class__.__name__} scheduled to queue '{queue}' with {delay}s delay")
 
@@ -255,16 +273,22 @@ class QueueManager:
                 'connection': connection or self._default_connection,
                 'bulk': True,
             }
-            job.capture_observability_context(attributes)
-            payload = job.serialize()
-            _lifecycle('queue.enqueue.started', attributes)
-            try:
-                await driver.push(payload, q)
-            except Exception as exc:
-                _lifecycle('queue.enqueue.failed', {**attributes, 'error': exc.__class__.__name__})
-                raise
-            else:
-                _lifecycle('queue.enqueue.succeeded', attributes)
+            span_attributes = {
+                'messaging.system': 'routemq.queue',
+                'messaging.destination': q,
+                'routemq.job.name': job.__class__.__name__,
+            }
+            with _start_span('queue.enqueue', span_attributes, kind='producer'):
+                job.capture_observability_context(attributes)
+                payload = job.serialize()
+                _lifecycle('queue.enqueue.started', attributes)
+                try:
+                    await driver.push(payload, q)
+                except Exception as exc:
+                    _lifecycle('queue.enqueue.failed', {**attributes, 'error': exc.__class__.__name__})
+                    raise
+                else:
+                    _lifecycle('queue.enqueue.succeeded', attributes)
 
         logger.info(f'Bulk dispatched {len(jobs)} jobs to queue')
 

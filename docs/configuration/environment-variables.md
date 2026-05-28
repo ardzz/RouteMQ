@@ -103,8 +103,24 @@ For a complete list of supported timezones, see the [IANA Time Zone Database](ht
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LOG_LEVEL` | INFO | Logging level (DEBUG, INFO, WARNING, ERROR) |
-| `LOG_FORMAT` | %(asctime)s - %(name)s - %(levelname)s - %(message)s | Log message format |
+| `LOG_FORMATTER` | json | Formatter: `json` for NDJSON or `plain` for legacy text logs |
+| `LOG_FIELD_PROFILE` | otel | JSON field profile: `otel`, `ecs`, `datadog`, `loki`, or `routemq` |
+| `LOG_LEVEL` | INFO | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`) |
+| `LOG_TO_CONSOLE` | true | Enable console logging |
+| `LOG_STREAM` | stdout | Console stream: `stdout` or `stderr` |
+| `LOG_INCLUDE_CONTEXT` | true | Include RouteMQ observability context in JSON logs |
+| `ENABLE_TRACING` | true | Enable RouteMQ tracing spans (`mqtt.receive`, `router.dispatch`, `queue.enqueue`, etc.). Disable with `false`/`0`/`no`/`off` to make `start_span()` a no-op. |
+| `LOG_LIFECYCLE_EVENTS` | true | Mirror known MQTT/router/queue lifecycle events to logs |
+| `LOG_LIFECYCLE_LEVEL` | INFO | Log level for mirrored lifecycle events |
+| `LOG_TO_FILE` | false | Enable optional file logging |
+| `LOG_FILE` | logs/app.log | File path when file logging is enabled |
+| `LOG_ROTATION_TYPE` | size | File rotation type: `size` or `time` |
+| `LOG_MAX_BYTES` | 10485760 | Maximum bytes before size-based rotation |
+| `LOG_BACKUP_COUNT` | 5 | Number of rotated backups to keep |
+| `LOG_ROTATION_WHEN` | midnight | Time rotation period when `LOG_ROTATION_TYPE=time` |
+| `LOG_ROTATION_INTERVAL` | 1 | Time rotation interval |
+| `LOG_DATE_FORMAT` | %Y-%m-%d | Time-rotated file suffix format |
+| `LOG_FORMAT` | %(asctime)s - %(name)s - %(levelname)s - %(message)s | Legacy plain-text format; a custom value without `LOG_FORMATTER` selects plain logging for compatibility |
 
 ## Example .env File
 
@@ -162,6 +178,15 @@ HEALTH_HTTP_PORT=8080
 TIMEZONE=Asia/Jakarta
 
 # Logging Configuration
+LOG_FORMATTER=json
+LOG_FIELD_PROFILE=otel
 LOG_LEVEL=INFO
+LOG_TO_CONSOLE=true
+LOG_STREAM=stdout
+LOG_INCLUDE_CONTEXT=true
+ENABLE_TRACING=true
+LOG_LIFECYCLE_EVENTS=true
+LOG_LIFECYCLE_LEVEL=INFO
+LOG_TO_FILE=false
 LOG_FORMAT=%(asctime)s - %(name)s - %(levelname)s - %(message)s
 ```
