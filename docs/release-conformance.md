@@ -13,5 +13,19 @@ result depends on GitHub or an external service.
 | OpenSSF Best Practices | Sprint 15 in-progress | [README placeholder](../README.md#project-health) and local Sprint 15 plan | n/a |
 | SemVer | Pre-1.0 contract | [`pyproject.toml`](../pyproject.toml) version metadata and this document's Versioning section | continuously |
 
+## Versioning
+
+RouteMQ follows Semantic Versioning 2.0.0. The framework is at 0.x.y during
+pre-stable development; under the SemVer pre-1.0 rules, breaking changes
+may land in minor bumps (0.X.0). Patch bumps (0.x.Y) remain
+backwards-compatible.
+
+Path to 1.0.0:
+- Public API surface frozen for at least one minor cycle without breaking changes
+- All standards-anchored sprints (01-07) closed
+- Sprint 15 (OpenSSF Best Practices badge) submitted and passing
+- At least one external production deployment reported and stable
+- 90-day vulnerability response SLA published and met for any reported issue
+
 The underlying architecture and release decisions are recorded in ADR-0001 through ADR-0009, including
 distribution, logging, observability, pooling, benchmarking, error handling, and supply-chain provenance.
