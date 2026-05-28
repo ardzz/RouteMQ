@@ -116,11 +116,14 @@ class TestRedisManager(unittest.IsolatedAsyncioTestCase):
         self.fake_client.ping = AsyncMock(side_effect=ConnectionError('boom'))
         module = self._import_manager({'ENABLE_REDIS': 'true'})
 
-        result = await module.redis_manager.initialize()
+        with self.assertLogs('RouteMQ.RedisManager', level='WARNING') as logs:
+            result = await module.redis_manager.initialize()
 
         self.assertFalse(result)
         self.assertFalse(module.redis_manager.enabled)
         self.assertFalse(module.redis_manager.is_enabled())
+        self.assertIn('Failed to connect to Redis', logs.output[0])
+        self.assertIsNotNone(logs.records[0].exc_info)
 
     async def test_helpers_happy_path_delegate_to_client(self) -> None:
         module = self._import_manager({'ENABLE_REDIS': 'true'})
