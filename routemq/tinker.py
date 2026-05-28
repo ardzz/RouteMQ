@@ -449,7 +449,6 @@ def start_tinker_sync(env_file='.env'):  # pragma: no cover - interactive IPytho
 
             # Configure IPython for better async support
             from IPython.terminal.interactiveshell import TerminalInteractiveShell  # pyright: ignore[reportMissingImports]
-            from IPython import get_ipython  # pyright: ignore[reportMissingImports]
 
             # Get or create IPython instance
             shell = TerminalInteractiveShell.instance()
