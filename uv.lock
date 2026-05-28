@@ -1340,6 +1340,15 @@ wheels = [
 ]
 
 [[package]]
+name = "prometheus-client"
+version = "0.25.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1b/fb/d9aa83ffe43ce1f19e557c0971d04b90561b0cfd50762aafb01968285553/prometheus_client-0.25.0.tar.gz", hash = "sha256:5e373b75c31afb3c86f1a52fa1ad470c9aace18082d39ec0d2f918d11cc9ba28", size = 86035, upload-time = "2026-04-09T19:53:42.359Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8d/9b/d4b1e644385499c8346fa9b622a3f030dce14cd6ef8a1871c221a17a67e7/prometheus_client-0.25.0-py3-none-any.whl", hash = "sha256:d5aec89e349a6ec230805d0df882f3807f74fd6c1a2fa86864e3c2279059fed1", size = 64154, upload-time = "2026-04-09T19:53:41.324Z" },
+]
+
+[[package]]
 name = "prompt-toolkit"
 version = "3.0.51"
 source = { registry = "https://pypi.org/simple" }
@@ -1769,6 +1778,7 @@ dependencies = [
 [package.optional-dependencies]
 all = [
     { name = "jinja2" },
+    { name = "prometheus-client" },
     { name = "questionary" },
     { name = "redis" },
     { name = "rich" },
@@ -1799,6 +1809,9 @@ dev = [
     { name = "rich-pyfiglet" },
     { name = "ruff" },
     { name = "testcontainers", extra = ["mysql", "redis"] },
+]
+prometheus = [
+    { name = "prometheus-client" },
 ]
 redis = [
     { name = "redis" },
@@ -1843,6 +1856,8 @@ requires-dist = [
     { name = "paho-mqtt", specifier = ">=2.0.0" },
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.8.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.0.0" },
+    { name = "prometheus-client", marker = "extra == 'all'", specifier = ">=0.22" },
+    { name = "prometheus-client", marker = "extra == 'prometheus'", specifier = ">=0.22" },
     { name = "psutil", specifier = ">=5.9.6" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4.3" },
     { name = "pytest-async-benchmark", marker = "extra == 'dev'", specifier = ">=0.2,<1" },
@@ -1864,7 +1879,7 @@ requires-dist = [
     { name = "sqlalchemy", specifier = ">=2.0.23" },
     { name = "testcontainers", extras = ["redis", "mysql", "mqtt"], marker = "extra == 'dev'", specifier = ">=4.14.2,<5" },
 ]
-provides-extras = ["redis", "cli", "dev", "all"]
+provides-extras = ["redis", "prometheus", "cli", "dev", "all"]
 
 [package.metadata.requires-dev]
 dev = [

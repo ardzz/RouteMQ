@@ -48,6 +48,7 @@ dependencies = [
 
 [project.optional-dependencies]
 redis = ["redis>=5.0.1"]
+prometheus = ["prometheus-client>=0.22"]
 cli = [
     "questionary>=2.0.0",
     "rich>=14.0.0",
@@ -76,6 +77,7 @@ dev = [
 ]
 all = [
     "redis>=5.0.1",
+    "prometheus-client>=0.22",
     "questionary>=2.0.0",
     "rich>=14.0.0",
     "rich-pyfiglet>=1.0.0",
