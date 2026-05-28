@@ -147,6 +147,21 @@ class DatabasePoolSettingsTests(unittest.TestCase):
         self.assertEqual(settings.pool_timeout, 30)
         self.assertEqual(settings.pool_recycle, 1800)
 
+    def test_load_database_pool_settings_falls_back_for_negative_numbers(self) -> None:
+        settings = load_database_pool_settings(
+            {
+                'DB_POOL_SIZE': '-1',
+                'DB_POOL_MAX_OVERFLOW': '-1',
+                'DB_POOL_TIMEOUT': '-1',
+                'DB_POOL_RECYCLE': '-1',
+            }
+        )
+
+        self.assertEqual(settings.pool_size, 5)
+        self.assertEqual(settings.max_overflow, 10)
+        self.assertEqual(settings.pool_timeout, 30)
+        self.assertEqual(settings.pool_recycle, 1800)
+
     def test_load_database_pool_settings_falls_back_for_invalid_pool_class(self) -> None:
         settings = load_database_pool_settings({'DB_POOL_CLASS': 'garbage'})
 
