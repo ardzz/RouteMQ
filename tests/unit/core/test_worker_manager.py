@@ -1,6 +1,6 @@
 import unittest
 from typing import Any, cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 from routemq.router import Router
 from routemq.worker_manager import WorkerManager, WorkerProcess, worker_process_main
@@ -164,8 +164,8 @@ class TestWorkerManager(unittest.TestCase):
         self.assertEqual(
             client.subscribe.call_args_list,
             [
-                unittest.mock.call('$share/workers/shared/one', 1),
-                unittest.mock.call('$share/workers/shared/two/+', 2),
+                call('$share/workers/shared/one', 1),
+                call('$share/workers/shared/two/+', 2),
             ],
         )
 
@@ -195,7 +195,29 @@ class TestWorkerManager(unittest.TestCase):
 
         process.terminate.assert_called_once_with()
         process.kill.assert_called_once_with()
-        self.assertEqual(process.join.call_args_list, [unittest.mock.call(timeout=5), unittest.mock.call()])
+        self.assertEqual(process.join.call_args_list, [call(timeout=5), call()])
+        self.assertEqual(manager.workers, [])
+
+    def test_stop_workers_marks_each_worker_dead_for_prometheus_cleanup(self) -> None:
+        manager = WorkerManager(Router(), group_name='workers', router_directory='app.routers')
+        first = self.make_process(pid=510, alive=True)
+        first.is_alive.side_effect = [True, False]
+        second = self.make_process(pid=511, alive=False)
+        manager.workers.extend([first, second])
+
+        with patch('routemq.worker_manager.mark_worker_dead') as mark_dead:
+            manager.stop_workers()
+
+        self.assertEqual(mark_dead.call_args_list, [call(510), call(511)])
+
+    def test_stop_workers_tolerates_prometheus_cleanup_failure(self) -> None:
+        manager = WorkerManager(Router(), group_name='workers', router_directory='app.routers')
+        process = self.make_process(pid=520, alive=False)
+        manager.workers.append(process)
+
+        with patch('routemq.worker_manager.mark_worker_dead', side_effect=RuntimeError('metrics down')):
+            manager.stop_workers()
+
         self.assertEqual(manager.workers, [])
 
     def test_spawn_failure_does_not_crash_manager_and_remaining_workers_start(self) -> None:

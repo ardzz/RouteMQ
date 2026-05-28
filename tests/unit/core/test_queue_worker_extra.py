@@ -96,7 +96,18 @@ class QueueWorkerControlsTests(_WorkerSignalGuard):
 
     def test_handle_signal_sets_should_quit(self) -> None:
         worker = self._make_worker()
-        worker._handle_signal(15, None)
+        with patch('routemq.queue.queue_worker.mark_worker_dead') as mark_dead:
+            worker._handle_signal(15, None)
+
+        self.assertTrue(worker.should_quit)
+        mark_dead.assert_called_once_with(os.getpid())
+
+    def test_handle_signal_tolerates_prometheus_cleanup_failure(self) -> None:
+        worker = self._make_worker()
+
+        with patch('routemq.queue.queue_worker.mark_worker_dead', side_effect=RuntimeError('metrics down')):
+            worker._handle_signal(15, None)
+
         self.assertTrue(worker.should_quit)
 
 

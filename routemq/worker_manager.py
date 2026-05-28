@@ -19,6 +19,13 @@ from .mqtt_utils import (
     parse_mqtt_payload,
 )
 
+try:
+    from routemq.metrics.prometheus import mark_worker_dead
+except ImportError:
+
+    def mark_worker_dead(pid: int) -> None:
+        return None
+
 
 class WorkerProcess:
     """Individual worker process that handles MQTT subscriptions."""
@@ -325,6 +332,11 @@ class WorkerManager:
                     self.logger.warning(f'Force killing worker {i}')
                     worker.kill()
                     worker.join()
+            if worker.pid is not None:
+                try:
+                    mark_worker_dead(worker.pid)
+                except Exception:
+                    self.logger.debug('Prometheus worker cleanup failed', exc_info=True)
 
         self.workers.clear()
         self.logger.info('All workers stopped')

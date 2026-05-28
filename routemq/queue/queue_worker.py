@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import signal
 import traceback
 from typing import Optional
@@ -9,6 +10,14 @@ from routemq.queue.queue_driver import QueueDriver
 from routemq.queue.queue_manager import QueueManager
 from routemq.settings import load_queue_retry_settings
 from ..observability import lifecycle, reset_context, set_context, start_span
+
+try:
+    from routemq.metrics.prometheus import mark_worker_dead
+except ImportError:
+
+    def mark_worker_dead(pid: int) -> None:
+        return None
+
 
 logger = logging.getLogger('RouteMQ.QueueWorker')
 
@@ -69,6 +78,10 @@ class QueueWorker:
         """Handle shutdown signals."""
         logger.info(f'Received signal {signum}, initiating graceful shutdown...')
         self.should_quit = True
+        try:
+            mark_worker_dead(os.getpid())
+        except Exception:
+            logger.debug('Prometheus queue worker cleanup failed', exc_info=True)
 
     async def work(self) -> None:
         """
