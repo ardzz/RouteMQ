@@ -17,9 +17,9 @@ The following versions of RouteMQ are currently supported with security updates:
 
 | Version | Supported          | Notes                                      |
 | ------- | ------------------ | ------------------------------------------ |
-| 0.17.x  | :white_check_mark: | Current supported minor release            |
-| 0.16.x  | :white_check_mark: | Security fixes for previously shipped APIs |
-| < 0.16  | :x:                | No longer supported                        |
+| 0.19.x  | :white_check_mark: | Current supported minor release            |
+| 0.18.x  | :white_check_mark: | Security fixes for the previous minor      |
+| < 0.18  | :x:                | No longer supported                        |
 
 ## Security update policy
 
