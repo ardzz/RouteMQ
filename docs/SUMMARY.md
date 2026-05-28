@@ -84,6 +84,7 @@
 * [Frequently Asked Questions (FAQ)](faq.md)
 * [RouteMQ Tinker - Interactive REPL](tinker.md)
 * [Docker Deployment Guide](docker-deployment.md)
+* [RouteMQ Architecture](architecture.md)
 * [Release Conformance](release-conformance.md)
 * [Security](security.md)
   * [ADR-0001: PyPI Distribution Model — Engine Package + Scaffolder](adr/0001-pypi-distribution-model.md)
