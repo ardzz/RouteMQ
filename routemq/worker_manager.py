@@ -8,7 +8,7 @@ from typing import List, Dict, Any
 from .router import Router
 from .router_registry import RouterRegistry
 from .logging_config import configure_logging
-from .observability import lifecycle, reset_context, set_context
+from .observability import lifecycle, reset_context, set_context, start_span
 from .mqtt_utils import (
     build_worker_broker_config,
     build_worker_client_id,
@@ -132,9 +132,16 @@ class WorkerProcess:
         """Restore per-message observability context inside the worker loop."""
         token = set_context(context)
         try:
-            lifecycle('mqtt.message.received', {'process': 'worker'})
-            await self.router.dispatch(topic, payload, client)
-            lifecycle('mqtt.message.succeeded', {'process': 'worker'})
+            span_attributes = {
+                'messaging.system': 'mqtt',
+                'messaging.destination': topic,
+                'routemq.process.role': 'worker',
+                'routemq.worker.id': self.worker_id,
+            }
+            with start_span('mqtt.receive', span_attributes, kind='consumer'):
+                lifecycle('mqtt.message.received', {'process': 'worker'})
+                await self.router.dispatch(topic, payload, client)
+                lifecycle('mqtt.message.succeeded', {'process': 'worker'})
         except Exception as exc:
             lifecycle('mqtt.message.failed', {'process': 'worker', 'error': exc.__class__.__name__})
             raise

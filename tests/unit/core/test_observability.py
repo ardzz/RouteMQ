@@ -272,6 +272,8 @@ class MqttObservabilityTests(ObservabilityTestCase):
         app = object.__new__(Application)
         app.router = MagicMock()
         seen: dict[str, Any] = {}
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
 
         async def dispatch(topic: str, payload: Any, client: Any) -> None:
             seen.update(observability.snapshot_context())
@@ -282,6 +284,13 @@ class MqttObservabilityTests(ObservabilityTestCase):
 
         self.assertEqual(seen['mqtt_topic'], 'devices/1')
         self.assertIsInstance(seen['correlation_id'], str)
+        self.assertEqual(seen['trace_id'], spans[0].trace_id)
+        self.assertEqual(seen['span_id'], spans[0].span_id)
+        self.assertEqual(spans[0].name, 'mqtt.receive')
+        self.assertEqual(spans[0].kind, 'consumer')
+        self.assertEqual(spans[0].attributes['messaging.system'], 'mqtt')
+        self.assertEqual(spans[0].attributes['messaging.destination'], 'devices/1')
+        self.assertEqual(spans[0].attributes['routemq.process.role'], 'main')
         self.assertIsNone(observability.get_correlation_id())
 
     def test_worker_message_wrapper_sets_worker_context_and_resets(self) -> None:
@@ -293,6 +302,8 @@ class MqttObservabilityTests(ObservabilityTestCase):
             group_name='workers',
         )
         seen: dict[str, Any] = {}
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
 
         async def dispatch(topic: str, payload: Any, client: Any) -> None:
             seen.update(observability.snapshot_context())
@@ -309,6 +320,11 @@ class MqttObservabilityTests(ObservabilityTestCase):
         self.assertEqual(seen['actual_topic'], 'devices/9/status')
         self.assertEqual(seen['group_name'], 'workers')
         self.assertEqual(seen['topic_arg'], 'devices/9/status')
+        self.assertEqual(seen['trace_id'], spans[0].trace_id)
+        self.assertEqual(seen['span_id'], spans[0].span_id)
+        self.assertEqual(spans[0].name, 'mqtt.receive')
+        self.assertEqual(spans[0].attributes['routemq.process.role'], 'worker')
+        self.assertEqual(spans[0].attributes['routemq.worker.id'], 7)
         self.assertIsNone(observability.get_correlation_id())
 
 

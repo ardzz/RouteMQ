@@ -208,9 +208,15 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
         """Restore MQTT correlation context inside the application event loop."""
         token = observability.set_context(context)
         try:
-            observability.lifecycle('mqtt.message.received', {'process': 'main'})
-            await self.router.dispatch(topic, payload, client)
-            observability.lifecycle('mqtt.message.succeeded', {'process': 'main'})
+            span_attributes = {
+                'messaging.system': 'mqtt',
+                'messaging.destination': topic,
+                'routemq.process.role': 'main',
+            }
+            with observability.start_span('mqtt.receive', span_attributes, kind='consumer'):
+                observability.lifecycle('mqtt.message.received', {'process': 'main'})
+                await self.router.dispatch(topic, payload, client)
+                observability.lifecycle('mqtt.message.succeeded', {'process': 'main'})
         except Exception as exc:
             observability.lifecycle('mqtt.message.failed', {'process': 'main', 'error': exc.__class__.__name__})
             raise
