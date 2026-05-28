@@ -1,46 +1,30 @@
 import asyncio
 import json
-import os
 import unittest
+from importlib import import_module
 from typing import Any
 
 import paho.mqtt.client as mqtt_client
-from testcontainers.core.container import DockerContainer
-from testcontainers.core.waiting_utils import wait_for_logs
+from paho.mqtt.enums import CallbackAPIVersion
 
 from routemq.router import Router
+from tests.integration.helpers import DockerIntegrationTestCase
 
 
-_MOSQUITTO_INLINE_CONFIG = 'listener 1883\\nallow_anonymous true'
-
-
-@unittest.skipUnless(
-    os.environ.get('RUN_INTEGRATION_TESTS'),
-    'Set RUN_INTEGRATION_TESTS=1 to run integration tests (requires Docker).',
-)
-class MqttBrokerIntegrationTests(unittest.IsolatedAsyncioTestCase):
-    container: DockerContainer
+class MqttBrokerIntegrationTests(DockerIntegrationTestCase, unittest.IsolatedAsyncioTestCase):
+    container: Any
     broker_host: str
     broker_port: int
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.container = (
-            DockerContainer('eclipse-mosquitto:2.0.18')
-            .with_exposed_ports(1883)
-            .with_command(
-                f'sh -c "printf \\"{_MOSQUITTO_INLINE_CONFIG}\\n\\" > /mosquitto/config/mosquitto.conf && '
-                'exec /usr/sbin/mosquitto -c /mosquitto/config/mosquitto.conf"'
-            )
-        )
+        super().setUpClass()
+        mosquitto_container = import_module('testcontainers.mqtt').MosquittoContainer
+        cls.container = mosquitto_container('eclipse-mosquitto:2.0.18')
         cls.container.start()
-        wait_for_logs(cls.container, 'mosquitto version', timeout=30)
+        cls.addClassCleanup(cls.container.stop)
         cls.broker_host = cls.container.get_container_host_ip()
-        cls.broker_port = int(cls.container.get_exposed_port(1883))
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        cls.container.stop()
+        cls.broker_port = int(cls.container.get_exposed_port(cls.container.MQTT_PORT))
 
     async def test_router_dispatches_topic_with_extracted_params(self) -> None:
         router = Router()
@@ -57,7 +41,7 @@ class MqttBrokerIntegrationTests(unittest.IsolatedAsyncioTestCase):
         loop = asyncio.get_event_loop()
         sub_client = mqtt_client.Client(
             client_id='integration-sub',
-            callback_api_version=mqtt_client.CallbackAPIVersion.VERSION2,
+            callback_api_version=CallbackAPIVersion.VERSION2,
         )
 
         def on_message(client: Any, userdata: Any, msg: Any) -> None:
@@ -74,7 +58,7 @@ class MqttBrokerIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
         pub_client = mqtt_client.Client(
             client_id='integration-pub',
-            callback_api_version=mqtt_client.CallbackAPIVersion.VERSION2,
+            callback_api_version=CallbackAPIVersion.VERSION2,
         )
         pub_client.connect(self.broker_host, self.broker_port)
         pub_client.publish('test/devices/abc123/status', json.dumps({'state': 'online'}), qos=1)
