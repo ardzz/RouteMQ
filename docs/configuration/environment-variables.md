@@ -43,6 +43,18 @@ Complete reference for all RouteMQ configuration options.
 | `DB_USER` | root | Database username |
 | `DB_PASS` | (empty) | Database password |
 
+## Database Pool Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DB_POOL_SIZE` | 5 | SQLAlchemy steady-state async connection pool size |
+| `DB_POOL_MAX_OVERFLOW` | 10 | Extra burst connections above `DB_POOL_SIZE` |
+| `DB_POOL_TIMEOUT` | 30 | Seconds to wait for a free connection before raising |
+| `DB_POOL_RECYCLE` | 1800 | Seconds before recycling connections; conservative production default adopted ahead of the matrix |
+| `DB_POOL_PRE_PING` | true | Validate connections before checkout; conservative production default adopted ahead of the matrix |
+| `DB_POOL_USE_LIFO` | false | Use LIFO checkout order instead of FIFO |
+| `DB_POOL_CLASS` | default | Pool implementation: `default` or `null` (`NullPool`) |
+
 ## Redis Configuration
 
 | Variable | Default | Description |
@@ -153,6 +165,15 @@ DB_PORT=3306
 DB_NAME=mqtt_framework
 DB_USER=root
 DB_PASS=your_password
+
+# Database Pool Configuration
+# DB_POOL_SIZE=5
+# DB_POOL_MAX_OVERFLOW=10
+# DB_POOL_TIMEOUT=30
+# DB_POOL_RECYCLE=1800
+# DB_POOL_PRE_PING=true
+# DB_POOL_USE_LIFO=false
+# DB_POOL_CLASS=default
 
 # Redis Configuration
 ENABLE_REDIS=true
