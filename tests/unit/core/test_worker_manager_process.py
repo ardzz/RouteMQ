@@ -51,12 +51,17 @@ class WorkerProcessSetupRouterTests(unittest.TestCase):
 
     def test_setup_router_falls_back_to_empty_on_exception(self) -> None:
         worker = _make_worker(router_directory='broken.routers')
-        with patch(
-            'routemq.worker_manager.RouterRegistry',
-            side_effect=RuntimeError('registry boom'),
+        with (
+            patch(
+                'routemq.worker_manager.RouterRegistry',
+                side_effect=RuntimeError('registry boom'),
+            ),
+            self.assertLogs('RouteMQ.Worker-0', level='ERROR') as logs,
         ):
             worker.setup_router()
         self.assertIsInstance(worker.router, Router)
+        self.assertIn('failed to load router', logs.output[0])
+        self.assertIsNotNone(logs.records[0].exc_info)
 
 
 class WorkerProcessSetupClientTests(unittest.TestCase):
@@ -169,6 +174,53 @@ class WorkerProcessOnMessageTests(unittest.TestCase):
 
         worker._on_message(MagicMock(), None, msg)
         self.addCleanup(worker._stop_dispatch_loop)
+
+    def test_on_message_logs_and_lifecycles_schedule_failure(self) -> None:
+        worker = _make_worker(group_name='workers')
+        msg = MagicMock(topic='plain/topic', payload=b'{}')
+
+        with (
+            patch.object(worker, '_schedule_dispatch', side_effect=RuntimeError('schedule failed')),
+            patch('routemq.worker_manager.lifecycle') as lifecycle,
+            self.assertLogs('RouteMQ.Worker-0', level='ERROR') as logs,
+        ):
+            worker._on_message(MagicMock(), None, msg)
+
+        lifecycle.assert_called_once_with(
+            'mqtt.message.failed',
+            {
+                'process': 'worker',
+                'worker_id': 0,
+                'error': 'RuntimeError',
+                'mqtt_topic': 'plain/topic',
+            },
+        )
+        self.assertIn('error processing message on topic plain/topic', logs.output[0])
+        self.assertIsNotNone(logs.records[0].exc_info)
+
+    def test_schedule_dispatch_callback_logs_future_failure_with_traceback(self) -> None:
+        worker = _make_worker(group_name='workers')
+        worker.loop = MagicMock()
+        worker.loop.is_running.return_value = True
+
+        async def noop() -> None:
+            return None
+
+        coro = noop()
+        fake_future = MagicMock()
+        fake_future.result.side_effect = RuntimeError('dispatch failed')
+        fake_future.add_done_callback.side_effect = lambda callback: callback(fake_future)
+
+        with (
+            patch.object(worker, '_dispatch_mqtt_message', return_value=coro),
+            patch('routemq.worker_manager.asyncio.run_coroutine_threadsafe', return_value=fake_future),
+            self.assertLogs('RouteMQ.Worker-0', level='ERROR') as logs,
+        ):
+            worker._schedule_dispatch('plain/topic', {}, MagicMock(), {})
+
+        coro.close()
+        self.assertIn('dispatch failed', logs.output[0])
+        self.assertIsNotNone(logs.records[0].exc_info)
 
     def test_on_message_reuses_persistent_loop_for_multiple_messages(self) -> None:
         worker = _make_worker(group_name='workers')

@@ -53,7 +53,11 @@ class WorkerProcess:
                 self.router = Router()
                 self.logger.warning(f'Worker {self.worker_id} using empty router')
         except Exception as e:
-            self.logger.error(f'Worker {self.worker_id} failed to load router: {e}')
+            self.logger.error(
+                f'Worker {self.worker_id} failed to load router: {e}',
+                exc_info=True,
+                extra={'worker_id': self.worker_id, 'router_directory': self.router_directory},
+            )
             self.router = Router()
 
     def setup_client(self):
@@ -107,7 +111,16 @@ class WorkerProcess:
             self._schedule_dispatch(actual_topic, payload, client, context)
 
         except Exception as e:
-            self.logger.error(f'Worker {self.worker_id} error processing message: {str(e)}')
+            topic = getattr(msg, 'topic', 'unknown')
+            lifecycle(
+                'mqtt.message.failed',
+                {'process': 'worker', 'worker_id': self.worker_id, 'error': e.__class__.__name__, 'mqtt_topic': topic},
+            )
+            self.logger.error(
+                f'Worker {self.worker_id} error processing message on topic {topic}: {str(e)}',
+                exc_info=True,
+                extra={'worker_id': self.worker_id, 'mqtt_topic': topic, 'error': e.__class__.__name__},
+            )
 
     def _schedule_dispatch(self, topic: str, payload: Any, client: Any, context: Dict[str, Any]) -> None:
         """Schedule MQTT dispatch on the worker's persistent loop."""
@@ -122,7 +135,11 @@ class WorkerProcess:
                 try:
                     done_future.result()
                 except Exception as exc:
-                    self.logger.error(f'Worker {self.worker_id} error processing message: {str(exc)}')
+                    self.logger.error(
+                        f'Worker {self.worker_id} error processing message: {str(exc)}',
+                        exc_info=True,
+                        extra={'worker_id': self.worker_id, 'error': exc.__class__.__name__},
+                    )
 
             future.add_done_callback(log_failure)
         else:
@@ -169,6 +186,7 @@ class WorkerProcess:
         except OSError as exc:
             if not is_network_startup_error(exc):
                 raise
+            # Audit Accept: startup network failures are reported and this worker exits cleanly.
             self.logger.error(
                 f'Worker {self.worker_id} could not connect to MQTT broker at {broker}:{port} ({exc}). '
                 'Please verify the broker is running and the address/port are correct.'
@@ -183,6 +201,7 @@ class WorkerProcess:
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
+            # Audit Accept: Ctrl+C is the expected graceful shutdown path.
             self.logger.info(f'Worker {self.worker_id} shutting down...')
         finally:
             self.client.loop_stop()
@@ -283,6 +302,7 @@ class WorkerManager:
             try:
                 process.start()
             except (OSError, RuntimeError) as exc:
+                # Audit Accept: one worker spawn may fail while remaining worker slots can still start.
                 route_topic = worker_topics[worker_id] if worker_id < len(worker_topics) else 'unknown'
                 self.logger.warning(
                     f'Failed to start worker {worker_id} for route {route_topic}: {type(exc).__name__}: {exc}'
