@@ -57,6 +57,7 @@ See the [Installation Guide](./INSTALL.md) for detailed setup instructions.
 ### Quick Links
 
 - **[Getting Started](./docs/getting-started/README.md)** - Installation, quick start, and basic setup
+- **[Architecture Overview](./docs/architecture.md)** - High-level runtime components and data flow
 - **[Configuration](./docs/configuration/README.md)** - Environment variables and setup options
 - **[Routing](./docs/routing/README.md)** - Route definition, parameters, and organization
 - **[Controllers](./docs/controllers/README.md)** - Creating and organizing business logic
