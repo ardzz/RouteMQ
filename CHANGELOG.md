@@ -1,3 +1,9 @@
+## v0.18.0 (2026-05-28)
+
+### Feat
+
+- complete Sprint 07 extensibility and settings (#59)
+
 ## v0.17.1 (2026-05-28)
 
 ### Fix
