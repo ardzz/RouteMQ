@@ -23,6 +23,8 @@ Welcome to the RouteMQ Framework documentation! This guide will help you get sta
 * [Testing](testing/) - Writing and running tests
 * [Deployment](deployment/) - Docker, production setup, and scaling
 * [Monitoring](monitoring/) - Metrics, health checks, and debugging
+* [Security](security.md) - Vulnerability reporting and security controls
+* [Release Conformance](release-conformance.md) - Release evidence and external checks
 * [API Reference](api-reference/) - Complete API documentation
 * [Examples](examples/) - Practical examples and use cases
 * [Troubleshooting](troubleshooting/) - Common issues and solutions
@@ -34,6 +36,8 @@ Welcome to the RouteMQ Framework documentation! This guide will help you get sta
 * [Configuration Reference](configuration/environment-variables.md)
 * [Queue Drivers](queue/drivers.md)
 * [Integration Tests](testing/integration-tests.md)
+* [Security Policy](../SECURITY.md)
+* [Release Conformance](release-conformance.md)
 * [Best Practices](best-practices.md)
 * [FAQ](faq.md)
 

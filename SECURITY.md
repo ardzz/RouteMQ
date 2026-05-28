@@ -17,9 +17,9 @@ The following versions of RouteMQ are currently supported with security updates:
 
 | Version | Supported          | Notes                                      |
 | ------- | ------------------ | ------------------------------------------ |
-| 0.13.x  | :white_check_mark: | Current supported minor release            |
-| 0.12.x  | :white_check_mark: | Security fixes for previously shipped APIs |
-| < 0.12  | :x:                | No longer supported                        |
+| 0.17.x  | :white_check_mark: | Current supported minor release            |
+| 0.16.x  | :white_check_mark: | Security fixes for previously shipped APIs |
+| < 0.16  | :x:                | No longer supported                        |
 
 ## Security update policy
 
@@ -34,10 +34,10 @@ RouteMQ uses the following safeguards to reduce security and supply-chain risk:
 
 - Static analysis and formatting gates: `ruff`, `ruff format --check`, `mypy`, and Bandit where configured in CI.
 - Dependency scanning: Dependabot and `pip-audit`.
-- Secrets scanning: GitGuardian.
-- Release transparency: CycloneDX SBOM generation for releases.
+- Secrets scanning: use GitHub secret scanning or GitGuardian at the repository or organization level.
+- Release transparency: CycloneDX SBOM generation, Sigstore signing, and GitHub Release asset publishing.
 - Build provenance: SLSA provenance through GitHub artifact attestation workflows.
-- Test quality: CI enforces a coverage floor of at least 95%.
+- Test quality: CI enforces the coverage floor configured in `pyproject.toml`.
 - Repository health monitoring: OpenSSF Scorecard.
 
 Security-sensitive changes should include tests or documented manual verification. Contributors should avoid suppressing type, lint, or security findings unless the reason is narrow and documented in the relevant review.

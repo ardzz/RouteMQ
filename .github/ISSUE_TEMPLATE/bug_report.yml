@@ -1,0 +1,44 @@
+name: Bug report
+description: Report a reproducible RouteMQ bug
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report undisclosed security vulnerabilities here. Use GitHub Security Advisories or the fallback email in SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: RouteMQ version
+      description: Package version or commit SHA.
+      placeholder: "0.17.1"
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "3.12"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Include topic, payload shape, route definition, broker/Redis/MySQL details if relevant, and exact commands.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include logs or traceback with secrets removed.
+    validations:
+      required: true
