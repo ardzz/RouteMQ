@@ -55,6 +55,15 @@ Complete reference for all RouteMQ configuration options.
 | `DB_POOL_USE_LIFO` | false | Use LIFO checkout order instead of FIFO |
 | `DB_POOL_CLASS` | default | Pool implementation: `default` or `null` (`NullPool`) |
 
+### Pool defaults and deferred benchmark matrix
+
+The Sprint 06E defaults are conservative production-safe values: SQLAlchemy's async engine defaults for
+`DB_POOL_SIZE`, `DB_POOL_MAX_OVERFLOW`, and `DB_POOL_TIMEOUT`, plus `DB_POOL_RECYCLE=1800` and
+`DB_POOL_PRE_PING=true` to reduce stale MySQL connection risk. The empirical database queue-driver matrix is
+deferred until the Sprint 06D benchmark harness merges. A follow-up sprint will run that matrix and may confirm
+or revise these defaults. Operators with measured workload knowledge can override every pool value through env
+without changing application code.
+
 ## Redis Configuration
 
 | Variable | Default | Description |
