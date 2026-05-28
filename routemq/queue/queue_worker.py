@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import signal
 import traceback
 from typing import Optional
@@ -10,6 +11,17 @@ from routemq.queue.queue_manager import QueueManager
 from ..observability import lifecycle, reset_context, set_context
 
 logger = logging.getLogger('RouteMQ.QueueWorker')
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    return os.getenv(name, str(default)).lower() in {'1', 'true', 'yes', 'on'}
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, str(default)))
+    except ValueError:
+        return default
 
 
 class QueueWorker:
@@ -47,6 +59,9 @@ class QueueWorker:
         self.sleep = sleep
         self.max_tries = max_tries
         self.timeout = timeout
+        self.retry_backoff_enabled = _env_bool('QUEUE_RETRY_BACKOFF_ENABLED', False)
+        self.retry_backoff_max_delay = _env_float('QUEUE_RETRY_MAX_DELAY', 60.0)
+        self.retry_backoff_jitter = _env_float('QUEUE_RETRY_JITTER', 0.0)
 
         self.should_quit = False
         self.paused = False
@@ -192,7 +207,20 @@ class QueueWorker:
             max_tries = self.max_tries or job.max_tries
             if attempts < max_tries:
                 # Release back to queue for retry
-                delay = job.retry_after
+                retry_delay = getattr(job, 'get_retry_delay', None)
+                if callable(retry_delay):
+                    delay_value = retry_delay(
+                        attempts,
+                        backoff_enabled=self.retry_backoff_enabled,
+                        max_delay=self.retry_backoff_max_delay,
+                        jitter=self.retry_backoff_jitter,
+                    )
+                    if isinstance(delay_value, (int, float)):
+                        delay = int(round(delay_value))
+                    else:
+                        delay = job.retry_after
+                else:
+                    delay = job.retry_after
                 await driver.release(job_id, self.queue_name, delay)
                 lifecycle(
                     'queue.job.retried',

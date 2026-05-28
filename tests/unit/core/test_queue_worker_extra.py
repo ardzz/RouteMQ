@@ -28,6 +28,9 @@ class _DummyJob:
     def serialize(self) -> str:
         return 'serialized-job'
 
+    def get_retry_delay(self, attempts: int, **kwargs: Any) -> float:
+        return self.retry_after
+
 
 class _WorkerSignalGuard(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
@@ -156,6 +159,29 @@ class QueueWorkerProcessJobTests(_WorkerSignalGuard):
             await worker._process_job({'id': 'j1', 'payload': 'p', 'attempts': 1})
 
         worker.driver.release.assert_awaited_once()
+
+    async def test_failure_with_backoff_enabled_uses_job_delay_calculation(self) -> None:
+        worker = self._make_worker(max_tries=3)
+        worker.retry_backoff_enabled = True
+        worker.retry_backoff_max_delay = 99
+        worker.retry_backoff_jitter = 0.5
+        worker.driver = MagicMock()
+        worker.driver.delete = AsyncMock()
+        worker.driver.release = AsyncMock()
+
+        job = _DummyJob(raises=RuntimeError('boom'))
+        job.get_retry_delay = MagicMock(return_value=42)
+        with patch('routemq.queue.queue_worker.Job') as mock_job_cls:
+            mock_job_cls.unserialize.return_value = job
+            await worker._process_job({'id': 'j1', 'payload': 'p', 'attempts': 2})
+
+        job.get_retry_delay.assert_called_once_with(
+            2,
+            backoff_enabled=True,
+            max_delay=99,
+            jitter=0.5,
+        )
+        worker.driver.release.assert_awaited_once_with('j1', 'default', 42)
 
     async def test_failure_with_max_tries_calls_fail_job(self) -> None:
         worker = self._make_worker(max_tries=2)
