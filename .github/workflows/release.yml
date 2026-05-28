@@ -84,12 +84,21 @@ jobs:
           fi
       - name: Push bump branch and tag
         if: steps.bump_detect.outputs.bumped == 'true'
+        env:
+          # Push the tag via the fine-grained PAT so the tag push event triggers
+          # downstream workflows. GitHub deliberately suppresses workflow runs
+          # for events created by GITHUB_TOKEN, which silently disables the
+          # github-release.yml workflow (push on tags v*) — leaving the tag
+          # pushed but no GitHub Release published.
+          # See: https://docs.github.com/en/actions/security-guides/automatic-token-authentication
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           BRANCH="${{ steps.bump_detect.outputs.branch }}"
           VERSION="${{ steps.bump_detect.outputs.version }}"
+          REPO_URL="https://x-access-token:${RELEASE_TOKEN}@github.com/${{ github.repository }}.git"
           git checkout -b "$BRANCH"
           git push origin "$BRANCH"
-          git push origin "refs/tags/${VERSION}"
+          git push "${REPO_URL}" "refs/tags/${VERSION}"
       - name: Open auto-merge PR for bump
         if: steps.bump_detect.outputs.bumped == 'true'
         env:
