@@ -192,6 +192,7 @@ command_line = "run_tests.py"
 branch = true
 omit = [
     "tests/*",
+    "benchmarks/*",
     "*/__init__.py",
     "routemq/cli.py",
     "app/jobs/example_*.py",
