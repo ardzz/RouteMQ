@@ -1,5 +1,7 @@
 .PHONY: help build up down restart logs ps clean dev queue-work bench bench-compare bench-save
 
+BENCH_FLAGS ?= --benchmark-min-rounds=5 --benchmark-max-time=0.01
+
 help: ## Show this help message
 	@echo "RouteMQ Docker Commands"
 	@echo ""
@@ -98,10 +100,10 @@ init: ## Initialize new RouteMQ project
 	uv run routemq --init
 
 bench: ## Run pytest-benchmark suite
-	uv run pytest benchmarks/ --benchmark-only
+	uv run pytest benchmarks/ --benchmark-only $(BENCH_FLAGS)
 
 bench-compare: ## Compare benchmarks against the tracked master baseline
-	uv run pytest benchmarks/ --benchmark-only --benchmark-compare=benchmarks/baselines/master.json --benchmark-compare-fail=mean:20%
+	uv run pytest benchmarks/ --benchmark-only $(BENCH_FLAGS) --benchmark-compare=benchmarks/baselines/master.json --benchmark-compare-fail=mean:20%
 
 bench-save: ## Save a fresh master benchmark baseline
-	uv run pytest benchmarks/ --benchmark-only --benchmark-json=benchmarks/baselines/master.json
+	uv run pytest benchmarks/ --benchmark-only $(BENCH_FLAGS) --benchmark-json=benchmarks/baselines/master.json

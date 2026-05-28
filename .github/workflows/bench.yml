@@ -23,6 +23,7 @@ concurrency:
 
 env:
   BENCH_REGRESSION_THRESHOLD_PCT: 20
+  BENCH_FLAGS: --benchmark-min-rounds=5 --benchmark-max-time=0.01
 
 jobs:
   bench:
@@ -42,11 +43,21 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --dev
       - name: Run benchmarks
-        run: uv run pytest benchmarks/ --benchmark-only --benchmark-json=output.json
-      - name: Compare against master baseline
+        run: uv run pytest benchmarks/ --benchmark-only $BENCH_FLAGS --benchmark-json=output.json
+      - name: Load master baseline
         if: github.event_name == 'pull_request'
         run: |
-          uv run pytest-benchmark compare benchmarks/baselines/master.json output.json --columns=mean
+          if git cat-file -e origin/master:benchmarks/baselines/master.json; then
+            git show origin/master:benchmarks/baselines/master.json > master-baseline.json
+            echo "BENCH_BASELINE_EXISTS=true" >> "$GITHUB_ENV"
+          else
+            echo "No master benchmark baseline exists yet; skipping regression compare."
+            echo "BENCH_BASELINE_EXISTS=false" >> "$GITHUB_ENV"
+          fi
+      - name: Compare against master baseline
+        if: github.event_name == 'pull_request' && env.BENCH_BASELINE_EXISTS == 'true'
+        run: |
+          uv run pytest-benchmark compare master-baseline.json output.json --columns=mean
           uv run python - <<'PY'
           import json
           import os
@@ -54,7 +65,7 @@ jobs:
 
           threshold = float(os.environ.get('BENCH_REGRESSION_THRESHOLD_PCT', '20'))
 
-          with open('benchmarks/baselines/master.json', encoding='utf-8') as fh:
+          with open('master-baseline.json', encoding='utf-8') as fh:
               baseline = json.load(fh)
           with open('output.json', encoding='utf-8') as fh:
               current = json.load(fh)
