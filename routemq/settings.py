@@ -39,6 +39,7 @@ def env_int(env: Mapping[str, str], name: str, default: int, *, fallback_on_inva
     try:
         return int(value)
     except ValueError:
+        # Audit Accept: selected settings intentionally keep legacy fallback behavior.
         if fallback_on_invalid:
             return default
         raise
@@ -52,6 +53,7 @@ def env_float(env: Mapping[str, str], name: str, default: float, *, fallback_on_
     try:
         return float(value)
     except ValueError:
+        # Audit Accept: selected settings intentionally keep legacy fallback behavior.
         if fallback_on_invalid:
             return default
         raise

@@ -85,6 +85,7 @@ class RouterGroup:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        # Audit Accept: route groups do not suppress exceptions; None preserves propagation.
         pass
 
 

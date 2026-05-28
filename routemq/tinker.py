@@ -45,6 +45,7 @@ def _load_rich():
         from rich.traceback import install as _install  # pyright: ignore[reportMissingImports]
         from rich import box as _box  # pyright: ignore[reportMissingImports]
     except ImportError:
+        # Audit Accept: Rich is optional for the REPL.
         _RICH_AVAILABLE = False
         return False
 
@@ -58,6 +59,7 @@ def _load_rich():
     try:
         from rich_pyfiglet import RichFiglet as _RichFiglet  # pyright: ignore[reportMissingImports]
     except ImportError:
+        # Audit Accept: figlet banner is cosmetic; Rich tables still work.
         RichFiglet = None
         _RICH_FIGLET_AVAILABLE = False
     else:
@@ -154,6 +156,7 @@ def _make_repl_helpers(console):
                 try:
                     attrs = vars(first)
                 except TypeError:
+                    # Audit Accept: scalar rows are rendered as a single value column.
                     cols = ['value']
 
                     def get_value(row, col):
@@ -309,6 +312,7 @@ class TinkerEnvironment:
                 else:
                     return loop.run_until_complete(coro)
             except RuntimeError:
+                # Audit Accept: no active REPL loop, so asyncio.run is the safe fallback.
                 return asyncio.run(coro)
 
         self.globals = {
@@ -358,8 +362,10 @@ class TinkerEnvironment:
                                     if not _RICH_AVAILABLE:
                                         print(f'✓ Imported model: {attr_name}')
                         except ImportError as e:
+                            # Audit Accept: optional app model import failures are displayed in the REPL.
                             print(f'⚠ Could not import {module_name}: {e}')
         except Exception as e:
+            # Audit Accept: model discovery is optional convenience for tinker startup.
             print(f'⚠ Error importing models: {e}')
 
     async def setup(self):
@@ -463,8 +469,10 @@ def start_tinker_sync(env_file='.env'):  # pragma: no cover - interactive IPytho
             )
 
         except KeyboardInterrupt:
+            # Audit Accept: interactive Ctrl+C exits cleanly.
             print('\nGoodbye! 👋')
         except Exception as e:
+            # Audit Accept: interactive startup errors are printed with traceback for users.
             print(f'Error starting tinker: {e}')
             import traceback
 
@@ -497,6 +505,7 @@ def start_tinker_sync(env_file='.env'):  # pragma: no cover - interactive IPytho
         thread.join()
 
     except RuntimeError:
+        # Audit Accept: no running event loop, safe to use asyncio.run.
         # No running loop, safe to use asyncio.run
         asyncio.run(_start_tinker())
 
