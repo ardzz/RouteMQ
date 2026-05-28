@@ -1,4 +1,4 @@
-.PHONY: help build up down restart logs ps clean dev queue-work
+.PHONY: help build up down restart logs ps clean dev queue-work bench bench-compare bench-save
 
 help: ## Show this help message
 	@echo "RouteMQ Docker Commands"
@@ -96,3 +96,12 @@ tinker: ## Start interactive REPL
 
 init: ## Initialize new RouteMQ project
 	uv run routemq --init
+
+bench: ## Run pytest-benchmark suite
+	uv run pytest benchmarks/ --benchmark-only
+
+bench-compare: ## Compare benchmarks against the tracked master baseline
+	uv run pytest benchmarks/ --benchmark-only --benchmark-compare=benchmarks/baselines/master.json --benchmark-compare-fail=mean:20%
+
+bench-save: ## Save a fresh master benchmark baseline
+	uv run pytest benchmarks/ --benchmark-only --benchmark-json=benchmarks/baselines/master.json
