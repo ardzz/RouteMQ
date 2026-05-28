@@ -93,11 +93,25 @@ without changing application code.
 | `HEALTH_HTTP_HOST` | 127.0.0.1 | Bind host for the health HTTP endpoint |
 | `HEALTH_HTTP_PORT` | 8080 | Bind port for the health HTTP endpoint |
 
+## Metrics HTTP Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `METRICS_HTTP_ENABLED` | false | Start the optional `/metrics` endpoint. Defaults to off for backwards compatibility. |
+| `METRICS_HTTP_PATH` | /metrics | Path served by the metrics renderer. |
+| `METRICS_HTTP_SEPARATE` | false | When true, start a dedicated HealthServer instance for metrics on `METRICS_HTTP_HOST:METRICS_HTTP_PORT`. |
+| `METRICS_HTTP_HOST` | inherits `HEALTH_HTTP_HOST` (127.0.0.1) | Bind host for the dedicated metrics server. |
+| `METRICS_HTTP_PORT` | inherits `HEALTH_HTTP_PORT` (8080) | Bind port for the dedicated metrics server; invalid values fall back to the inherited default. |
+| `METRICS_NAMESPACE` | routemq | Prefix for built-in metric names. |
+| `METRICS_HISTOGRAM_BUCKETS` | 0.005,0.01,0.025,0.05,0.1,0.25,0.5,1.0,2.5,5.0,10.0 | Comma-separated histogram bucket bounds in seconds. Invalid lists fall back to defaults. |
+| `METRICS_DEFAULT_LABELS` | (empty) | Comma-separated static labels added to every built-in metric, formatted as `key=value,key=value`; invalid pairs are ignored. |
+| `PROMETHEUS_MULTIPROC_DIR` | (unset) | Standard `prometheus_client` multiprocess directory. See the prometheus_client multiprocess documentation; set it to an existing directory to merge metrics from queue/shared-subscription workers. |
+
 ## Parsing Notes
 
 - Boolean values are enabled only by `1`, `true`, `yes`, or `on` (case-insensitive). Other values are treated as `false`.
 - Invalid `MQTT_PORT` values raise a startup error.
-- Invalid retry and health HTTP numeric values fall back to their defaults for compatibility.
+- Invalid retry, health HTTP, and metrics HTTP numeric values fall back to their defaults for compatibility.
 
 ## Timezone Configuration
 
@@ -203,6 +217,17 @@ QUEUE_RETRY_JITTER=0.0
 HEALTH_HTTP_ENABLED=false
 HEALTH_HTTP_HOST=127.0.0.1
 HEALTH_HTTP_PORT=8080
+
+# Metrics HTTP Configuration
+METRICS_HTTP_ENABLED=false
+METRICS_HTTP_PATH=/metrics
+METRICS_HTTP_SEPARATE=false
+METRICS_HTTP_HOST=127.0.0.1
+METRICS_HTTP_PORT=8080
+METRICS_NAMESPACE=routemq
+METRICS_HISTOGRAM_BUCKETS=0.005,0.01,0.025,0.05,0.1,0.25,0.5,1.0,2.5,5.0,10.0
+METRICS_DEFAULT_LABELS=
+# PROMETHEUS_MULTIPROC_DIR=/tmp/routemq-prom
 
 # Timezone Configuration
 TIMEZONE=Asia/Jakarta
