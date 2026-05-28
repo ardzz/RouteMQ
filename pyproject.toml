@@ -170,6 +170,9 @@ indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
 
+[tool.pytest.ini_options]
+python_functions = ["test_*", "bench_*"]
+
 [tool.mypy]
 python_version = "3.12"
 ignore_missing_imports = true
