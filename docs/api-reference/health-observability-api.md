@@ -49,3 +49,17 @@ context = snapshot_context()
 ```
 
 Use these helpers when bridging RouteMQ events into external logging, metrics, or tracing libraries.
+
+## Structured logging helpers
+
+```python
+from routemq.logging_config import RouteMQJsonFormatter, configure_logging, json_logging_enabled
+
+settings = configure_logging()
+is_json = json_logging_enabled()
+formatter = RouteMQJsonFormatter(field_profile="otel")
+```
+
+`configure_logging()` reads the `LOG_*` environment variables documented in
+[Logging Configuration](../configuration/logging.md). JSON logs reserve nullable `trace_id`, `span_id`,
+and `trace_flags` fields for future tracing support while remaining vendor-neutral today.

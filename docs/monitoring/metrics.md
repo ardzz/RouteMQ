@@ -26,6 +26,15 @@ message handling.
 RouteMQ stores correlation IDs and attributes in `contextvars`. Jobs serialize observability metadata
 so worker-side handling can preserve the same correlation context.
 
+The same context is included in JSON logs when `LOG_INCLUDE_CONTEXT=true`, which lets log-only
+deployments correlate MQTT topics, routes, workers, queues, jobs, and future trace/span IDs.
+
+## Lifecycle logs
+
+When `LOG_LIFECYCLE_EVENTS=true`, RouteMQ mirrors known lifecycle events to the `RouteMQ.Lifecycle`
+logger. This gives operators a logs-first view of MQTT message handling, router dispatch, enqueue, and
+job execution without requiring a metrics exporter.
+
 ## Exporters
 
 Prometheus and OpenTelemetry exporters are not bundled. If you need one, register a metric or trace

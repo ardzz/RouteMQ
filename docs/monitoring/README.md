@@ -1,13 +1,14 @@
 # Monitoring and Metrics
 
-Monitor RouteMQ health, readiness, logs, and stdlib observability hooks. RouteMQ currently ships a
-small built-in health server and backend-neutral trace/metric hook seam; it does not bundle a
-mandatory Prometheus or OpenTelemetry exporter.
+Monitor RouteMQ health, readiness, structured logs, and stdlib observability hooks. RouteMQ ships a
+small built-in health server, backend-neutral JSON logs, and hook seams; it does not bundle a
+mandatory Prometheus, OpenTelemetry, or vendor-specific exporter.
 
 ## Topics
 
 - [Health Checks](health-checks.md) - Built-in `/health` and `/ready` endpoints
 - [Metrics Collection](metrics.md) - Observability hook seam and custom metric collection
+- [Logging Configuration](../configuration/logging.md) - JSON/NDJSON logs, field profiles, and lifecycle events
 - [Redis Monitoring](redis-monitoring.md) - Redis operations to monitor when Redis is enabled
 - [MQTT Monitoring](mqtt-monitoring.md) - MQTT connectivity, readiness, and broker signals
 
@@ -51,7 +52,10 @@ redis-cli info stats
 # Monitor MQTT broker
 mosquitto_sub -h localhost -t '$SYS/#' -v
 
-# Check application logs
+# Check stdout logs when running in Docker
+docker compose logs -f app
+
+# Or tail a file when LOG_TO_FILE=true
 tail -f logs/app.log
 ```
 
@@ -62,6 +66,9 @@ Enable debug logging:
 ```env
 LOG_LEVEL=DEBUG
 ```
+
+RouteMQ defaults to `LOG_FORMATTER=json` and `LOG_FIELD_PROFILE=otel`, so debug output remains one
+JSON object per line unless you explicitly set `LOG_FORMATTER=plain`.
 
 This shows detailed information about:
 - Route discovery and loading
