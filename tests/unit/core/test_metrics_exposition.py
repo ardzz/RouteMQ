@@ -4,6 +4,8 @@ from routemq.metrics import MetricsRegistry
 from routemq.metrics.exposition import (
     OPENMETRICS_CONTENT_TYPE,
     PROMETHEUS_CONTENT_TYPE,
+    _format_value,
+    _label_key_to_text,
     negotiate_content_type,
     render,
 )
@@ -80,6 +82,11 @@ class RenderOpenMetricsTests(unittest.TestCase):
         output = render(registry, content_type=OPENMETRICS_CONTENT_TYPE).decode('utf-8')
         self.assertIn('routemq_test_counter_total 2.5\n', output)
 
+    def test_value_formatter_handles_special_values(self) -> None:
+        self.assertEqual(_format_value(float('nan'), is_openmetrics=True), 'NaN')
+        self.assertEqual(_format_value(float('inf'), is_openmetrics=True), '+Inf')
+        self.assertEqual(_format_value(float('-inf'), is_openmetrics=True), '-Inf')
+
 
 class RenderStaticLabelsTests(unittest.TestCase):
     def test_static_labels_are_merged_into_every_sample(self) -> None:
@@ -99,6 +106,11 @@ class RenderStaticLabelsTests(unittest.TestCase):
     def test_unsupported_content_type_rejects(self) -> None:
         with self.assertRaises(ValueError):
             render(MetricsRegistry(), content_type='application/json')
+
+    def test_label_key_to_text_formats_internal_label_key(self) -> None:
+        text = _label_key_to_text((('route', 'devices/{id}/status'),))
+
+        self.assertEqual(text, 'route="devices/{id}/status"')
 
 
 if __name__ == '__main__':
