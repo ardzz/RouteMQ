@@ -1,3 +1,9 @@
+## v0.19.1 (2026-05-28)
+
+### Fix
+
+- **release**: push bump tag with RELEASE_TOKEN so GitHub Release fires (#63)
+
 ## v0.19.0 (2026-05-28)
 
 ### Feat
