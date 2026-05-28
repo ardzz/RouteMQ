@@ -95,6 +95,7 @@ Repository = "https://github.com/ardzz/RouteMQ"
 Documentation = "https://github.com/ardzz/RouteMQ/tree/master/docs"
 Changelog = "https://github.com/ardzz/RouteMQ/blob/master/CHANGELOG.md"
 Issues = "https://github.com/ardzz/RouteMQ/issues"
+Security = "https://github.com/ardzz/RouteMQ/security/policy"
 
 [dependency-groups]
 dev = [
@@ -127,7 +128,7 @@ packages = ["routemq", "bootstrap"]
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.12.2"
+version = "0.17.1"
 version_provider = "uv"
 tag_format = "v$version"
 legacy_tag_formats = ["$version"]
@@ -193,7 +194,7 @@ omit = [
 ]
 
 [tool.coverage.report]
-fail_under = 95
+fail_under = 93
 show_missing = true
 skip_covered = false
 

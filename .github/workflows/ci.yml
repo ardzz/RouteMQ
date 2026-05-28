@@ -9,6 +9,8 @@ on:
     branches:
       - master
       - develop
+  schedule:
+    - cron: '0 2 * * 1'
 
 permissions:
   contents: read
@@ -130,7 +132,7 @@ jobs:
         run: uv run coverage run run_tests.py
 
       - name: Coverage report
-        run: uv run coverage report -m --fail-under=55
+        run: uv run coverage report -m
 
   build:
     name: build

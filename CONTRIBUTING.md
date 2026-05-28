@@ -36,7 +36,7 @@ Use [GitHub Issues](https://github.com/ardzz/RouteMQ/issues) for feature request
    ```bash
    uv run python run_tests.py
    uv run ruff check . && uv run ruff format --check .
-   uv run mypy core app bootstrap tests/unit
+   uv run mypy routemq app bootstrap tests/unit
    ```
 6. Open a pull request with a clear description, link related issues, wait for CI, and respond to review threads.
 
@@ -44,14 +44,14 @@ Use [GitHub Issues](https://github.com/ardzz/RouteMQ/issues) for feature request
 
 - All new features must include tests.
 - Bug fixes should include regression tests that fail without the fix when practical.
-- CI enforces a coverage floor of 95%.
+- CI enforces the coverage floor configured in `pyproject.toml`.
 - If a regression test is not applicable because the project has no matching historical report or the behavior is documentation-only, state that in the PR description.
 
 ## Coding standards
 
 - RouteMQ targets Python 3.12+.
 - Type hints are encouraged for new and changed code.
-- Follow existing framework patterns documented in [AGENTS.md](./AGENTS.md) and nested AGENTS.md files.
+- Follow existing framework patterns in the codebase and public documentation.
 - Controller handlers should be `@staticmethod async` methods.
 - Middleware and jobs should avoid blocking the event loop; use async APIs or `asyncio.to_thread` for blocking work.
 - Do not introduce side effects at module-import time in `app/routers/*.py`.
