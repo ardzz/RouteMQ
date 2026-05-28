@@ -1,3 +1,9 @@
+## v0.17.0 (2026-05-28)
+
+### Feat
+
+- complete Sprint 06 reliability foundation (#54)
+
 ## v0.16.0 (2026-05-27)
 
 ### Feat
