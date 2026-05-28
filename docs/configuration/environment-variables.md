@@ -109,6 +109,7 @@ For a complete list of supported timezones, see the [IANA Time Zone Database](ht
 | `LOG_TO_CONSOLE` | true | Enable console logging |
 | `LOG_STREAM` | stdout | Console stream: `stdout` or `stderr` |
 | `LOG_INCLUDE_CONTEXT` | true | Include RouteMQ observability context in JSON logs |
+| `ENABLE_TRACING` | true | Enable RouteMQ tracing spans (`mqtt.receive`, `router.dispatch`, `queue.enqueue`, etc.). Disable with `false`/`0`/`no`/`off` to make `start_span()` a no-op. |
 | `LOG_LIFECYCLE_EVENTS` | true | Mirror known MQTT/router/queue lifecycle events to logs |
 | `LOG_LIFECYCLE_LEVEL` | INFO | Log level for mirrored lifecycle events |
 | `LOG_TO_FILE` | false | Enable optional file logging |
@@ -183,6 +184,7 @@ LOG_LEVEL=INFO
 LOG_TO_CONSOLE=true
 LOG_STREAM=stdout
 LOG_INCLUDE_CONTEXT=true
+ENABLE_TRACING=true
 LOG_LIFECYCLE_EVENTS=true
 LOG_LIFECYCLE_LEVEL=INFO
 LOG_TO_FILE=false
