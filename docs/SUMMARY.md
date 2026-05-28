@@ -90,3 +90,8 @@
   * [ADR-0002: Queue Driver Registry — Built-ins + Entry Points](adr/0002-queue-driver-registry.md)
   * [ADR-0003: Docker-backed Integration Tests — Explicit Gate + Clean Skips](adr/0003-docker-backed-integration-tests.md)
   * [ADR-0004: Centralized Runtime Settings — Typed Loaders, Lazy Reads](adr/0004-centralized-runtime-settings.md)
+  * [ADR-0005: Observability Stack — Logs, Traces, and Vendor-Neutral Metrics](adr/0005-observability-stack.md)
+  * [ADR-0006: Database Pool Tuning Knobs](adr/0006-pool-tuning-knobs.md)
+  * [ADR-0007: Benchmark Harness and Regression Gate](adr/0007-benchmark-harness.md)
+  * [ADR-0008: Fail-Fast Logging Audit Policy](adr/0008-fail-fast-logging-audit.md)
+  * [ADR-0009: Supply-Chain Provenance and Release Transparency](adr/0009-supply-chain-and-provenance.md)
