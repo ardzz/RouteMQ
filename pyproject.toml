@@ -38,7 +38,7 @@ classifiers = [
 
 dependencies = [
     "python-dotenv>=1.0.0",
-    "paho-mqtt>=1.6.1",
+    "paho-mqtt>=2.0.0",
     "SQLAlchemy>=2.0.23",
     "aiomysql>=0.2.0",
     "IPython>=8.20.0",
@@ -66,7 +66,7 @@ dev = [
     "pre-commit>=4.0.0",
     "build>=1.2.0",
     "cyclonedx-bom>=5.2.0",
-    "testcontainers>=4.0.0",
+    "testcontainers[redis,mysql,mqtt]>=4.14.2,<5",
     "questionary>=2.0.0",
     "rich>=14.0.0",
     "rich-pyfiglet>=1.0.0",
@@ -82,6 +82,12 @@ all = [
 
 [project.scripts]
 routemq = "routemq.cli:main"
+
+[project.entry-points."routemq.queue_drivers"]
+redis = "routemq.queue.redis_queue:RedisQueue"
+database = "routemq.queue.database_queue:DatabaseQueue"
+
+[project.entry-points."routemq.middleware"]
 
 [project.urls]
 Homepage = "https://github.com/ardzz/RouteMQ"
@@ -103,7 +109,7 @@ dev = [
     "pre-commit>=4.0.0",
     "build>=1.2.0",
     "cyclonedx-bom>=5.2.0",
-    "testcontainers>=4.0.0",
+    "testcontainers[redis,mysql,mqtt]>=4.14.2,<5",
     "questionary>=2.0.0",
     "rich>=14.0.0",
     "rich-pyfiglet>=1.0.0",
