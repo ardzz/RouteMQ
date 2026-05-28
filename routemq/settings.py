@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 
 _TRUE_VALUES = {'1', 'true', 'yes', 'on'}
+_DATABASE_POOL_CLASSES = {'default', 'null'}
 
 
 def _environment(env: Mapping[str, str] | None) -> Mapping[str, str]:
@@ -102,10 +103,30 @@ class HealthHttpSettings:
 
 
 @dataclass(frozen=True, slots=True)
+class DatabasePoolSettings:
+    pool_size: int = 5
+    max_overflow: int = 10
+    pool_timeout: int = 30
+    pool_recycle: int = 1800
+    pool_pre_ping: bool = True
+    pool_use_lifo: bool = False
+    pool_class: str = 'default'
+
+
+@dataclass(frozen=True, slots=True)
 class QueueRetrySettings:
     backoff_enabled: bool = False
     max_delay: float = 60.0
     jitter: float = 0.0
+
+
+def _parse_int_env(env: Mapping[str, str], name: str, default: int, *, fallback_on_invalid: bool = True) -> int:
+    value = env_int(env, name, default, fallback_on_invalid=fallback_on_invalid)
+    return default if value < 0 else value
+
+
+def _parse_bool_env(env: Mapping[str, str], name: str, default: bool) -> bool:
+    return env_bool(env, name, default)
 
 
 def load_mqtt_settings(env: Mapping[str, str] | None = None) -> MqttSettings:
@@ -144,6 +165,24 @@ def load_health_http_settings(env: Mapping[str, str] | None = None) -> HealthHtt
         enabled=env_bool(values, 'HEALTH_HTTP_ENABLED', False),
         host=env_str(values, 'HEALTH_HTTP_HOST', '127.0.0.1'),
         port=env_int(values, 'HEALTH_HTTP_PORT', 8080, fallback_on_invalid=True),
+    )
+
+
+def load_database_pool_settings(env: Mapping[str, str] | None = None) -> DatabasePoolSettings:
+    """Load SQLAlchemy database pool settings from an environment mapping."""
+    values = _environment(env)
+    pool_class = env_str(values, 'DB_POOL_CLASS', 'default').lower()
+    if pool_class not in _DATABASE_POOL_CLASSES:
+        pool_class = 'default'
+
+    return DatabasePoolSettings(
+        pool_size=_parse_int_env(values, 'DB_POOL_SIZE', 5),
+        max_overflow=_parse_int_env(values, 'DB_POOL_MAX_OVERFLOW', 10),
+        pool_timeout=_parse_int_env(values, 'DB_POOL_TIMEOUT', 30),
+        pool_recycle=_parse_int_env(values, 'DB_POOL_RECYCLE', 1800),
+        pool_pre_ping=_parse_bool_env(values, 'DB_POOL_PRE_PING', True),
+        pool_use_lifo=_parse_bool_env(values, 'DB_POOL_USE_LIFO', False),
+        pool_class=pool_class,
     )
 
 

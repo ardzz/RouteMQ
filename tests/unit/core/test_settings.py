@@ -1,7 +1,12 @@
 import unittest
 from unittest.mock import patch
 
-from routemq.settings import load_health_http_settings, load_mqtt_settings, load_queue_retry_settings
+from routemq.settings import (
+    load_database_pool_settings,
+    load_health_http_settings,
+    load_mqtt_settings,
+    load_queue_retry_settings,
+)
 
 
 class MqttSettingsTests(unittest.TestCase):
@@ -92,6 +97,60 @@ class HealthHttpSettingsTests(unittest.TestCase):
 
         self.assertTrue(settings.enabled)
         self.assertEqual(settings.port, 8080)
+
+
+class DatabasePoolSettingsTests(unittest.TestCase):
+    def test_load_database_pool_settings_defaults(self) -> None:
+        settings = load_database_pool_settings({})
+
+        self.assertEqual(settings.pool_size, 5)
+        self.assertEqual(settings.max_overflow, 10)
+        self.assertEqual(settings.pool_timeout, 30)
+        self.assertEqual(settings.pool_recycle, 1800)
+        self.assertTrue(settings.pool_pre_ping)
+        self.assertFalse(settings.pool_use_lifo)
+        self.assertEqual(settings.pool_class, 'default')
+
+    def test_load_database_pool_settings_parses_values(self) -> None:
+        settings = load_database_pool_settings(
+            {
+                'DB_POOL_SIZE': '8',
+                'DB_POOL_MAX_OVERFLOW': '16',
+                'DB_POOL_TIMEOUT': '45',
+                'DB_POOL_RECYCLE': '900',
+                'DB_POOL_PRE_PING': 'false',
+                'DB_POOL_USE_LIFO': 'yes',
+                'DB_POOL_CLASS': 'null',
+            }
+        )
+
+        self.assertEqual(settings.pool_size, 8)
+        self.assertEqual(settings.max_overflow, 16)
+        self.assertEqual(settings.pool_timeout, 45)
+        self.assertEqual(settings.pool_recycle, 900)
+        self.assertFalse(settings.pool_pre_ping)
+        self.assertTrue(settings.pool_use_lifo)
+        self.assertEqual(settings.pool_class, 'null')
+
+    def test_load_database_pool_settings_falls_back_for_invalid_numbers(self) -> None:
+        settings = load_database_pool_settings(
+            {
+                'DB_POOL_SIZE': 'invalid',
+                'DB_POOL_MAX_OVERFLOW': 'invalid',
+                'DB_POOL_TIMEOUT': 'invalid',
+                'DB_POOL_RECYCLE': 'invalid',
+            }
+        )
+
+        self.assertEqual(settings.pool_size, 5)
+        self.assertEqual(settings.max_overflow, 10)
+        self.assertEqual(settings.pool_timeout, 30)
+        self.assertEqual(settings.pool_recycle, 1800)
+
+    def test_load_database_pool_settings_falls_back_for_invalid_pool_class(self) -> None:
+        settings = load_database_pool_settings({'DB_POOL_CLASS': 'garbage'})
+
+        self.assertEqual(settings.pool_class, 'default')
 
 
 class QueueRetrySettingsTests(unittest.TestCase):
