@@ -10,7 +10,8 @@ from unittest.mock import MagicMock, patch
 
 from bootstrap.app import Application
 from routemq.health import HealthStatus
-from routemq.settings import DatabasePoolSettings
+from routemq.metrics import MetricsRegistry
+from routemq.settings import DatabasePoolSettings, MetricsHttpSettings, load_metrics_http_settings
 
 
 class TestApplicationInitialization(unittest.TestCase):
@@ -239,6 +240,127 @@ class TestApplicationLogging(unittest.TestCase):
         self.assertEqual(logging.getLogger('RouteMQ.Application').name, app.logger.name)
         for handler in basic_config.call_args.kwargs['handlers']:
             handler.close()
+
+
+class TestApplicationMetrics(unittest.TestCase):
+    def test_constructor_installs_metrics_registry_and_default_hooks(self) -> None:
+        router = MagicMock(name='router')
+        registry = MagicMock(name='metrics_registry')
+        hook_handle = MagicMock(name='metrics_hooks_handle')
+
+        with (
+            patch.object(Application, 'print_banner'),
+            patch.object(Application, '_setup_logging', lambda app, **_: setattr(app, 'logger', MagicMock())),
+            patch.object(Application, '_setup_database'),
+            patch.object(Application, '_setup_metrics'),
+            patch('bootstrap.app.MetricsRegistry', return_value=registry) as registry_cls,
+            patch('bootstrap.app.install_default_hooks', return_value=hook_handle) as install_hooks,
+            patch('bootstrap.app.asyncio.new_event_loop', return_value=MagicMock()),
+            patch('bootstrap.app.asyncio.set_event_loop'),
+            patch('bootstrap.app.WorkerManager'),
+            patch.dict(
+                os.environ,
+                {
+                    'ENABLE_MYSQL': 'false',
+                    'ENABLE_REDIS': 'false',
+                    'METRICS_NAMESPACE': 'custom',
+                    'METRICS_HISTOGRAM_BUCKETS': '0.25,1.0',
+                },
+                clear=True,
+            ),
+        ):
+            app = Application(router=router, show_banner=False)
+
+        registry_cls.assert_called_once_with()
+        install_hooks.assert_called_once_with(registry, namespace='custom', histogram_buckets=(0.25, 1.0))
+        self.assertIs(app.metrics_registry, registry)
+        self.assertIs(app.metrics_hooks_handle, hook_handle)
+
+    def test_setup_metrics_does_not_build_renderer_when_disabled(self) -> None:
+        app = object.__new__(Application)
+        app.health_status = HealthStatus()
+        app.metrics_settings = load_metrics_http_settings({})
+        health_server = MagicMock(name='health_server')
+
+        with (
+            patch.object(Application, '_build_metrics_renderer') as build_renderer,
+            patch('bootstrap.app.health_server_from_env', return_value=health_server) as from_env,
+        ):
+            app._setup_metrics()
+
+        build_renderer.assert_not_called()
+        from_env.assert_called_once_with(app.health_status, metrics_renderer=None, metrics_path='/metrics')
+        self.assertIs(app.health_server, health_server)
+        self.assertIsNone(app.metrics_health_server)
+
+    def test_build_metrics_renderer_closes_over_registry_and_default_labels(self) -> None:
+        app = object.__new__(Application)
+        app.metrics_registry = MetricsRegistry()
+        app.metrics_registry.counter('routemq_test_counter', help='h').inc()
+        settings = MetricsHttpSettings(enabled=True, default_labels={'env': 'test'})
+
+        with patch('bootstrap.app.find_spec', return_value=None):
+            renderer = app._build_metrics_renderer(settings)
+
+        content_type, body = renderer(None)
+
+        self.assertEqual(content_type, 'text/plain; version=0.0.4; charset=utf-8')
+        self.assertIn(b'routemq_test_counter_total{env="test"} 1', body)
+
+    def test_setup_metrics_configures_separate_metrics_server(self) -> None:
+        app = object.__new__(Application)
+        app.health_status = HealthStatus()
+        app.metrics_settings = MetricsHttpSettings(
+            enabled=True,
+            separate=True,
+            host='127.0.0.2',
+            port=9090,
+            path='/internal/metrics',
+        )
+        renderer = MagicMock(name='renderer')
+        health_server = MagicMock(name='health_server')
+        metrics_server = MagicMock(name='metrics_server')
+
+        with (
+            patch.object(Application, '_build_metrics_renderer', return_value=renderer),
+            patch('bootstrap.app.health_server_from_env', return_value=health_server),
+            patch('bootstrap.app.HealthServer', return_value=metrics_server) as health_server_cls,
+        ):
+            app._setup_metrics()
+
+        self.assertIs(app.health_server, health_server)
+        self.assertIs(app.metrics_health_server, metrics_server)
+        health_server_cls.assert_called_once_with(
+            app.health_status,
+            host='127.0.0.2',
+            port=9090,
+            metrics_renderer=renderer,
+            metrics_path='/internal/metrics',
+        )
+
+    def test_run_starts_and_stops_separate_metrics_server(self) -> None:
+        app = object.__new__(Application)
+        app.client = None
+        app.logger = MagicMock()
+        app.worker_manager = MagicMock()
+        app.worker_manager.get_worker_count.return_value = 0
+        app.loop = MagicMock(name='loop')
+        app.loop.run_forever.side_effect = KeyboardInterrupt
+        app.mysql_enabled = False
+        app.redis_enabled = False
+        app.start_workers = MagicMock()
+        app.initialize_database = MagicMock(return_value=None)
+        app.initialize_redis = MagicMock(return_value=None)
+        app.health_status = HealthStatus()
+        app.health_server = MagicMock(name='health_server')
+        app.metrics_health_server = MagicMock(name='metrics_health_server')
+
+        app.run()
+
+        app.health_server.start.assert_called_once_with()
+        app.metrics_health_server.start.assert_called_once_with()
+        app.health_server.stop.assert_called_once_with()
+        app.metrics_health_server.stop.assert_called_once_with()
 
 
 class TestApplicationConnections(unittest.IsolatedAsyncioTestCase):

@@ -4,17 +4,28 @@ import os
 import platform
 import psutil
 import signal
+from collections.abc import Callable
 from importlib import import_module
+from importlib.util import find_spec
 from typing import Any
 
 from dotenv import load_dotenv
 
-from routemq.health import HealthStatus, health_server_from_env
+from routemq.health import HealthServer, HealthStatus, health_server_from_env
 from routemq.logging_config import configure_logging, json_logging_enabled
+from routemq.metrics.exposition import negotiate_content_type, render as render_stdlib_metrics
+from routemq.metrics.hooks import DefaultHooksHandle, install_default_hooks
+from routemq.metrics.prometheus import PrometheusAdapter
+from routemq.metrics.registry import MetricsRegistry
 from routemq.model import Model
 from routemq.router import Router
 from routemq.router_registry import RouterRegistry
-from routemq.settings import load_database_pool_settings
+from routemq.settings import (
+    MetricsHttpSettings,
+    load_database_pool_settings,
+    load_health_http_settings,
+    load_metrics_http_settings,
+)
 from routemq.mqtt_utils import (
     connect_mqtt_client_with_retries,
     create_mqtt_client,
@@ -85,6 +96,14 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
 
         self._setup_logging(log_to_console=log_to_console)
 
+        self.metrics_settings = load_metrics_http_settings()
+        self.metrics_registry = MetricsRegistry()
+        self.metrics_hooks_handle = install_default_hooks(
+            self.metrics_registry,
+            namespace=self.metrics_settings.namespace,
+            histogram_buckets=self.metrics_settings.histogram_buckets,
+        )
+
         if show_banner and not json_logging_enabled():
             self.print_banner()
 
@@ -120,7 +139,9 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
 
         self.worker_manager = WorkerManager(self.router, self.group_name, self.router_directory)
         self.health_status = HealthStatus()
-        self.health_server = health_server_from_env(self.health_status)
+        self.health_server: HealthServer | None = None
+        self.metrics_health_server: HealthServer | None = None
+        self._setup_metrics()
         self._shutdown_requested = False
 
     def _setup_logging(self, log_to_console: bool = True):
@@ -156,6 +177,59 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
             pool_use_lifo=pool_settings.pool_use_lifo,
             pool_class=pool_settings.pool_class,
         )
+
+    def _setup_metrics(self) -> None:
+        """Configure HealthServer instances that can expose RouteMQ metrics."""
+
+        self.metrics_health_server = None
+        renderer = self._build_metrics_renderer(self.metrics_settings) if self.metrics_settings.enabled else None
+        if self.metrics_settings.enabled and self.metrics_settings.separate:
+            self.health_server = health_server_from_env(self.health_status)
+            self.metrics_health_server = HealthServer(
+                self.health_status,
+                host=self.metrics_settings.host,
+                port=self.metrics_settings.port,
+                metrics_renderer=renderer,
+                metrics_path=self.metrics_settings.path,
+            )
+            return
+
+        self.health_server = health_server_from_env(
+            self.health_status,
+            metrics_renderer=renderer,
+            metrics_path=self.metrics_settings.path,
+        )
+        if self.health_server is None and renderer is not None:
+            health_settings = load_health_http_settings()
+            self.health_server = HealthServer(
+                self.health_status,
+                host=health_settings.host,
+                port=health_settings.port,
+                metrics_renderer=renderer,
+                metrics_path=self.metrics_settings.path,
+            )
+
+    def _build_metrics_renderer(self, settings: MetricsHttpSettings) -> Callable[[str | None], tuple[str, bytes]]:
+        default_labels = dict(settings.default_labels)
+        prometheus_adapter = PrometheusAdapter(namespace=settings.namespace) if find_spec('prometheus_client') else None
+
+        def render(accept: str | None) -> tuple[str, bytes]:
+            content_type = negotiate_content_type(accept)
+            stdlib_body = render_stdlib_metrics(
+                self.metrics_registry,
+                content_type=content_type,
+                static_labels=default_labels,
+            )
+            if prometheus_adapter is None:
+                return content_type, stdlib_body
+            prometheus_content_type, prometheus_body = prometheus_adapter.render(accept)
+            return prometheus_content_type, _combine_metrics_payloads(
+                prometheus_body,
+                stdlib_body,
+                openmetrics=prometheus_content_type.startswith('application/openmetrics-text'),
+            )
+
+        return render
 
     async def initialize_database(self):
         """Create database tables."""
@@ -311,12 +385,16 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
             self.health_status = HealthStatus()
         if not hasattr(self, 'health_server'):
             self.health_server = None
+        if not hasattr(self, 'metrics_health_server'):
+            self.metrics_health_server = None
         if not hasattr(self, '_shutdown_requested'):
             self._shutdown_requested = False
         previous_handlers = self._install_signal_handlers()
         self.start_workers()
         if self.health_server is not None:
             self.health_server.start()
+        if self.metrics_health_server is not None:
+            self.metrics_health_server.start()
         if self.client is not None:
             self.client.loop_start()
 
@@ -343,6 +421,8 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
                 self.loop.run_until_complete(Model.cleanup())
             if self.health_server is not None:
                 self.health_server.stop()
+            if self.metrics_health_server is not None:
+                self.metrics_health_server.stop()
             if self.client is not None:
                 self.client.loop_stop()
                 self.client.disconnect()
@@ -350,3 +430,22 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
             self._restore_signal_handlers(previous_handlers)
             self.loop.close()
             self.logger.info('Application cleanup completed')
+
+
+def _combine_metrics_payloads(prometheus_body: bytes, stdlib_body: bytes, *, openmetrics: bool) -> bytes:
+    if not openmetrics:
+        separator = b'' if prometheus_body.endswith(b'\n') else b'\n'
+        return prometheus_body + separator + stdlib_body
+    parts = [_without_openmetrics_eof(prometheus_body), _without_openmetrics_eof(stdlib_body)]
+    combined = b''
+    for part in parts:
+        stripped = part.strip()
+        if not stripped:
+            continue
+        combined += part if part.endswith(b'\n') else part + b'\n'
+    return combined + b'# EOF\n'
+
+
+def _without_openmetrics_eof(body: bytes) -> bytes:
+    marker = b'# EOF\n'
+    return body[: -len(marker)] if body.endswith(marker) else body
