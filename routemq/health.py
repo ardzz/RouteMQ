@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -39,13 +40,23 @@ class HealthStatus:
         return (200 if ready else 503), payload
 
 
+MetricsRenderer = Callable[[str | None], tuple[str, bytes]]
+
+
 class HealthServer:
     """Small threaded HTTP server exposing /health and /ready."""
 
-    def __init__(self, status: HealthStatus, host: str = '127.0.0.1', port: int = 8080):
+    def __init__(
+        self,
+        status: HealthStatus,
+        host: str = '127.0.0.1',
+        port: int = 8080,
+        metrics_renderer: MetricsRenderer | None = None,
+    ):
         self.status = status
         self.host = host
         self.port = port
+        self.metrics_renderer = metrics_renderer
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -54,6 +65,7 @@ class HealthServer:
             return
 
         status = self.status
+        metrics_renderer = self.metrics_renderer
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self) -> None:
@@ -61,6 +73,14 @@ class HealthServer:
                     code, payload = status.health_payload()
                 elif self.path == '/ready':
                     code, payload = status.readiness_payload()
+                elif self.path == '/metrics' and metrics_renderer is not None:
+                    content_type, body = metrics_renderer(self.headers.get('Accept'))
+                    self.send_response(200)
+                    self.send_header('Content-Type', content_type)
+                    self.send_header('Content-Length', str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
                 else:
                     code, payload = 404, {'status': 'not_found'}
                 body = json.dumps(payload, sort_keys=True).encode('utf-8')
@@ -69,6 +89,16 @@ class HealthServer:
                 self.send_header('Content-Length', str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
+
+            def do_POST(self) -> None:
+                if self.path == '/metrics' and metrics_renderer is not None:
+                    body = b''
+                    self.send_response(405)
+                    self.send_header('Content-Length', str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                self.send_error(501)
 
             def log_message(self, format: str, *args: Any) -> None:
                 return
@@ -88,8 +118,10 @@ class HealthServer:
         self._thread = None
 
 
-def health_server_from_env(status: HealthStatus) -> HealthServer | None:
+def health_server_from_env(
+    status: HealthStatus, metrics_renderer: MetricsRenderer | None = None
+) -> HealthServer | None:
     settings = load_health_http_settings()
     if not settings.enabled:
         return None
-    return HealthServer(status, host=settings.host, port=settings.port)
+    return HealthServer(status, host=settings.host, port=settings.port, metrics_renderer=metrics_renderer)
