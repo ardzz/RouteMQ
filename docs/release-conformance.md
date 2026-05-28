@@ -1,36 +1,17 @@
 # Release Conformance
 
-RouteMQ uses tracked repository evidence for release conformance and separates file-verifiable state
-from hosted GitHub or external service checks.
+RouteMQ tracks release-conformance evidence in the repository and links to live hosted checks where the
+result depends on GitHub or an external service.
 
-## File-verifiable controls
+## Evidence matrix
 
-| Control | Evidence |
-|---|---|
-| SemVer tagging | `pyproject.toml` uses Commitizen with `tag_format = "v$version"`; `github-release.yml` validates `vMAJOR.MINOR.PATCH` tags. |
-| Build provenance | CI uses GitHub Artifact Attestations for built distributions; the release workflow also invokes the SLSA generic generator. |
-| SBOM | Release workflows generate a CycloneDX `sbom.json`. |
-| SBOM signing | Release workflows sign `sbom.json` with Sigstore. |
-| Release assets | GitHub Releases attach built distributions, `sbom.json`, and `sbom.json.sigstore.json`. |
-| Scorecard workflow | `.github/workflows/scorecard.yml` runs OpenSSF Scorecard. |
+| Pillar | Status | Evidence | Last verified |
+|---|---|---|---|
+| SLSA Build L3 | Achieved | [`release.yml`](../.github/workflows/release.yml) provenance job calling `slsa-framework/slsa-github-generator` | [Latest GitHub Release](https://github.com/ardzz/RouteMQ/releases/latest) |
+| OpenSSF Scorecard | Live scorecard | [`scorecard.yml`](../.github/workflows/scorecard.yml) and [README badge](https://api.scorecard.dev/projects/github.com/ardzz/RouteMQ/badge) | [Scorecard viewer](https://scorecard.dev/viewer/?uri=github.com/ardzz/RouteMQ) |
+| CycloneDX SBOM | Generated + signed | [`release.yml`](../.github/workflows/release.yml) and [`github-release.yml`](../.github/workflows/github-release.yml) Sigstore signing steps | [Latest GitHub Release](https://github.com/ardzz/RouteMQ/releases/latest) |
+| OpenSSF Best Practices | Sprint 15 in-progress | [README placeholder](../README.md#project-health) and local Sprint 15 plan | n/a |
+| SemVer | Pre-1.0 contract | [`pyproject.toml`](../pyproject.toml) version metadata and this document's Versioning section | continuously |
 
-## External checks
-
-These checks require hosted results and cannot be proven from repository files alone:
-
-- successful SLSA provenance or GitHub Artifact Attestation verification for a specific release artifact;
-- current OpenSSF Scorecard score and justified exceptions;
-- GitHub branch protection/rulesets;
-- OpenSSF Best Practices BadgeApp project status;
-- secret scanning or GitGuardian repository setting state.
-
-## Release verification checklist
-
-After publishing a release, verify:
-
-1. GitHub Release exists for the tag.
-2. Wheel and source distribution are attached.
-3. `sbom.json` and `sbom.json.sigstore.json` are attached.
-4. Artifact attestation verification succeeds for built distributions.
-5. Scorecard run for the release commit is visible and reviewed.
-6. `CHANGELOG.md` contains release notes for the tag.
+The underlying architecture and release decisions are recorded in ADR-0001 through ADR-0009, including
+distribution, logging, observability, pooling, benchmarking, error handling, and supply-chain provenance.
