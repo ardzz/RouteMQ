@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import multiprocessing
+import threading
 import time
 from typing import List, Dict, Any
 
@@ -10,6 +11,7 @@ from .observability import lifecycle, reset_context, set_context
 from .mqtt_utils import (
     build_worker_broker_config,
     build_worker_client_id,
+    connect_mqtt_client_with_retries,
     create_mqtt_client,
     get_mqtt_group_name,
     is_network_startup_error,
@@ -35,6 +37,8 @@ class WorkerProcess:
         self.broker_config = broker_config
         self.group_name = group_name
         self.client: Any = None
+        self.loop: asyncio.AbstractEventLoop | None = None
+        self._loop_thread: threading.Thread | None = None
         self.logger = logging.getLogger(f'RouteMQ.Worker-{self.worker_id}')
 
     def setup_router(self):
@@ -99,15 +103,29 @@ class WorkerProcess:
                 'group_name': self.group_name,
             }
 
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                loop.run_until_complete(self._dispatch_mqtt_message(actual_topic, payload, client, context))
-            finally:
-                loop.close()
+            self._schedule_dispatch(actual_topic, payload, client, context)
 
         except Exception as e:
             self.logger.error(f'Worker {self.worker_id} error processing message: {str(e)}')
+
+    def _schedule_dispatch(self, topic: str, payload: Any, client: Any, context: Dict[str, Any]) -> None:
+        """Schedule MQTT dispatch on the worker's persistent loop."""
+        if self.loop is None:
+            self.loop = asyncio.new_event_loop()
+
+        coro = self._dispatch_mqtt_message(topic, payload, client, context)
+        if self.loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(coro, self.loop)
+
+            def log_failure(done_future: Any) -> None:
+                try:
+                    done_future.result()
+                except Exception as exc:
+                    self.logger.error(f'Worker {self.worker_id} error processing message: {str(exc)}')
+
+            future.add_done_callback(log_failure)
+        else:
+            self.loop.run_until_complete(coro)
 
     async def _dispatch_mqtt_message(self, topic: str, payload: Any, client: Any, context: Dict[str, Any]) -> None:
         """Restore per-message observability context inside the worker loop."""
@@ -125,13 +143,21 @@ class WorkerProcess:
     def run(self):
         """Run this worker process."""
         self.setup_router()
+        self._start_dispatch_loop()
         self.setup_client()
 
         broker = self.broker_config['broker']
         port = int(self.broker_config['port'])
+        retry_config = self.broker_config.get('retry_config')
 
         try:
-            self.client.connect(broker, port)
+            connect_mqtt_client_with_retries(
+                self.client,
+                broker,
+                port,
+                retry_config=retry_config,
+                process='worker',
+            )
         except OSError as exc:
             if not is_network_startup_error(exc):
                 raise
@@ -139,6 +165,7 @@ class WorkerProcess:
                 f'Worker {self.worker_id} could not connect to MQTT broker at {broker}:{port} ({exc}). '
                 'Please verify the broker is running and the address/port are correct.'
             )
+            self._stop_dispatch_loop()
             return
 
         self.client.loop_start()
@@ -152,6 +179,34 @@ class WorkerProcess:
         finally:
             self.client.loop_stop()
             self.client.disconnect()
+            self._stop_dispatch_loop()
+
+    def _start_dispatch_loop(self) -> None:
+        """Start the worker's persistent asyncio loop in a thread."""
+        if self.loop is None:
+            self.loop = asyncio.new_event_loop()
+        loop = self.loop
+        if loop.is_running():
+            return
+
+        def run_loop() -> None:
+            asyncio.set_event_loop(loop)
+            loop.run_forever()
+
+        self._loop_thread = threading.Thread(target=run_loop, name=f'RouteMQWorkerLoop-{self.worker_id}', daemon=True)
+        self._loop_thread.start()
+
+    def _stop_dispatch_loop(self) -> None:
+        """Stop and close the worker's persistent asyncio loop."""
+        if self.loop is None:
+            return
+        if self.loop.is_running():
+            self.loop.call_soon_threadsafe(self.loop.stop)
+        if self._loop_thread is not None:
+            self._loop_thread.join(timeout=5)
+        self.loop.close()
+        self.loop = None
+        self._loop_thread = None
 
 
 def worker_process_main(

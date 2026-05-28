@@ -129,6 +129,7 @@ class WorkerProcessOnMessageTests(unittest.TestCase):
         msg.payload = b'{"state": "ok"}'
 
         worker._on_message(MagicMock(), None, msg)
+        self.addCleanup(worker._stop_dispatch_loop)
 
         self.assertEqual(captured['topic'], 'devices/abc/status')
         self.assertEqual(captured['payload'], {'state': 'ok'})
@@ -149,6 +150,7 @@ class WorkerProcessOnMessageTests(unittest.TestCase):
         msg.payload = b'\xff\xfe binary'
 
         worker._on_message(MagicMock(), None, msg)
+        self.addCleanup(worker._stop_dispatch_loop)
         self.assertEqual(captured['payload'], b'\xff\xfe binary')
 
     def test_on_message_swallows_dispatch_exceptions(self) -> None:
@@ -166,6 +168,29 @@ class WorkerProcessOnMessageTests(unittest.TestCase):
         msg.payload = b'{}'
 
         worker._on_message(MagicMock(), None, msg)
+        self.addCleanup(worker._stop_dispatch_loop)
+
+    def test_on_message_reuses_persistent_loop_for_multiple_messages(self) -> None:
+        worker = _make_worker(group_name='workers')
+        captured: list[str] = []
+
+        async def fake_dispatch(topic: str, payload: Any, client: Any) -> None:
+            captured.append(topic)
+
+        router_mock = MagicMock()
+        router_mock.dispatch = fake_dispatch
+        worker.router = router_mock
+
+        first = MagicMock(topic='plain/one', payload=b'{}')
+        second = MagicMock(topic='plain/two', payload=b'{}')
+
+        worker._on_message(MagicMock(), None, first)
+        first_loop = worker.loop
+        worker._on_message(MagicMock(), None, second)
+        self.addCleanup(worker._stop_dispatch_loop)
+
+        self.assertIs(worker.loop, first_loop)
+        self.assertEqual(captured, ['plain/one', 'plain/two'])
 
 
 class WorkerProcessRunTests(unittest.TestCase):
