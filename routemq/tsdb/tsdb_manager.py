@@ -142,7 +142,10 @@ class TSDBManager:
     def get_client(self) -> Any:
         if self._driver is None:
             return None
-        return self._driver.client
+        try:
+            return self._driver.client
+        except RuntimeError:
+            return None
 
     def is_enabled(self) -> bool:
         return self.enabled and self._driver is not None
