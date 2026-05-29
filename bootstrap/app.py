@@ -18,6 +18,7 @@ from routemq.metrics.hooks import DefaultHooksHandle, install_default_hooks
 from routemq.metrics.prometheus import PrometheusAdapter
 from routemq.metrics.registry import MetricsRegistry
 from routemq.model import Model
+from routemq.job_registry import JobRegistry
 from routemq.router import Router
 from routemq.router_registry import RouterRegistry
 from routemq.settings import (
@@ -109,6 +110,8 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
             self.print_banner()
 
         self.router_directory = router_directory
+        self.job_directory = os.getenv('ROUTEMQ_JOB_DIRECTORY', 'app.jobs')
+        JobRegistry(self.job_directory).discover_and_register_jobs()
         self.router: Any = router
         if self.router is None:
             try:
