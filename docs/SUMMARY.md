@@ -50,6 +50,7 @@
   * [Rate Limiting Strategies](rate-limiting/strategies.md)
   * [Topic-Specific Rate Limits](rate-limiting/topic-specific.md)
 * [Monitoring and Metrics](monitoring/README.md)
+  * [Benchmark Harness](monitoring/benchmarks.md)
   * [Health Checks](monitoring/health-checks.md)
   * [Metrics Collection](monitoring/metrics.md)
   * [MQTT Monitoring](monitoring/mqtt-monitoring.md)

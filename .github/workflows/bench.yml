@@ -1,0 +1,108 @@
+name: Benchmarks
+
+on:
+  pull_request:
+    branches:
+      - master
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.github/release-drafter.yml'
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.github/release-drafter.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BENCH_REGRESSION_THRESHOLD_PCT: 20
+  BENCH_FLAGS: --benchmark-min-rounds=5 --benchmark-max-time=0.01
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+      - name: Run benchmarks
+        run: uv run pytest benchmarks/ --benchmark-only $BENCH_FLAGS --benchmark-json=output.json
+      - name: Load master baseline
+        if: github.event_name == 'pull_request'
+        run: |
+          if git cat-file -e origin/master:benchmarks/baselines/master.json; then
+            git show origin/master:benchmarks/baselines/master.json > master-baseline.json
+            echo "BENCH_BASELINE_EXISTS=true" >> "$GITHUB_ENV"
+          else
+            echo "No master benchmark baseline exists yet; skipping regression compare."
+            echo "BENCH_BASELINE_EXISTS=false" >> "$GITHUB_ENV"
+          fi
+      - name: Compare against master baseline
+        if: github.event_name == 'pull_request' && env.BENCH_BASELINE_EXISTS == 'true'
+        run: |
+          uv run pytest-benchmark compare master-baseline.json output.json --columns=mean
+          uv run python - <<'PY'
+          import json
+          import os
+          import sys
+
+          threshold = float(os.environ.get('BENCH_REGRESSION_THRESHOLD_PCT', '20'))
+
+          with open('master-baseline.json', encoding='utf-8') as fh:
+              baseline = json.load(fh)
+          with open('output.json', encoding='utf-8') as fh:
+              current = json.load(fh)
+
+          baseline_by_name = {item['fullname']: item['stats']['mean'] for item in baseline.get('benchmarks', [])}
+          failures = []
+          for item in current.get('benchmarks', []):
+              name = item['fullname']
+              old_mean = baseline_by_name.get(name)
+              new_mean = item['stats']['mean']
+              if old_mean is None or old_mean <= 0:
+                  continue
+              change = ((new_mean - old_mean) / old_mean) * 100
+              if change > threshold:
+                  failures.append(f'{name}: mean regressed {change:.2f}% ({old_mean:.9f}s -> {new_mean:.9f}s)')
+
+          if failures:
+              print('Benchmark regressions exceeded threshold:')
+              for failure in failures:
+                  print(f'- {failure}')
+              sys.exit(1)
+          print(f'Benchmark mean regressions are within {threshold:.1f}% gate.')
+          PY
+      - name: Update master baseline
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          mkdir -p benchmarks/baselines
+          cp output.json benchmarks/baselines/master.json
+          if git diff --quiet benchmarks/baselines/master.json; then
+            echo "Benchmark baseline is unchanged."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add benchmarks/baselines/master.json
+          git commit -m "chore(benchmarks): update master baseline [skip ci]"
+          REPO_URL="https://x-access-token:${RELEASE_TOKEN}@github.com/${{ github.repository }}.git"
+          git push "${REPO_URL}" HEAD:master
