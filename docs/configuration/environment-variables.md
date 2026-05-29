@@ -103,6 +103,15 @@ Optional time-series persistence; requires the `routemq[clickhouse]` extra. See
 | `QUEUE_RETRY_MAX_DELAY` | 60.0 | Maximum queue retry delay in seconds when backoff is enabled |
 | `QUEUE_RETRY_JITTER` | 0.0 | Random jitter factor added to queue retry delays |
 
+## Queue Reliability Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `QUEUE_VISIBILITY_TIMEOUT` | 300 | Seconds a reserved job may go without heartbeat before the reaper treats it as abandoned |
+| `QUEUE_REAPER_INTERVAL` | 30 | Seconds between worker stale-reservation reaper passes; set `0` to disable reaping |
+| `QUEUE_SHUTDOWN_GRACE` | 300 | Seconds a worker waits for the active job to finish after SIGTERM/SIGINT before releasing it |
+| `QUEUE_HEARTBEAT_INTERVAL` | 10 | Seconds between active-job and worker heartbeat refreshes |
+
 ## Health HTTP Configuration
 
 | Variable | Default | Description |
@@ -230,6 +239,12 @@ REDIS_SOCKET_TIMEOUT=5.0
 QUEUE_RETRY_BACKOFF_ENABLED=false
 QUEUE_RETRY_MAX_DELAY=60.0
 QUEUE_RETRY_JITTER=0.0
+
+# Queue Reliability Configuration
+QUEUE_VISIBILITY_TIMEOUT=300
+QUEUE_REAPER_INTERVAL=30
+QUEUE_SHUTDOWN_GRACE=300
+QUEUE_HEARTBEAT_INTERVAL=10
 
 # Health HTTP Configuration
 HEALTH_HTTP_ENABLED=false

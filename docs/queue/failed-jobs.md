@@ -38,6 +38,23 @@ routemq:queue:failed:{queue_name}
 
 ## Viewing Failed Jobs
 
+### Using RouteMQ CLI
+
+Use the queue admin commands for both Redis and database queue connections:
+
+```bash
+# List failed jobs for one queue
+routemq queue-failed --queue default --connection redis
+
+# Show one failed job by id
+routemq queue-failed-show failed:default:1770000000000000 --connection redis
+
+# Database failed-job ids are numeric
+routemq queue-failed-show 123 --connection database
+```
+
+The commands print JSON so they can be piped to `jq` or copied into an incident report.
+
 ### Using MySQL
 
 ```sql
@@ -252,6 +269,26 @@ GROUP BY queue;
 ```
 
 ## Retrying Failed Jobs
+
+### Using RouteMQ CLI
+
+```bash
+# Retry one failed job
+routemq queue-retry failed:default:1770000000000000 --connection redis
+routemq queue-retry 123 --connection database
+
+# Retry every failed job in a queue
+routemq queue-retry --all --queue default --connection redis
+
+# Forget one failed job without retrying it
+routemq queue-forget failed:default:1770000000000000 --connection redis
+
+# Flush all failed jobs for a queue
+routemq queue-flush --queue default --connection redis
+```
+
+`queue-retry` re-pushes the original payload to the job's queue and removes the failed record after a
+successful requeue. Use `queue-forget` only when the payload is invalid or no longer needed.
 
 ### Manual Retry
 
