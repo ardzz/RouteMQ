@@ -184,6 +184,39 @@ class TestJobSerialization(unittest.TestCase):
             (data['max_tries'], data['timeout'], data['retry_after'], data['queue']), (3, 60, 0, 'serialization')
         )
 
+    def test_get_retry_delay_uses_fixed_delay_without_backoff(self) -> None:
+        job = SerializableJob()
+        job.retry_after = 7
+
+        self.assertEqual(job.get_retry_delay(3, backoff_enabled=False), 7)
+
+    def test_get_retry_delay_uses_worker_backoff_defaults(self) -> None:
+        job = SerializableJob()
+        job.retry_after = 2
+
+        self.assertEqual(
+            job.get_retry_delay(3, backoff_enabled=True, max_delay=10, jitter=0),
+            8,
+        )
+
+    def test_get_retry_delay_uses_job_backoff_overrides_and_rng(self) -> None:
+        job = SerializableJob()
+        job.retry_after = 4
+        job.retry_backoff_enabled = True
+        job.retry_backoff_max_delay = 6
+        job.retry_backoff_jitter = 1
+
+        self.assertEqual(
+            job.get_retry_delay(2, backoff_enabled=False, max_delay=100, jitter=0, rng=lambda: 0.5),
+            3,
+        )
+
+    def test_get_retry_delay_treats_attempt_zero_as_first_attempt(self) -> None:
+        job = SerializableJob()
+        job.retry_after = 5
+
+        self.assertEqual(job.get_retry_delay(0, backoff_enabled=True, max_delay=None, jitter=0), 5)
+
 
 class TestJobInstanceState(unittest.TestCase):
     def test_mutable_instance_state_is_not_shared(self) -> None:

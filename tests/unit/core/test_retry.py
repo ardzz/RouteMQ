@@ -5,6 +5,18 @@ from routemq.retry import BackoffConfig, RetryConfig, bounded_exponential_backof
 
 
 class RetryBackoffTests(unittest.TestCase):
+    def test_backoff_config_rejects_invalid_values(self) -> None:
+        with self.assertRaisesRegex(ValueError, 'min_delay'):
+            BackoffConfig(min_delay=-1)
+        with self.assertRaisesRegex(ValueError, 'max_delay'):
+            BackoffConfig(min_delay=2, max_delay=1)
+        with self.assertRaisesRegex(ValueError, 'jitter'):
+            BackoffConfig(jitter=-0.1)
+
+    def test_retry_config_rejects_invalid_max_attempts(self) -> None:
+        with self.assertRaisesRegex(ValueError, 'max_attempts'):
+            RetryConfig(max_attempts=0)
+
     def test_bounded_exponential_backoff_clamps_to_max_delay(self) -> None:
         config = BackoffConfig(min_delay=2, max_delay=10, jitter=0)
 
@@ -36,6 +48,13 @@ class RetryBackoffTests(unittest.TestCase):
     def test_invalid_attempt_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             bounded_exponential_backoff(0, BackoffConfig())
+
+    def test_invalid_rng_value_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, 'rng'):
+            bounded_exponential_backoff(1, BackoffConfig(jitter=1), rng=lambda: 2)
+
+    def test_zero_delay_bypasses_rng(self) -> None:
+        self.assertEqual(bounded_exponential_backoff(1, BackoffConfig(min_delay=0, max_delay=0, jitter=1)), 0)
 
 
 class RetrySyncTests(unittest.TestCase):
@@ -72,6 +91,28 @@ class RetrySyncTests(unittest.TestCase):
             )
 
         self.assertEqual(sleeps, [])
+
+    def test_retry_sync_calls_on_retry_and_stops_at_max_attempts(self) -> None:
+        attempts = 0
+        retries: list[tuple[int, str, float]] = []
+        sleeps: list[float] = []
+
+        def operation() -> str:
+            nonlocal attempts
+            attempts += 1
+            raise TimeoutError(f'timeout-{attempts}')
+
+        with self.assertRaisesRegex(TimeoutError, 'timeout-2'):
+            retry_sync(
+                operation,
+                config=RetryConfig(max_attempts=2, min_delay=4, max_delay=4, jitter=0),
+                retryable=lambda exc: isinstance(exc, TimeoutError),
+                sleep=sleeps.append,
+                on_retry=lambda attempt, exc, delay: retries.append((attempt, str(exc), delay)),
+            )
+
+        self.assertEqual(sleeps, [4])
+        self.assertEqual(retries, [(1, 'timeout-1', 4)])
 
 
 if __name__ == '__main__':
