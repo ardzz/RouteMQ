@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from routemq.metrics.registry import (
     Counter,
+    Gauge,
     Histogram,
     HistogramObservation,
     LabelKey,
@@ -18,6 +19,7 @@ from routemq.metrics.registry import (
 
 __all__ = [
     'Counter',
+    'Gauge',
     'Histogram',
     'HistogramObservation',
     'LabelKey',
