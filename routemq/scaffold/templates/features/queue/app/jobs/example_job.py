@@ -1,6 +1,7 @@
 from routemq.job import Job
 
 
+@Job.register
 class ExampleJob(Job):
     """Example background job."""
 

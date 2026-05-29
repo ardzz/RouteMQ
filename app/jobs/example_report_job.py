@@ -6,6 +6,7 @@ from routemq.job import Job
 logger = logging.getLogger('RouteMQ.Jobs.GenerateReportJob')
 
 
+@Job.register
 class GenerateReportJob(Job):
     """
     Example job for generating reports in the background.

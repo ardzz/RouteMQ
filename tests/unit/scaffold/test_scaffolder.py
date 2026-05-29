@@ -76,7 +76,11 @@ class TestScaffolder(unittest.TestCase):
         self._run(with_queue=True, with_redis=True)
 
         self.assertTrue((self.target / 'app/jobs/__init__.py').exists())
-        self.assertTrue((self.target / 'app/jobs/example_job.py').exists())
+        job_template = self.target / 'app/jobs/example_job.py'
+        self.assertTrue(job_template.exists())
+        job_source = job_template.read_text(encoding='utf-8')
+        self.assertIn('@Job.register', job_source)
+        self.assertIn('class ExampleJob(Job):', job_source)
         env = (self.target / '.env').read_text(encoding='utf-8')
         self.assertIn('QUEUE_CONNECTION=redis', env)
 
