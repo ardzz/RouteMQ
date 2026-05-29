@@ -77,6 +77,24 @@ without changing application code.
 | `REDIS_MAX_CONNECTIONS` | 10 | Redis connection pool size |
 | `REDIS_SOCKET_TIMEOUT` | 5.0 | Redis socket timeout |
 
+## TSDB (ClickHouse) Configuration
+
+Optional time-series persistence; requires the `routemq[clickhouse]` extra. See
+[TSDB Integration](../tsdb/README.md).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_TSDB` | false | Enable/disable ClickHouse time-series integration |
+| `TSDB_HOST` | localhost | ClickHouse hostname |
+| `TSDB_PORT` | 8123 | ClickHouse HTTP port |
+| `TSDB_DATABASE` | default | Target database |
+| `TSDB_USER` | default | ClickHouse username |
+| `TSDB_PASSWORD` | (empty) | ClickHouse password |
+| `TSDB_BATCH_SIZE` | 10000 | Rows that trigger a flush by size |
+| `TSDB_FLUSH_INTERVAL` | 1.0 | Seconds that trigger a flush by time |
+| `TSDB_BUFFER_MAXSIZE` | 50000 | Bounded buffer capacity (backpressure) |
+| `TSDB_ASYNC_INSERT` | true | Enable ClickHouse server-side async_insert |
+
 ## Queue Retry Configuration
 
 | Variable | Default | Description |
