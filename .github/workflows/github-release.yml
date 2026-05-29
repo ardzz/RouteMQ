@@ -6,6 +6,13 @@ on:
       tag:
         description: Git tag to publish as a GitHub Release, e.g. v0.17.0
         required: true
+        type: string
+  workflow_call:
+    inputs:
+      tag:
+        description: Git tag to publish as a GitHub Release, e.g. v0.17.0
+        required: true
+        type: string
   push:
     tags:
       - 'v*'
@@ -15,14 +22,18 @@ permissions:
   id-token: write
 
 jobs:
-  github-release:
-    name: Publish GitHub Release
+  resolve:
+    name: Resolve release tag
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+      skip: ${{ steps.exists.outputs.skip }}
     steps:
       - name: Resolve tag
         id: release
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ -n "${{ inputs.tag }}" ]; then
             TAG="${{ inputs.tag }}"
           else
             TAG="${GITHUB_REF_NAME}"
@@ -36,10 +47,29 @@ jobs:
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
+      - name: Skip if release already exists
+        id: exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.release.outputs.tag }}"
+          if gh release view "$TAG" -R "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists; skipping publish."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  github-release:
+    name: Publish GitHub Release
+    needs: resolve
+    if: needs.resolve.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
-          ref: ${{ steps.release.outputs.tag }}
+          ref: ${{ needs.resolve.outputs.tag }}
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -65,7 +95,7 @@ jobs:
 
       - name: Build release notes from CHANGELOG.md
         run: |
-          VERSION="${{ steps.release.outputs.version }}"
+          VERSION="${{ needs.resolve.outputs.version }}"
           NOTES_FILE="release-notes.md"
 
           awk -v version="$VERSION" '
@@ -83,7 +113,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${{ steps.release.outputs.tag }}"
+          TAG="${{ needs.resolve.outputs.tag }}"
           gh release create "$TAG" \
             dist/* \
             sbom.json \
