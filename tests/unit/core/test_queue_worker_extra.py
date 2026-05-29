@@ -299,6 +299,27 @@ class QueueWorkerReaperTests(_WorkerSignalGuard):
 
         worker.driver.reap_expired.assert_not_awaited()
 
+    async def test_call_driver_optional_returns_none_without_driver_or_method(self) -> None:
+        worker = self._make_worker()
+
+        self.assertIsNone(await worker._call_driver_optional('stats', 'default'))
+
+        worker.driver = cast(Any, object())
+        self.assertIsNone(await worker._call_driver_optional('missing_method'))
+
+    async def test_interruptible_sleep_returns_after_timeout(self) -> None:
+        worker = self._make_worker()
+
+        await worker._interruptible_sleep(0.001)
+
+        self.assertFalse(worker._shutdown_event.is_set())
+
+    async def test_process_job_requires_initialized_driver(self) -> None:
+        worker = self._make_worker()
+
+        with self.assertRaisesRegex(RuntimeError, 'driver is not initialized'):
+            await worker._process_job({'id': 'j1', 'payload': 'p', 'attempts': 1})
+
     async def test_handle_timeout_marks_as_failure_and_retries(self) -> None:
         worker = self._make_worker(max_tries=3)
         worker.driver = MagicMock()

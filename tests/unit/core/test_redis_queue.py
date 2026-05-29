@@ -5,7 +5,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from routemq.queue.redis_queue import RedisQueue
+from routemq.queue.redis_queue import (
+    RedisQueue,
+    _created_at_from_redis_job_id,
+    _failed_job_queue_from_id,
+    _reserved_job_expired,
+)
 
 
 class _RedisQueueBase(unittest.IsolatedAsyncioTestCase):
@@ -229,7 +234,9 @@ class RedisQueueFailedTests(_RedisQueueBase):
         client.rpush.assert_awaited_once()
 
     async def test_list_get_retry_forget_and_flush_failed_jobs_in_redis(self) -> None:
-        failed = json.dumps({'id': 'failed:q:1', 'connection': 'redis', 'queue': 'q', 'payload': 'p', 'exception': 'boom'})
+        failed = json.dumps(
+            {'id': 'failed:q:1', 'connection': 'redis', 'queue': 'q', 'payload': 'p', 'exception': 'boom'}
+        )
         client = MagicMock()
         client.lrange = AsyncMock(return_value=[failed])
         client.lrem = AsyncMock(return_value=1)
@@ -255,6 +262,35 @@ class RedisQueueFailedTests(_RedisQueueBase):
         with patch('routemq.queue.redis_queue.Model') as mock_model:
             mock_model._is_enabled = False
             await driver.failed('redis', 'q', 'p', 'exc')
+
+    async def test_failed_swallows_database_storage_errors(self) -> None:
+        session = MagicMock()
+        session.add = MagicMock()
+        session.commit = AsyncMock(side_effect=RuntimeError('db down'))
+        session.close = AsyncMock()
+        driver = self._make_driver()
+
+        with (
+            patch('routemq.queue.redis_queue.Model') as mock_model,
+            patch('routemq.queue.redis_queue.QueueFailedJob'),
+        ):
+            mock_model._is_enabled = True
+            mock_model.get_session = AsyncMock(return_value=session)
+            await driver.failed('redis', 'q', 'p', 'exc')
+
+        session.close.assert_awaited_once()
+
+    async def test_failed_job_admin_rejects_missing_queue_or_disabled_redis(self) -> None:
+        enabled_driver = self._make_driver(enabled=True)
+        disabled_driver = self._make_driver(enabled=False)
+
+        self.assertEqual(await enabled_driver.list_failed_jobs(None), [])
+        self.assertIsNone(await enabled_driver.get_failed_job('invalid'))
+        self.assertFalse(await enabled_driver.retry_failed_job('invalid'))
+        self.assertFalse(await enabled_driver.forget_failed_job('invalid'))
+        self.assertFalse(await disabled_driver.forget_failed_job('failed:q:1'))
+        self.assertEqual(await enabled_driver.flush_failed_jobs(None), 0)
+        self.assertEqual(await disabled_driver.flush_failed_jobs('q'), 0)
 
 
 class RedisQueueVisibilityReaperTests(_RedisQueueBase):
@@ -365,6 +401,13 @@ class RedisQueueHeartbeatTests(_RedisQueueBase):
 
         client.hset.assert_awaited_once_with('routemq:queue:workers:worker-1', mapping={'state': 'dead'})
 
+    async def test_heartbeat_and_worker_updates_are_noops_when_disabled(self) -> None:
+        driver = self._make_driver(enabled=False)
+
+        self.assertFalse(await driver.heartbeat('job-1', 'q'))
+        self.assertIsNone(await driver.write_worker_heartbeat({'worker_id': 'worker-1'}, ttl=30))
+        self.assertIsNone(await driver.mark_worker_dead('worker-1'))
+
 
 class RedisQueueSizeTests(_RedisQueueBase):
     async def test_size_returns_zero_when_disabled(self) -> None:
@@ -424,6 +467,59 @@ class RedisQueueStatsTests(_RedisQueueBase):
                 'oldest_ready_age_seconds': 0.0,
             },
         )
+
+    async def test_stats_returns_empty_values_on_client_error(self) -> None:
+        client = MagicMock()
+        client.llen = AsyncMock(side_effect=RuntimeError('redis down'))
+        driver = self._make_driver(client=client)
+
+        stats = await driver.stats('q')
+
+        self.assertEqual(stats['ready'], 0)
+        self.assertEqual(stats['reserved'], 0)
+
+    async def test_oldest_ready_age_handles_missing_and_invalid_payloads(self) -> None:
+        driver = self._make_driver()
+        client = MagicMock()
+
+        client.lindex = AsyncMock(return_value=None)
+        self.assertEqual(await driver._oldest_ready_age_seconds(client, 'q'), 0.0)
+
+        client.lindex = AsyncMock(return_value='not-json')
+        self.assertEqual(await driver._oldest_ready_age_seconds(client, 'q'), 0.0)
+
+        client.lindex = AsyncMock(return_value=json.dumps({'id': 'q:not-number'}))
+        self.assertEqual(await driver._oldest_ready_age_seconds(client, 'q'), 0.0)
+
+        client.lindex = AsyncMock(return_value=json.dumps({'created_at': 'not-a-date'}))
+        self.assertEqual(await driver._oldest_ready_age_seconds(client, 'q'), 0.0)
+
+        created_at = (datetime.now(UTC) - timedelta(seconds=3)).replace(tzinfo=None).isoformat()
+        client.lindex = AsyncMock(return_value=json.dumps({'created_at': created_at}))
+        self.assertGreaterEqual(await driver._oldest_ready_age_seconds(client, 'q'), 0.0)
+
+
+class RedisQueueHelperTests(unittest.TestCase):
+    def test_reserved_job_expired_handles_missing_and_invalid_timestamps(self) -> None:
+        now = datetime.now(UTC)
+
+        self.assertTrue(_reserved_job_expired({}, now, 300))
+        self.assertTrue(_reserved_job_expired({'reserved_at': 'not-a-date'}, now, 300))
+        self.assertTrue(
+            _reserved_job_expired(
+                {'reserved_at': (now - timedelta(seconds=301)).replace(tzinfo=None).isoformat()},
+                now,
+                300,
+            )
+        )
+
+    def test_failed_job_id_parser_rejects_invalid_ids(self) -> None:
+        self.assertIsNone(_failed_job_queue_from_id('invalid'))
+        self.assertIsNone(_failed_job_queue_from_id('failed::1'))
+
+    def test_created_at_parser_handles_invalid_ids(self) -> None:
+        self.assertIsNone(_created_at_from_redis_job_id('invalid'))
+        self.assertIsNone(_created_at_from_redis_job_id('queue:not-number'))
 
 
 if __name__ == '__main__':
