@@ -1,0 +1,181 @@
+{
+  "workload": {
+    "measure_ops": 200,
+    "warmup_ops": 20,
+    "concurrency": 20,
+    "operation": "database_queue.push"
+  },
+  "cells": [
+    {
+      "pool_size": 5,
+      "max_overflow": 0,
+      "pre_ping": true,
+      "throughput_ops_per_s": 627.93,
+      "mean_latency_ms": 18.7019,
+      "p95_latency_ms": 26.9752,
+      "max_latency_ms": 30.6361
+    },
+    {
+      "pool_size": 5,
+      "max_overflow": 0,
+      "pre_ping": false,
+      "throughput_ops_per_s": 646.33,
+      "mean_latency_ms": 16.44,
+      "p95_latency_ms": 23.377,
+      "max_latency_ms": 32.3179
+    },
+    {
+      "pool_size": 5,
+      "max_overflow": 10,
+      "pre_ping": true,
+      "throughput_ops_per_s": 503.13,
+      "mean_latency_ms": 26.4242,
+      "p95_latency_ms": 33.2882,
+      "max_latency_ms": 78.2519
+    },
+    {
+      "pool_size": 5,
+      "max_overflow": 10,
+      "pre_ping": false,
+      "throughput_ops_per_s": 556.98,
+      "mean_latency_ms": 24.0034,
+      "p95_latency_ms": 32.3153,
+      "max_latency_ms": 34.5972
+    },
+    {
+      "pool_size": 5,
+      "max_overflow": 20,
+      "pre_ping": true,
+      "throughput_ops_per_s": 508.58,
+      "mean_latency_ms": 29.5961,
+      "p95_latency_ms": 38.2935,
+      "max_latency_ms": 42.49
+    },
+    {
+      "pool_size": 5,
+      "max_overflow": 20,
+      "pre_ping": false,
+      "throughput_ops_per_s": 475.18,
+      "mean_latency_ms": 29.3168,
+      "p95_latency_ms": 50.6187,
+      "max_latency_ms": 61.9574
+    },
+    {
+      "pool_size": 10,
+      "max_overflow": 0,
+      "pre_ping": true,
+      "throughput_ops_per_s": 698.94,
+      "mean_latency_ms": 17.9371,
+      "p95_latency_ms": 24.3095,
+      "max_latency_ms": 25.9814
+    },
+    {
+      "pool_size": 10,
+      "max_overflow": 0,
+      "pre_ping": false,
+      "throughput_ops_per_s": 744.57,
+      "mean_latency_ms": 15.8974,
+      "p95_latency_ms": 24.1247,
+      "max_latency_ms": 25.4839
+    },
+    {
+      "pool_size": 10,
+      "max_overflow": 10,
+      "pre_ping": true,
+      "throughput_ops_per_s": 565.12,
+      "mean_latency_ms": 25.2651,
+      "p95_latency_ms": 32.798,
+      "max_latency_ms": 35.3391
+    },
+    {
+      "pool_size": 10,
+      "max_overflow": 10,
+      "pre_ping": false,
+      "throughput_ops_per_s": 589.57,
+      "mean_latency_ms": 20.8457,
+      "p95_latency_ms": 28.3453,
+      "max_latency_ms": 30.6347
+    },
+    {
+      "pool_size": 10,
+      "max_overflow": 20,
+      "pre_ping": true,
+      "throughput_ops_per_s": 511.84,
+      "mean_latency_ms": 26.9968,
+      "p95_latency_ms": 35.6943,
+      "max_latency_ms": 38.8094
+    },
+    {
+      "pool_size": 10,
+      "max_overflow": 20,
+      "pre_ping": false,
+      "throughput_ops_per_s": 579.18,
+      "mean_latency_ms": 21.464,
+      "p95_latency_ms": 33.1315,
+      "max_latency_ms": 36.7465
+    },
+    {
+      "pool_size": 20,
+      "max_overflow": 0,
+      "pre_ping": true,
+      "throughput_ops_per_s": 806.81,
+      "mean_latency_ms": 18.9547,
+      "p95_latency_ms": 30.2469,
+      "max_latency_ms": 34.1699
+    },
+    {
+      "pool_size": 20,
+      "max_overflow": 0,
+      "pre_ping": false,
+      "throughput_ops_per_s": 773.37,
+      "mean_latency_ms": 17.4547,
+      "p95_latency_ms": 39.185,
+      "max_latency_ms": 42.0296
+    },
+    {
+      "pool_size": 20,
+      "max_overflow": 10,
+      "pre_ping": true,
+      "throughput_ops_per_s": 789.26,
+      "mean_latency_ms": 19.8558,
+      "p95_latency_ms": 40.0355,
+      "max_latency_ms": 42.8352
+    },
+    {
+      "pool_size": 20,
+      "max_overflow": 10,
+      "pre_ping": false,
+      "throughput_ops_per_s": 805.18,
+      "mean_latency_ms": 16.9848,
+      "p95_latency_ms": 35.0769,
+      "max_latency_ms": 38.5405
+    },
+    {
+      "pool_size": 20,
+      "max_overflow": 20,
+      "pre_ping": true,
+      "throughput_ops_per_s": 853.38,
+      "mean_latency_ms": 18.1582,
+      "p95_latency_ms": 34.5808,
+      "max_latency_ms": 41.0344
+    },
+    {
+      "pool_size": 20,
+      "max_overflow": 20,
+      "pre_ping": false,
+      "throughput_ops_per_s": 864.89,
+      "mean_latency_ms": 15.564,
+      "p95_latency_ms": 30.2794,
+      "max_latency_ms": 33.1202
+    }
+  ],
+  "recommended_default": {
+    "rule": "smallest pool_size within 5% of max throughput; tie-break lower max_overflow then pre_ping=true",
+    "max_throughput_ops_per_s": 864.89,
+    "threshold_ops_per_s": 821.65,
+    "pool_size": 20,
+    "max_overflow": 20,
+    "pre_ping": true,
+    "throughput_ops_per_s": 853.38
+  }
+}

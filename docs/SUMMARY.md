@@ -55,6 +55,7 @@
   * [Health Checks](monitoring/health-checks.md)
   * [Metrics Collection](monitoring/metrics.md)
   * [MQTT Monitoring](monitoring/mqtt-monitoring.md)
+  * [SQLAlchemy Pool Tuning (measured)](monitoring/pool-tuning.md)
   * [Redis Monitoring](monitoring/redis-monitoring.md)
 * [Testing](testing/README.md)
   * [Test Coverage](testing/coverage.md)
