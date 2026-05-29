@@ -1,4 +1,5 @@
 import logging
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any, Optional, Union, cast
 from sqlalchemy import select, update, delete
@@ -167,6 +168,28 @@ class DatabaseQueue(QueueDriver):
         finally:
             await session.close()
 
+    async def heartbeat(self, job_id: Union[int, str], queue: str) -> bool:
+        """Refresh the reserved_at timestamp for an active database job."""
+        if not Model._is_enabled:
+            return False
+
+        session = cast(AsyncSession, await Model.get_session())
+        try:
+            stmt = (
+                update(QueueJob)
+                .where(QueueJob.id == job_id, QueueJob.queue == queue, QueueJob.reserved_at.is_not(None))
+                .values(reserved_at=datetime.now(UTC))
+            )
+            result = await session.execute(stmt)
+            await session.commit()
+            return bool(getattr(result, 'rowcount', 0))
+        except Exception as e:
+            await session.rollback()
+            logger.error(f'Failed to refresh job heartbeat: {str(e)}')
+            raise
+        finally:
+            await session.close()
+
     async def failed(
         self,
         connection: str,
@@ -200,6 +223,126 @@ class DatabaseQueue(QueueDriver):
         finally:
             await session.close()
 
+    async def list_failed_jobs(self, queue: str | None = None) -> list[dict[str, Any]]:
+        if not Model._is_enabled:
+            return []
+        session = cast(AsyncSession, await Model.get_session())
+        try:
+            stmt = select(QueueFailedJob).order_by(QueueFailedJob.id)
+            if queue is not None:
+                stmt = stmt.where(QueueFailedJob.queue == queue)
+            result = await session.execute(stmt)
+            return [_failed_job_to_dict(job) for job in result.scalars().all()]
+        finally:
+            await session.close()
+
+    async def get_failed_job(self, job_id: Union[int, str]) -> dict[str, Any] | None:
+        job = await self._get_failed_job_model(job_id)
+        return _failed_job_to_dict(job) if job is not None else None
+
+    async def retry_failed_job(self, job_id: Union[int, str]) -> bool:
+        job = await self._get_failed_job_model(job_id)
+        if job is None:
+            return False
+        failed_job = cast(Any, job)
+        await self.push(str(failed_job.payload), str(failed_job.queue))
+        return await self.forget_failed_job(job_id)
+
+    async def forget_failed_job(self, job_id: Union[int, str]) -> bool:
+        if not Model._is_enabled:
+            return False
+        session = cast(AsyncSession, await Model.get_session())
+        try:
+            result = await session.execute(select(QueueFailedJob).where(QueueFailedJob.id == int(job_id)))
+            job = result.scalars().first()
+            if job is None:
+                return False
+            await session.delete(job)
+            await session.commit()
+            return True
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+    async def flush_failed_jobs(self, queue: str | None = None) -> int:
+        if not Model._is_enabled:
+            return 0
+        session = cast(AsyncSession, await Model.get_session())
+        try:
+            stmt = delete(QueueFailedJob)
+            if queue is not None:
+                stmt = stmt.where(QueueFailedJob.queue == queue)
+            result = await session.execute(stmt)
+            await session.commit()
+            rowcount = getattr(result, 'rowcount', 0)
+            return int(rowcount or 0)
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+    async def _get_failed_job_model(self, job_id: Union[int, str]):
+        if not Model._is_enabled:
+            return None
+        session = cast(AsyncSession, await Model.get_session())
+        try:
+            result = await session.execute(select(QueueFailedJob).where(QueueFailedJob.id == int(job_id)))
+            return result.scalars().first()
+        finally:
+            await session.close()
+
+    async def reap_expired(self, queue: str = 'default', visibility_timeout: int = 300) -> int:
+        """Return stale reserved jobs to the queue or move exhausted ones to failed jobs."""
+        if not Model._is_enabled:
+            logger.error('Cannot reap expired jobs - MySQL is disabled')
+            return 0
+
+        session = cast(AsyncSession, await Model.get_session())
+        try:
+            now = datetime.now(UTC)
+            cutoff = now - timedelta(seconds=visibility_timeout)
+            stmt = (
+                select(QueueJob)
+                .where(
+                    QueueJob.queue == queue,
+                    QueueJob.reserved_at.is_not(None),
+                    QueueJob.reserved_at < cutoff,
+                )
+                .order_by(QueueJob.id)
+            )
+            result = await session.execute(stmt)
+            jobs = result.scalars().all()
+            for job in jobs:
+                job_record = cast(Any, job)
+                max_tries = _payload_max_tries(str(job_record.payload))
+                attempts = int(getattr(job_record, 'attempts', 0) or 0)
+                if attempts >= max_tries:
+                    failed_job = QueueFailedJob(
+                        connection=self.connection_name,
+                        queue=queue,
+                        payload=str(job_record.payload),
+                        exception=f'Job reservation expired after {visibility_timeout}s visibility timeout',
+                        failed_at=now,
+                    )
+                    session.add(failed_job)
+                    await session.delete(job)
+                else:
+                    job_record.reserved_at = None
+                    job_record.available_at = now
+
+            await session.commit()
+            return len(jobs)
+
+        except Exception as e:
+            await session.rollback()
+            logger.error(f'Failed to reap expired database jobs: {str(e)}')
+            raise
+        finally:
+            await session.close()
+
     async def size(self, queue: str = 'default') -> int:
         """Get the size of the queue."""
         if not Model._is_enabled:
@@ -223,3 +366,87 @@ class DatabaseQueue(QueueDriver):
             return 0
         finally:
             await session.close()
+
+    async def stats(self, queue: str = 'default') -> dict[str, Any]:
+        """Return ready/reserved/delayed/failed queue depth statistics."""
+        empty_stats = _empty_queue_stats(queue)
+        if not Model._is_enabled:
+            logger.error('Cannot get queue stats - MySQL is disabled')
+            return empty_stats
+
+        session = cast(AsyncSession, await Model.get_session())
+        try:
+            now = datetime.now(UTC)
+            jobs_result = await session.execute(select(QueueJob).where(QueueJob.queue == queue))
+            jobs = cast(list[Any], list(jobs_result.scalars().all()))
+            failed_result = await session.execute(select(QueueFailedJob).where(QueueFailedJob.queue == queue))
+            failed_jobs = cast(list[Any], list(failed_result.scalars().all()))
+
+            ready_jobs = [
+                job
+                for job in jobs
+                if job.reserved_at is None and _as_utc(job.available_at) <= now
+            ]
+            delayed_jobs = [
+                job
+                for job in jobs
+                if job.reserved_at is None and _as_utc(job.available_at) > now
+            ]
+            reserved_jobs = [job for job in jobs if job.reserved_at is not None]
+            oldest_ready_age = _oldest_ready_age_seconds(ready_jobs, now)
+            return {
+                'queue': queue,
+                'ready': len(ready_jobs),
+                'reserved': len(reserved_jobs),
+                'delayed': len(delayed_jobs),
+                'failed': len(failed_jobs),
+                'oldest_ready_age_seconds': oldest_ready_age,
+            }
+        except Exception as e:
+            logger.error(f'Failed to get queue stats: {str(e)}')
+            return empty_stats
+        finally:
+            await session.close()
+
+
+def _payload_max_tries(payload: str, default: int = 3) -> int:
+    try:
+        value = json.loads(payload).get('max_tries', default)
+        return max(1, int(value))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return default
+
+
+def _failed_job_to_dict(job) -> dict[str, Any]:
+    return {
+        'id': job.id,
+        'connection': job.connection,
+        'queue': job.queue,
+        'payload': job.payload,
+        'exception': job.exception,
+        'failed_at': job.failed_at.isoformat() if hasattr(job.failed_at, 'isoformat') else str(job.failed_at),
+    }
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _oldest_ready_age_seconds(jobs: list[Any], now: datetime) -> float:
+    if not jobs:
+        return 0.0
+    oldest = min(_as_utc(getattr(job, 'created_at', None) or job.available_at) for job in jobs)
+    return max(0.0, (now - oldest).total_seconds())
+
+
+def _empty_queue_stats(queue: str) -> dict[str, Any]:
+    return {
+        'queue': queue,
+        'ready': 0,
+        'reserved': 0,
+        'delayed': 0,
+        'failed': 0,
+        'oldest_ready_age_seconds': 0.0,
+    }
