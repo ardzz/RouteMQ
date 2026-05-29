@@ -382,16 +382,8 @@ class DatabaseQueue(QueueDriver):
             failed_result = await session.execute(select(QueueFailedJob).where(QueueFailedJob.queue == queue))
             failed_jobs = cast(list[Any], list(failed_result.scalars().all()))
 
-            ready_jobs = [
-                job
-                for job in jobs
-                if job.reserved_at is None and _as_utc(job.available_at) <= now
-            ]
-            delayed_jobs = [
-                job
-                for job in jobs
-                if job.reserved_at is None and _as_utc(job.available_at) > now
-            ]
+            ready_jobs = [job for job in jobs if job.reserved_at is None and _as_utc(job.available_at) <= now]
+            delayed_jobs = [job for job in jobs if job.reserved_at is None and _as_utc(job.available_at) > now]
             reserved_jobs = [job for job in jobs if job.reserved_at is not None]
             oldest_ready_age = _oldest_ready_age_seconds(ready_jobs, now)
             return {
