@@ -278,9 +278,7 @@ class ClickHouseDriverUnitTests(unittest.IsolatedAsyncioTestCase):
     async def test_connect_builds_async_client_with_settings(self) -> None:
         client = _FakeAsyncClient()
         get_async = AsyncMock(return_value=client)
-        driver = ClickHouseDriver(
-            host='h', port=8123, database='db', username='u', password='p', async_insert=True
-        )
+        driver = ClickHouseDriver(host='h', port=8123, database='db', username='u', password='p', async_insert=True)
         with patch('routemq.tsdb.clickhouse_driver.clickhouse_connect.get_async_client', new=get_async):
             await driver.connect()
         self.assertIs(driver._client, client)
