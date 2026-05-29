@@ -348,9 +348,11 @@ class TestApplicationMetrics(unittest.TestCase):
         app.loop.run_forever.side_effect = KeyboardInterrupt
         app.mysql_enabled = False
         app.redis_enabled = False
+        app.tsdb_enabled = False
         app.start_workers = MagicMock()
         app.initialize_database = MagicMock(return_value=None)
         app.initialize_redis = MagicMock(return_value=None)
+        app.initialize_tsdb = MagicMock(return_value=None)
         app.health_status = HealthStatus()
         app.health_server = MagicMock(name='health_server')
         app.metrics_health_server = MagicMock(name='metrics_health_server')
@@ -430,6 +432,7 @@ class TestApplicationConnections(unittest.IsolatedAsyncioTestCase):
         app = object.__new__(Application)
         app.redis_enabled = False
         app.mysql_enabled = False
+        app.tsdb_enabled = False
 
         with (
             patch('bootstrap.app.redis_manager.disconnect') as disconnect,
@@ -558,9 +561,11 @@ class TestApplicationMqtt(unittest.TestCase):
         app.loop.run_forever.side_effect = KeyboardInterrupt
         app.mysql_enabled = False
         app.redis_enabled = False
+        app.tsdb_enabled = False
         app.start_workers = MagicMock()
         app.initialize_database = MagicMock(return_value=None)
         app.initialize_redis = MagicMock(return_value=None)
+        app.initialize_tsdb = MagicMock(return_value=None)
         app._cleanup_connections = MagicMock(return_value=None)
         app.health_status = HealthStatus()
         app.health_server = None

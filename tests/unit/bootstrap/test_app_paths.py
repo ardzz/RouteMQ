@@ -153,14 +153,17 @@ class ConnectionsEnabledTests(unittest.IsolatedAsyncioTestCase):
         app = object.__new__(Application)
         app.initialize_database = AsyncMock()
         app.initialize_redis = AsyncMock()
+        app.initialize_tsdb = AsyncMock()
         await app._initialize_connections()
         app.initialize_database.assert_awaited_once()
         app.initialize_redis.assert_awaited_once()
+        app.initialize_tsdb.assert_awaited_once()
 
     async def test_cleanup_connections_disconnects_redis_and_model_when_enabled(self) -> None:
         app = object.__new__(Application)
         app.redis_enabled = True
         app.mysql_enabled = True
+        app.tsdb_enabled = False
         with (
             patch('bootstrap.app.redis_manager.disconnect', new=AsyncMock()) as disconnect,
             patch('bootstrap.app.Model.cleanup', new=AsyncMock()) as cleanup,
@@ -232,9 +235,11 @@ class RunCleanupTests(unittest.TestCase):
         app.loop.run_until_complete = MagicMock()
         app.mysql_enabled = True
         app.redis_enabled = True
+        app.tsdb_enabled = False
         app.start_workers = MagicMock()
         app.initialize_database = MagicMock(return_value=None)
         app.initialize_redis = MagicMock(return_value=None)
+        app.initialize_tsdb = MagicMock(return_value=None)
 
         with (
             patch('bootstrap.app.redis_manager.disconnect', new=MagicMock()) as disconnect,

@@ -78,6 +78,13 @@ Built-in metrics:
 | `routemq_queue_job_timed_out_total` | counter | `queue`, `job_class` | `queue.job.timed_out` |
 | `routemq_queue_job_dead_lettered_total` | counter | `queue`, `job_class`, `reason` | `queue.job.dead_lettered` |
 | `routemq_queue_job_duration_seconds` | histogram | `queue`, `job_class` | span duration from `queue.job` |
+| `routemq_tsdb_write_batches_total` | counter | `measurement` | batched TSDB inserts completed |
+| `routemq_tsdb_write_errors_total` | counter | `measurement`, `error` | TSDB batches dropped after retries |
+| `routemq_tsdb_flush_duration_seconds` | histogram | `measurement` | span duration from `tsdb.write.flush` |
+
+The `tsdb.write.flush` span also carries `tsdb.buffer.depth` as a low-cardinality attribute
+(the backpressure signal). A continuously-scrapable buffer-depth gauge is deferred; the
+stdlib registry supports only counters and histograms.
 
 Label cardinality rule: label by route pattern, never by concrete topic. `devices/{id}/status` is a
 safe `route` label; `devices/123/status` is not. RouteMQ's default hooks strip high-cardinality

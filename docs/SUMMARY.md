@@ -87,6 +87,7 @@
 * [RouteMQ Architecture](architecture.md)
 * [Release Conformance](release-conformance.md)
 * [Security](security.md)
+* [Time-Series Database (TSDB) Integration](tsdb/README.md)
   * [ADR-0001: PyPI Distribution Model — Engine Package + Scaffolder](adr/0001-pypi-distribution-model.md)
   * [ADR-0002: Queue Driver Registry — Built-ins + Entry Points](adr/0002-queue-driver-registry.md)
   * [ADR-0003: Docker-backed Integration Tests — Explicit Gate + Clean Skips](adr/0003-docker-backed-integration-tests.md)
@@ -96,3 +97,4 @@
   * [ADR-0007: Benchmark Harness and Regression Gate](adr/0007-benchmark-harness.md)
   * [ADR-0008: Fail-Fast Logging Audit Policy](adr/0008-fail-fast-logging-audit.md)
   * [ADR-0009: Supply-Chain Provenance and Release Transparency](adr/0009-supply-chain-and-provenance.md)
+  * [ADR-0010: TSDB Integration — Internal Driver Contract, ClickHouse First](adr/0010-tsdb-driver-registry.md)
