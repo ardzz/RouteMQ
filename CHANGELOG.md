@@ -1,3 +1,9 @@
+## v0.22.0 (2026-05-29)
+
+### Feat
+
+- **tsdb**: add optional ClickHouse time-series integration
+
 ## v0.21.0 (2026-05-29)
 
 ### Feat
