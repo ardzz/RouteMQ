@@ -23,19 +23,19 @@ docker run -d \
   routemq:latest
 ```
 
-### Docker Compose (Recommended)
+### Docker Compose
 
-Use the included `docker-compose.yml` for a complete stack:
+Use the repository `docker-compose.yml` for Redis, MySQL, ClickHouse, the app, and queue workers. Add Mosquitto when you want a local broker instead of `test.mosquitto.org`.
 
 ```bash
 # Start all services
-docker-compose up -d
+docker compose up -d
 
 # View logs
-docker-compose logs -f routemq
+docker compose logs -f routemq
 
 # Stop all services
-docker-compose down
+docker compose down
 ```
 
 ## Dockerfile Explanation
@@ -77,7 +77,7 @@ USER app
 # Health check
 RUN uv run python -c "import sys; sys.exit(0)"
 
-CMD ["uv", "run", "routemq", "--run"]
+CMD ["uv", "run", "routemq", "run"]
 ```
 
 ### Key Features
@@ -90,7 +90,7 @@ CMD ["uv", "run", "routemq", "--run"]
 
 ## Docker Compose Configuration
 
-### Complete Stack
+### Complete stack with local Mosquitto
 
 ```yaml
 version: '3.8'
@@ -464,7 +464,7 @@ RUN uv sync --dev
 
 COPY . .
 
-CMD ["uv", "run", "routemq", "--run"]
+CMD ["uv", "run", "routemq", "run"]
 
 # Production stage
 FROM base as production
@@ -485,7 +485,7 @@ RUN useradd --create-home --shell /bin/bash app && \
 
 USER app
 
-CMD ["uv", "run", "routemq", "--run"]
+CMD ["uv", "run", "routemq", "run"]
 ```
 
 ## Container Commands

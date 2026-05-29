@@ -1,57 +1,102 @@
 # Quick Start
 
-Get RouteMQ up and running in just a few minutes.
+This quickstart starts from the PyPI package, creates the normal `app/` layout, adds one controller and one router, then runs the MQTT app.
 
-## 1. Initialize Your Project
-
-After installation, initialize a new RouteMQ project:
+## 1. Install and scaffold
 
 ```bash
-routemq --init
+uvx --from "routemq[cli]" routemq new sensor-demo
+cd sensor-demo
 ```
 
-This creates the basic project structure and configuration files.
+You can use pip instead:
 
-## 2. Configure Your Environment
+```bash
+pip install "routemq[cli]"
+routemq new sensor-demo
+cd sensor-demo
+```
 
-Edit the `.env` file with your MQTT broker details:
+## 2. Add a controller and router
 
-```env
-# MQTT Configuration
-MQTT_BROKER=localhost
+Create the controller:
+
+```python
+# app/controllers/device_controller.py
+from routemq.controller import Controller
+
+class DeviceController(Controller):
+    @staticmethod
+    async def status(device_id, payload, client):
+        print(f"device {device_id}: {payload}")
+        return {"ok": True}
+```
+
+Create the router:
+
+```python
+# app/routers/devices.py
+from routemq.router import Router
+from app.controllers.device_controller import DeviceController
+
+router = Router()
+router.on("devices/{device_id}/status", DeviceController.status, qos=1)
+```
+
+The app imports every `router` exported from `app/routers/*.py`.
+
+## 3. Configure the broker
+
+For a public smoke test:
+
+```dotenv
+MQTT_BROKER=test.mosquitto.org
 MQTT_PORT=1883
-MQTT_USERNAME=your_username  # Optional
-MQTT_PASSWORD=your_password  # Optional
-MQTT_CLIENT_ID=mqtt-framework-main  # Optional
-MQTT_GROUP_NAME=mqtt_framework_group  # For shared subscriptions
-
-# Database Configuration (Optional)
 ENABLE_MYSQL=false
-
-# Redis Configuration (Optional)
 ENABLE_REDIS=false
-
-# Logging Configuration
-LOG_LEVEL=INFO
-LOG_FORMAT=%(asctime)s - %(name)s - %(levelname)s - %(message)s
 ```
 
-## 3. Run the Application
+For local Mosquitto, set `MQTT_BROKER=localhost`.
 
-Start RouteMQ:
+## 4. Run and publish
 
 ```bash
-uv run routemq --run
+uv run routemq run
 ```
 
-Your MQTT routing framework is now running and ready to handle messages!
+In another terminal:
 
-## 4. Test Your Setup
+```bash
+mosquitto_pub -h test.mosquitto.org -t devices/42/status -m '{"temp":21}'
+```
 
-You can test your setup by publishing a message to any of the example routes that are created during initialization.
+You should see:
 
-## What's Next?
+```text
+device 42: {'temp': 21}
+```
 
-- [Create Your First Route](first-route.md) - Learn how to define custom routes
-- [Configuration Guide](../configuration/README.md) - Detailed configuration options
-- [Core Concepts](../core-concepts/README.md) - Understand the framework architecture
+## 15-line version
+
+These are the two files without comments:
+
+```python
+from routemq.controller import Controller
+class DeviceController(Controller):
+    @staticmethod
+    async def status(device_id, payload, client):
+        print(f"device {device_id}: {payload}")
+        return {"ok": True}
+from routemq.router import Router
+from app.controllers.device_controller import DeviceController
+router = Router()
+router.on("devices/{device_id}/status", DeviceController.status, qos=1)
+```
+
+Run it with `uv run routemq run`, or `routemq run` when the package is installed in the active environment.
+
+## Next steps
+
+- [Your First Route](first-route.md) - Add parameters, middleware, and route groups.
+- [Queue System](../queue/README.md) - Move slow work to background workers.
+- [Sensor Data Collection](../examples/sensor-data.md) - Build a Redis-backed telemetry example.

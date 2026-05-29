@@ -11,7 +11,16 @@ You'll need one of the following:
 
 ## Installation
 
-The queue system is included with RouteMQ. No additional installation required.
+The queue API is included with base `routemq`. Redis support is optional and must be installed when `QUEUE_CONNECTION=redis`.
+
+```bash
+uv add routemq                  # database queue support is in the base package
+uv add "routemq[redis]"         # Redis queue support
+
+# pip works too:
+pip install routemq
+pip install "routemq[redis]"
+```
 
 ## Configuration
 

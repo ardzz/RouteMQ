@@ -38,10 +38,10 @@ uv remove package-name
 
 ```bash
 # Run the application
-uv run routemq --run
+uv run routemq run
 
 # Run with specific configuration
-uv run routemq --run --config custom.env
+uv run routemq run
 ```
 
 ## Running Tests

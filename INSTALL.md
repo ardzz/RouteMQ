@@ -1,6 +1,13 @@
 # RouteMQ Installation Guide
 
-This guide provides detailed instructions for setting up RouteMQ as a template for your own MQTT routing project.
+This legacy guide describes the old template workflow. For new projects, prefer the PyPI package:
+
+```bash
+uv add "routemq[cli]"
+routemq new my-mqtt-project
+cd my-mqtt-project
+routemq run
+```
 
 ## Table of Contents
 
@@ -51,7 +58,7 @@ This is the easiest way to create a new project based on RouteMQ.
 
 8. **Initialize project structure:**
    ```bash
-   uv run routemq --init
+   uv run routemq new .
    ```
 
 9. **Configure environment:**
@@ -62,7 +69,7 @@ This is the easiest way to create a new project based on RouteMQ.
 
 10. **Run the application:**
     ```bash
-    uv run routemq --run
+     uv run routemq run
     ```
 
 ### Advantages:
@@ -113,12 +120,12 @@ Use this method if you want to download RouteMQ and initialize it with a fresh g
 
 4. **Initialize project structure:**
    ```bash
-   routemq --init
+   routemq new .
    ```
 
 5. **Run the application:**
    ```bash
-   uv run routemq --run
+   uv run routemq run
    ```
 
 ### Option B: Manual Git Reinitialization
@@ -157,8 +164,8 @@ Use this method if you want to download RouteMQ and initialize it with a fresh g
 5. **Continue with installation:**
    ```bash
    uv sync
-   routemq --init
-   uv run routemq --run
+    routemq new .
+    uv run routemq run
    ```
 
 ---
@@ -178,13 +185,13 @@ cd RouteMQ
 uv sync
 
 # Initialize project
-routemq --init
+routemq new .
 
 # Configure .env
 # Edit the .env file with your configuration
 
 # Run the application
-uv run routemq --run
+uv run routemq run
 ```
 
 ---
@@ -221,9 +228,9 @@ from app.controllers.example_controller import ExampleController
 
 router = Router()
 
-router.add_route("home/temperature", ExampleController.handle_temperature)
-router.add_route("home/humidity", ExampleController.handle_humidity)
-router.add_route("devices/{device_id}/status", ExampleController.handle_device_status)
+router.on("home/temperature", ExampleController.handle_temperature)
+router.on("home/humidity", ExampleController.handle_humidity)
+router.on("devices/{device_id}/status", ExampleController.handle_device_status)
 ```
 
 ### 3. Customize for Your Needs

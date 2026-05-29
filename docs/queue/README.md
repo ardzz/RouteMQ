@@ -1,6 +1,6 @@
 # Queue System
 
-RouteMQ includes a powerful background task queue system similar to Laravel's queue functionality. This allows you to defer time-consuming tasks (like sending emails, processing data, generating reports) to background workers, keeping your MQTT message handlers fast and responsive.
+RouteMQ includes a background task queue similar to Laravel's queue API. Use it to move slow work, such as alerts, telemetry processing, reports, or notifications, out of MQTT handlers.
 
 ## Overview
 
@@ -39,9 +39,10 @@ The queue system consists of several components:
 ## Quick Start
 
 ```python
-# 1. Create a job
 from routemq.job import Job
 
+
+@Job.register
 class SendEmailJob(Job):
     max_tries = 3
     queue = "emails"
@@ -55,29 +56,24 @@ class SendEmailJob(Job):
         # Send email logic
         print(f"Sending email to {self.to}")
 
-# 2. Dispatch the job
-from routemq.queue.queue_manager import dispatch
+from routemq.queue import dispatch
 
 job = SendEmailJob()
 job.to = "user@example.com"
 job.subject = "Welcome!"
 await dispatch(job)
 
-# 3. Run the worker
-# routemq --queue-work --queue emails
+# Run the worker with:
+# routemq queue-work --queue emails
 ```
 
 ## Key Features
 
-- ✅ **Laravel-style API** - Familiar syntax for Laravel developers
-- ✅ **Built-in Queue Drivers** - Redis (fast) or Database (persistent)
-- ✅ **Custom Queue Drivers** - Register drivers in code or with Python package entry points
-- ✅ **Automatic Retries** - Configurable retry logic with delays
-- ✅ **Multiple Queues** - Organize jobs by priority or type
-- ✅ **Delayed Jobs** - Schedule jobs to run later
-- ✅ **Failed Job Tracking** - Inspect and retry failed jobs
-- ✅ **Docker Support** - Production-ready deployment
-- ✅ **Graceful Shutdown** - Workers handle SIGTERM/SIGINT
+- Laravel-style job classes with `handle()` and `failed()` hooks
+- Redis or database queue drivers
+- Custom drivers registered in code or with Python package entry points
+- Retries, delays, multiple queues, and failed-job storage
+- Workers that handle SIGTERM/SIGINT cleanly
 
 ## Documentation
 

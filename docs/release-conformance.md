@@ -10,7 +10,8 @@ result depends on GitHub or an external service.
 | SLSA Build L3 | Achieved | [`release.yml`](../.github/workflows/release.yml) provenance job calling `slsa-framework/slsa-github-generator` | [Latest GitHub Release](https://github.com/ardzz/RouteMQ/releases/latest) |
 | OpenSSF Scorecard | Live scorecard | [`scorecard.yml`](../.github/workflows/scorecard.yml) and [README badge](https://api.scorecard.dev/projects/github.com/ardzz/RouteMQ/badge) | [Scorecard viewer](https://scorecard.dev/viewer/?uri=github.com/ardzz/RouteMQ) |
 | CycloneDX SBOM | Generated + signed | [`release.yml`](../.github/workflows/release.yml) and [`github-release.yml`](../.github/workflows/github-release.yml) Sigstore signing steps | [Latest GitHub Release](https://github.com/ardzz/RouteMQ/releases/latest) |
-| OpenSSF Best Practices | Sprint 15 in-progress | [README placeholder](../README.md#project-health) and local Sprint 15 plan | n/a |
+| OpenSSF Best Practices | Operator action pending | BadgeApp submission fields in this document | n/a |
+| PyPI trusted publishing | Active | [`publish.yml`](../.github/workflows/publish.yml), [`publish-test.yml`](../.github/workflows/publish-test.yml), and the `pypi` / `testpypi` GitHub environments | [PyPI project](https://pypi.org/project/routemq/) |
 | SemVer | Pre-1.0 contract | [`pyproject.toml`](../pyproject.toml) version metadata and this document's Versioning section | continuously |
 
 ## Versioning
@@ -26,6 +27,12 @@ Path to 1.0.0:
 - Sprint 15 (OpenSSF Best Practices badge) submitted and passing
 - At least one external production deployment reported and stable
 - 90-day vulnerability response SLA published and met for any reported issue
+
+## PyPI publishing
+
+PyPI displays the README embedded in the uploaded distribution metadata. A README-only change does not update the existing PyPI page until a new version is built and uploaded.
+
+Patch releases are the correct path for PyPI documentation fixes. Use a conventional commit that triggers a patch bump when the published package metadata is wrong or stale, for example `fix(docs): refresh PyPI README examples`. The release workflow then builds the package, opens the version-bump PR, tags the release, and dispatches TestPyPI and PyPI publishing workflows.
 
 ## Dead-code audit
 
@@ -68,13 +75,7 @@ Use these required fields:
 
 BadgeApp auto-detects most GitHub-observable criteria from repository metadata and files. The operator should answer the remaining MUST, SHOULD, and SUGGESTED items manually based on the current repository state and hosted settings.
 
-After submission returns a project ID, replace the placeholder in `README.md` with the real ID, for example:
-
-```bash
-sed -i 's|<PROJECT_ID>|12345|g' README.md
-```
-
-Then remove the surrounding `<!-- TODO(sprint-15-followup): ... -->` HTML comment block so the badge renders normally. The placeholder in `README.md` and this section remain active until the operator completes the BadgeApp submission.
+After submission returns a project ID, add the BadgeApp badge next to the existing README badges. Use the real ID in the badge URL; do not ship a placeholder.
 
 Hosted security-setting follow-ups:
 

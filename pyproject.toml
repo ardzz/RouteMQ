@@ -16,6 +16,8 @@ authors = [
 
 keywords = [
     "mqtt",
+    "python",
+    "iot",
     "routing",
     "framework",
     "middleware",

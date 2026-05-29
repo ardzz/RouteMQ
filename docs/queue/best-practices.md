@@ -121,13 +121,13 @@ Then run workers with appropriate settings:
 
 ```bash
 # Critical queue - check every second
-routemq --queue-work --queue critical --sleep 1
+routemq queue-work --queue critical --sleep 1
 
 # Emails - normal priority
-routemq --queue-work --queue emails --sleep 3
+routemq queue-work --queue emails --sleep 3
 
 # Low priority - check every 10 seconds
-routemq --queue-work --queue low-priority --sleep 10
+routemq queue-work --queue low-priority --sleep 10
 ```
 
 ### 6. Organize by Function
@@ -384,7 +384,7 @@ docker compose up -d --scale queue-worker-default=2
 ```ini
 # supervisor.conf
 [program:routemq-queue]
-command=/path/to/venv/bin/routemq --queue-work
+command=/path/to/venv/bin/routemq queue-work
 autostart=true
 autorestart=true
 startsecs=10
@@ -429,7 +429,7 @@ async def test_send_email_job():
 
 ```bash
 # Test job with single retry
-routemq --queue-work --max-jobs 1 --max-tries 1
+routemq queue-work --max-jobs 1 --max-tries 1
 ```
 
 ## Common Anti-Patterns

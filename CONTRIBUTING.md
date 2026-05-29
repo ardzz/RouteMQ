@@ -22,7 +22,7 @@ Use [GitHub Issues](https://github.com/ardzz/RouteMQ/issues) for feature request
 
 1. Fork the repository or create a branch from `master`.
 2. Install dependencies with `uv sync`.
-3. Run `uv run routemq --init` if you need the local scaffolded app structure.
+3. Run `uv run routemq new .` if you need the local scaffolded app structure.
 4. Keep changes focused and follow Conventional Commits:
    - `feat:` — new feature
    - `fix:` — bug fix
