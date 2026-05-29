@@ -150,7 +150,7 @@ class ClickHouseDriver(TSDBDriver):
                     )
                     raise
                 delay = self._retry_base_delay * (4 ** (attempt - 1))
-                delay += random.uniform(0, delay)
+                delay += random.uniform(0, delay)  # nosec B311 - retry jitter, not security-sensitive
                 self.logger.warning(
                     f"ClickHouse insert for '{measurement}' failed (attempt {attempt}/{self._max_retries}); "
                     f'retrying in {delay:.2f}s: {exc}'
