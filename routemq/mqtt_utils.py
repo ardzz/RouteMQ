@@ -35,6 +35,7 @@ def parse_mqtt_payload(payload: bytes) -> Any:
     try:
         return json.loads(payload.decode())
     except (json.JSONDecodeError, UnicodeDecodeError):
+        # Audit Accept: invalid JSON is a valid MQTT payload; dispatch raw bytes instead.
         return payload
 
 
@@ -136,6 +137,7 @@ def create_mqtt_client(
         try:
             parameters = signature(reconnect_delay_set).parameters
         except (TypeError, ValueError):
+            # Audit Accept: older/mock Paho callables may not expose signatures.
             parameters = {}
         if 'exponential_backoff' in parameters:
             kwargs['exponential_backoff'] = True

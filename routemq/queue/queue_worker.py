@@ -104,8 +104,11 @@ class QueueWorker:
                     await asyncio.sleep(self.sleep)
 
             except Exception as e:
-                logger.error(f'Error in worker loop: {str(e)}')
-                logger.debug(traceback.format_exc())
+                logger.error(
+                    f'Error in worker loop for queue {self.queue_name}: {str(e)}',
+                    exc_info=True,
+                    extra={'queue': self.queue_name, 'error': e.__class__.__name__},
+                )
                 await asyncio.sleep(self.sleep)
 
         logger.info(f'Queue worker stopped. Processed {self.jobs_processed} jobs.')
@@ -167,14 +170,21 @@ class QueueWorker:
                     lifecycle('queue.job.succeeded', attributes)
                     logger.info(f'Job {job_id} completed successfully')
 
-                except asyncio.TimeoutError:
-                    logger.error(f'Job {job_id} timed out after {job.timeout}s')
+                except asyncio.TimeoutError as exc:
+                    logger.error(
+                        f'Job {job_id} timed out after {job.timeout}s',
+                        exc_info=True,
+                        extra={'job_id': job_id, 'queue': self.queue_name, 'job_class': job.__class__.__name__},
+                    )
                     lifecycle('queue.job.timed_out', attributes)
-                    raise Exception(f'Job timed out after {job.timeout} seconds')
+                    raise Exception(f'Job timed out after {job.timeout} seconds') from exc
 
         except Exception as e:
-            logger.error(f'Job {job_id} failed: {str(e)}')
-            logger.debug(traceback.format_exc())
+            logger.error(
+                f'Job {job_id} failed: {str(e)}',
+                exc_info=True,
+                extra={'job_id': job_id, 'queue': self.queue_name, 'error': e.__class__.__name__},
+            )
 
             # Try to get the job object if it wasn't unserialized
             try:
@@ -194,7 +204,11 @@ class QueueWorker:
                         )
                         token = set_context(job_context, **attributes)
             except Exception as unserialize_error:
-                logger.error(f'Failed to unserialize job: {unserialize_error}')
+                logger.error(
+                    f'Failed to unserialize job {job_id}: {unserialize_error}',
+                    exc_info=True,
+                    extra={'job_id': job_id, 'queue': self.queue_name, 'error': unserialize_error.__class__.__name__},
+                )
                 # Delete the corrupted job
                 await driver.delete(job_id, self.queue_name)
                 return
@@ -277,8 +291,11 @@ class QueueWorker:
             logger.info(f'Job {job.job_id} moved to failed queue')
 
         except Exception as e:
-            logger.error(f'Error handling failed job: {str(e)}')
-            logger.debug(traceback.format_exc())
+            logger.error(
+                f'Error handling failed job {job.job_id}: {str(e)}',
+                exc_info=True,
+                extra={'job_id': job.job_id, 'queue': self.queue_name, 'error': e.__class__.__name__},
+            )
 
     def _should_stop(self) -> bool:
         """Check if the worker should stop based on limits."""
@@ -291,6 +308,7 @@ class QueueWorker:
             try:
                 now = asyncio.get_running_loop().time()
             except RuntimeError:
+                # Audit Accept: support legacy synchronous callers of _should_stop.
                 legacy_get_loop = getattr(asyncio, ''.join(('get_event_', 'loop')))
                 now = legacy_get_loop().time()
 

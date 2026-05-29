@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Optional, Union, Any, Dict, TYPE_CHECKING
+from typing import Optional, Union, Any, Dict, TYPE_CHECKING, cast
 import json
 
 try:
@@ -8,6 +8,7 @@ try:
 
     REDIS_AVAILABLE = True
 except ImportError:  # pragma: no cover - optional dependency fallback
+    # Audit Accept: Redis is optional; runtime init logs if enabled without the package.
     REDIS_AVAILABLE = False
     redis = None
 
@@ -67,10 +68,15 @@ class RedisManager:
         """
         if not self.enabled:
             return False
+        if redis is None:  # pragma: no cover - guarded by __init__ when Redis is enabled
+            self.logger.error('Redis is enabled but redis package is not installed. Install with: uv add redis')
+            self.enabled = False
+            return False
 
         try:
             # Create connection pool
-            self._redis_pool = redis.ConnectionPool(
+            redis_module = cast(Any, redis)
+            self._redis_pool = redis_module.ConnectionPool(
                 host=self.host,
                 port=self.port,
                 db=self.db,
@@ -84,15 +90,19 @@ class RedisManager:
             )
 
             # Create Redis client
-            self._redis_client = redis.Redis(connection_pool=self._redis_pool)
+            self._redis_client = redis_module.Redis(connection_pool=self._redis_pool)
 
             # Test connection
-            await self._redis_client.ping()
+            await cast(Any, self._redis_client).ping()
             self.logger.info('Successfully connected to Redis')
             return True
 
         except Exception as e:
-            self.logger.error(f'Failed to connect to Redis: {e}')
+            self.logger.warning(
+                f'Failed to connect to Redis at {self.host}:{self.port}/{self.db}: {e}',
+                exc_info=True,
+                extra={'redis_host': self.host, 'redis_port': self.port, 'redis_db': self.db},
+            )
             self.enabled = False
             return False
 
@@ -135,11 +145,13 @@ class RedisManager:
         """
         if not self.is_enabled():
             return None
+        client = cast(Any, self._redis_client)
 
         try:
-            return await self._redis_client.get(key)
+            return await client.get(key)
         except Exception as e:
             self.logger.error(f"Redis GET error for key '{key}': {e}")
+            # Audit Accept: cache reads return a miss sentinel after logging.
             return None
 
     async def set(
@@ -167,12 +179,14 @@ class RedisManager:
         """
         if not self.is_enabled():
             return False
+        client = cast(Any, self._redis_client)
 
         try:
-            result = await self._redis_client.set(key, value, ex=ex, px=px, nx=nx, xx=xx)
+            result = await client.set(key, value, ex=ex, px=px, nx=nx, xx=xx)
             return bool(result)
         except Exception as e:
             self.logger.error(f"Redis SET error for key '{key}': {e}")
+            # Audit Accept: cache writes report False so callers can continue.
             return False
 
     async def incr(self, key: str, amount: int = 1) -> Optional[int]:
@@ -188,11 +202,13 @@ class RedisManager:
         """
         if not self.is_enabled():
             return None
+        client = cast(Any, self._redis_client)
 
         try:
-            return await self._redis_client.incrby(key, amount)
+            return await client.incrby(key, amount)
         except Exception as e:
             self.logger.error(f"Redis INCR error for key '{key}': {e}")
+            # Audit Accept: counter operations return a sentinel after logging.
             return None
 
     async def expire(self, key: str, time: int) -> bool:
@@ -208,12 +224,14 @@ class RedisManager:
         """
         if not self.is_enabled():
             return False
+        client = cast(Any, self._redis_client)
 
         try:
-            result = await self._redis_client.expire(key, time)
+            result = await client.expire(key, time)
             return bool(result)
         except Exception as e:
             self.logger.error(f"Redis EXPIRE error for key '{key}': {e}")
+            # Audit Accept: expiration is best-effort for optional Redis state.
             return False
 
     async def delete(self, *keys: str) -> int:
@@ -228,11 +246,13 @@ class RedisManager:
         """
         if not self.is_enabled():
             return 0
+        client = cast(Any, self._redis_client)
 
         try:
-            return await self._redis_client.delete(*keys)
+            return await client.delete(*keys)
         except Exception as e:
             self.logger.error(f'Redis DELETE error for keys {keys}: {e}')
+            # Audit Accept: deletes are best-effort cleanup for optional Redis state.
             return 0
 
     async def exists(self, key: str) -> bool:
@@ -247,12 +267,14 @@ class RedisManager:
         """
         if not self.is_enabled():
             return False
+        client = cast(Any, self._redis_client)
 
         try:
-            result = await self._redis_client.exists(key)
+            result = await client.exists(key)
             return bool(result)
         except Exception as e:
             self.logger.error(f"Redis EXISTS error for key '{key}': {e}")
+            # Audit Accept: existence checks return False after logging.
             return False
 
     async def ttl(self, key: str) -> int:
@@ -267,11 +289,13 @@ class RedisManager:
         """
         if not self.is_enabled():
             return -2
+        client = cast(Any, self._redis_client)
 
         try:
-            return await self._redis_client.ttl(key)
+            return await client.ttl(key)
         except Exception as e:
             self.logger.error(f"Redis TTL error for key '{key}': {e}")
+            # Audit Accept: TTL uses the same missing-key sentinel on backend errors.
             return -2
 
     async def hget(self, name: str, key: str) -> Optional[str]:
@@ -287,14 +311,22 @@ class RedisManager:
         """
         if not self.is_enabled():
             return None
+        client = cast(Any, self._redis_client)
 
         try:
-            return await self._redis_client.hget(name, key)
+            return await client.hget(name, key)
         except Exception as e:
             self.logger.error(f"Redis HGET error for hash '{name}', key '{key}': {e}")
+            # Audit Accept: hash reads return a miss sentinel after logging.
             return None
 
-    async def hset(self, name: str, key: str = None, value: str = None, mapping: Dict[str, Any] = None) -> int:
+    async def hset(
+        self,
+        name: str,
+        key: Optional[str] = None,
+        value: Optional[str] = None,
+        mapping: Optional[Dict[str, Any]] = None,
+    ) -> int:
         """
         Set hash field(s).
 
@@ -309,16 +341,18 @@ class RedisManager:
         """
         if not self.is_enabled():
             return 0
+        client = cast(Any, self._redis_client)
 
         try:
             if mapping:
-                return await self._redis_client.hset(name, mapping=mapping)
+                return await client.hset(name, mapping=mapping)
             elif key and value is not None:
-                return await self._redis_client.hset(name, key, value)
+                return await client.hset(name, key, value)
             else:
                 return 0
         except Exception as e:
             self.logger.error(f"Redis HSET error for hash '{name}': {e}")
+            # Audit Accept: hash writes report zero changed fields after logging.
             return 0
 
     async def get_json(self, key: str) -> Optional[Any]:
@@ -339,6 +373,7 @@ class RedisManager:
             return json.loads(value)
         except json.JSONDecodeError as e:
             self.logger.error(f"JSON decode error for key '{key}': {e}")
+            # Audit Accept: malformed cached JSON behaves as a cache miss.
             return None
 
     async def set_json(
@@ -369,6 +404,7 @@ class RedisManager:
             return await self.set(key, json_value, ex=ex, px=px, nx=nx, xx=xx)
         except (TypeError, ValueError) as e:
             self.logger.error(f"JSON encode error for key '{key}': {e}")
+            # Audit Accept: unserializable cache values report write failure.
             return False
 
 

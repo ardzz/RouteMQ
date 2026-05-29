@@ -211,6 +211,7 @@ def _service_version() -> str | None:
     try:
         return version('routemq')
     except PackageNotFoundError:
+        # Audit Accept: source checkout fallback when package metadata is unavailable.
         return '0.0.0+dev'
 
 

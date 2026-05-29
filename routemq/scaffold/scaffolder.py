@@ -155,6 +155,7 @@ def _get_routemq_version() -> str:
     try:
         return metadata.version('routemq')
     except metadata.PackageNotFoundError:
+        # Audit Accept: source checkout scaffold uses a sentinel version.
         return SENTINEL_VERSION
 
 
@@ -173,6 +174,7 @@ def _print_success(*, project_name: str, package_manager: str) -> None:
     try:
         rich_console = import_module('rich.console')
     except ImportError:
+        # Audit Accept: Rich is optional; plain success output is sufficient.
         print('\n'.join(lines))
         return
 

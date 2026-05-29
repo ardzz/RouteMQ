@@ -1,6 +1,6 @@
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Optional, Union
+from typing import Any, Optional, Union, cast
 from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,7 +32,7 @@ class DatabaseQueue(QueueDriver):
             logger.error('Cannot push job to database queue - MySQL is disabled')
             raise RuntimeError('MySQL is disabled. Enable it to use DatabaseQueue.')
 
-        session: AsyncSession = await Model.get_session()
+        session = cast(AsyncSession, await Model.get_session())
         try:
             available_at = datetime.now(UTC)
             if delay > 0:
@@ -63,7 +63,7 @@ class DatabaseQueue(QueueDriver):
             logger.error('Cannot pop job from database queue - MySQL is disabled')
             return None
 
-        session: AsyncSession = await Model.get_session()
+        session = cast(AsyncSession, await Model.get_session())
         try:
             # Use FOR UPDATE SKIP LOCKED for concurrency-safe job claiming
             # Find the next available job that's not reserved
@@ -86,8 +86,9 @@ class DatabaseQueue(QueueDriver):
                 return None
 
             # Mark job as reserved
-            job.reserved_at = datetime.now(UTC)
-            job.attempts += 1
+            job_record = cast(Any, job)
+            job_record.reserved_at = datetime.now(UTC)
+            job_record.attempts += 1
 
             await session.commit()
             await session.refresh(job)
@@ -103,6 +104,7 @@ class DatabaseQueue(QueueDriver):
         except Exception as e:
             await session.rollback()
             logger.error(f'Failed to pop job from queue: {str(e)}')
+            # Audit Accept: polling treats backend errors as no job after logging.
             return None
         finally:
             await session.close()
@@ -118,7 +120,7 @@ class DatabaseQueue(QueueDriver):
             logger.error('Cannot release job - MySQL is disabled')
             return
 
-        session: AsyncSession = await Model.get_session()
+        session = cast(AsyncSession, await Model.get_session())
         try:
             available_at = datetime.now(UTC)
             if delay > 0:
@@ -147,7 +149,7 @@ class DatabaseQueue(QueueDriver):
             logger.error('Cannot delete job - MySQL is disabled')
             return
 
-        session: AsyncSession = await Model.get_session()
+        session = cast(AsyncSession, await Model.get_session())
         try:
             stmt = delete(QueueJob).where(
                 QueueJob.id == job_id,
@@ -177,7 +179,7 @@ class DatabaseQueue(QueueDriver):
             logger.error('Cannot store failed job - MySQL is disabled')
             return
 
-        session: AsyncSession = await Model.get_session()
+        session = cast(AsyncSession, await Model.get_session())
         try:
             failed_job = QueueFailedJob(
                 connection=connection,
@@ -204,7 +206,7 @@ class DatabaseQueue(QueueDriver):
             logger.error('Cannot get queue size - MySQL is disabled')
             return 0
 
-        session: AsyncSession = await Model.get_session()
+        session = cast(AsyncSession, await Model.get_session())
         try:
             stmt = select(QueueJob).where(
                 QueueJob.queue == queue,
@@ -217,6 +219,7 @@ class DatabaseQueue(QueueDriver):
 
         except Exception as e:
             logger.error(f'Failed to get queue size: {str(e)}')
+            # Audit Accept: queue depth is advisory and must not break callers.
             return 0
         finally:
             await session.close()

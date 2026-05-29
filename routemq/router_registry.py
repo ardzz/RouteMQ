@@ -49,9 +49,11 @@ class RouterRegistry:
 
         except ImportError as e:
             self.logger.error(f"Could not import router directory '{self.router_directory}': {e}")
+            # Audit Accept: missing app.routers is valid before scaffolding registers routes.
             self.logger.info('Using empty router')
         except Exception as e:
             self.logger.error(f'Error during router discovery: {e}')
+            # Audit Accept: application can still boot with manually registered routes.
             self.logger.info('Using empty router')
 
         return self.main_router
@@ -78,8 +80,10 @@ class RouterRegistry:
 
         except ImportError as e:
             self.logger.error(f"Could not import router module '{module_name}': {e}")
+            # Audit Accept: one bad router module should not hide other modules.
         except Exception as e:
             self.logger.error(f"Error loading router from '{module_name}': {e}")
+            # Audit Accept: one bad router module should not hide other modules.
 
     def _merge_router(self, router: Router, module_name: str) -> None:
         """

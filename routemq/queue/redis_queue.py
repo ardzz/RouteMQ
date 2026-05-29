@@ -1,7 +1,7 @@
 import json
 import logging
 import time
-from typing import Optional, Union
+from typing import Any, Optional, Union, cast
 from datetime import UTC, datetime
 
 from routemq.queue.queue_driver import QueueDriver
@@ -46,7 +46,7 @@ class RedisQueue(QueueDriver):
             logger.error('Cannot push job to Redis queue - Redis is disabled')
             raise RuntimeError('Redis is disabled. Enable it to use RedisQueue.')
 
-        client = self.redis.get_client()
+        client = cast(Any, self.redis.get_client())
         try:
             job_data = {
                 'id': f'{queue}:{int(time.time() * 1000000)}',  # Unique ID with microseconds
@@ -74,7 +74,7 @@ class RedisQueue(QueueDriver):
         if not self.redis.is_enabled():
             return
 
-        client = self.redis.get_client()
+        client = cast(Any, self.redis.get_client())
         try:
             delayed_key = self._get_delayed_key(queue)
             current_time = time.time()
@@ -94,6 +94,7 @@ class RedisQueue(QueueDriver):
 
         except Exception as e:
             logger.error(f'Failed to migrate delayed jobs: {str(e)}')
+            # Audit Accept: best-effort delayed migration; the next poll retries migration.
 
     async def pop(self, queue: str = 'default') -> Optional[dict]:
         """Pop the next available job from the queue."""
@@ -101,7 +102,7 @@ class RedisQueue(QueueDriver):
             logger.error('Cannot pop job from Redis queue - Redis is disabled')
             return None
 
-        client = self.redis.get_client()
+        client = cast(Any, self.redis.get_client())
         try:
             # First, migrate any delayed jobs that are now available
             await self._migrate_delayed_jobs(queue)
@@ -126,6 +127,7 @@ class RedisQueue(QueueDriver):
 
         except Exception as e:
             logger.error(f'Failed to pop job from Redis queue: {str(e)}')
+            # Audit Accept: polling treats backend errors as no job after logging.
             return None
 
     async def release(
@@ -139,7 +141,7 @@ class RedisQueue(QueueDriver):
             logger.error('Cannot release job - Redis is disabled')
             return
 
-        client = self.redis.get_client()
+        client = cast(Any, self.redis.get_client())
         try:
             reserved_key = self._get_reserved_key(queue)
 
@@ -179,7 +181,7 @@ class RedisQueue(QueueDriver):
             logger.error('Cannot delete job - Redis is disabled')
             return
 
-        client = self.redis.get_client()
+        client = cast(Any, self.redis.get_client())
         try:
             reserved_key = self._get_reserved_key(queue)
 
@@ -213,7 +215,7 @@ class RedisQueue(QueueDriver):
         try:
             if Model._is_enabled:
                 # Store in database
-                session = await Model.get_session()
+                session = cast(Any, await Model.get_session())
                 try:
                     failed_job = QueueFailedJob(
                         connection=connection,
@@ -229,7 +231,7 @@ class RedisQueue(QueueDriver):
                     await session.close()
             elif self.redis.is_enabled():
                 # Fallback to Redis if database not available
-                client = self.redis.get_client()
+                client = cast(Any, self.redis.get_client())
                 failed_key = f'routemq:queue:failed:{queue}'
                 failed_data = {
                     'connection': connection,
@@ -245,6 +247,7 @@ class RedisQueue(QueueDriver):
 
         except Exception as e:
             logger.error(f'Failed to store failed job: {str(e)}')
+            # Audit Accept: failure persistence errors are logged; job retry/fail semantics stay unchanged.
 
     async def size(self, queue: str = 'default') -> int:
         """Get the size of the queue."""
@@ -252,7 +255,7 @@ class RedisQueue(QueueDriver):
             logger.error('Cannot get queue size - Redis is disabled')
             return 0
 
-        client = self.redis.get_client()
+        client = cast(Any, self.redis.get_client())
         try:
             # Count jobs in main queue
             main_count = await client.llen(self._get_queue_key(queue))
@@ -264,4 +267,5 @@ class RedisQueue(QueueDriver):
 
         except Exception as e:
             logger.error(f'Failed to get queue size: {str(e)}')
+            # Audit Accept: queue depth is advisory and must not break callers.
             return 0

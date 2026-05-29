@@ -9,6 +9,7 @@ mandatory Prometheus, OpenTelemetry, or vendor-specific exporter.
 - [Health Checks](health-checks.md) - Built-in `/health` and `/ready` endpoints
 - [Benchmark Harness](benchmarks.md) - Running pytest-benchmark locally and in CI
 - [Metrics Collection](metrics.md) - Observability hook seam and custom metric collection
+- [Error Handling Audit](error-handling-audit.md) - Fail-fast logging audit and accepted exception paths
 - [Logging Configuration](../configuration/logging.md) - JSON/NDJSON logs, field profiles, and lifecycle events
 - [Redis Monitoring](redis-monitoring.md) - Redis operations to monitor when Redis is enabled
 - [MQTT Monitoring](mqtt-monitoring.md) - MQTT connectivity, readiness, and broker signals

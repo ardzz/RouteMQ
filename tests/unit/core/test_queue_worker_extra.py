@@ -180,6 +180,42 @@ class QueueWorkerProcessJobTests(_WorkerSignalGuard):
 
         worker.driver.release.assert_awaited_once()
 
+    async def test_timeout_exception_chain_is_preserved_for_failure_handling(self) -> None:
+        worker = self._make_worker(max_tries=1)
+        worker.driver = MagicMock()
+        worker.driver.delete = AsyncMock()
+        worker._fail_job = AsyncMock()
+
+        import asyncio
+
+        timeout_exc = asyncio.TimeoutError()
+
+        async def slow_handle() -> None:
+            return None
+
+        async def timeout_wait_for(coro: Any, timeout: float | None = None) -> None:
+            coro.close()
+            raise timeout_exc
+
+        job = _DummyJob(timeout=0)
+        job.handle = slow_handle  # type: ignore[method-assign]
+        with (
+            patch('routemq.queue.queue_worker.Job') as mock_job_cls,
+            patch('routemq.queue.queue_worker.asyncio.wait_for', side_effect=timeout_wait_for),
+            self.assertLogs('RouteMQ.QueueWorker', level='ERROR') as logs,
+        ):
+            mock_job_cls.unserialize.return_value = job
+            await worker._process_job({'id': 'j1', 'payload': 'p', 'attempts': 1})
+
+        await_args = worker._fail_job.await_args
+        self.assertIsNotNone(await_args)
+        assert await_args is not None
+        failed_exception = await_args.args[1]
+        self.assertIs(failed_exception.__cause__, timeout_exc)
+        worker.driver.delete.assert_awaited_once()
+        self.assertTrue(any('timed out' in output for output in logs.output))
+        self.assertTrue(any(record.exc_info is not None for record in logs.records))
+
     async def test_failure_with_remaining_tries_releases_job(self) -> None:
         worker = self._make_worker(max_tries=3)
         worker.driver = MagicMock()
@@ -187,11 +223,16 @@ class QueueWorkerProcessJobTests(_WorkerSignalGuard):
         worker.driver.release = AsyncMock()
 
         job = _DummyJob(raises=RuntimeError('boom'))
-        with patch('routemq.queue.queue_worker.Job') as mock_job_cls:
+        with (
+            patch('routemq.queue.queue_worker.Job') as mock_job_cls,
+            self.assertLogs('RouteMQ.QueueWorker', level='ERROR') as logs,
+        ):
             mock_job_cls.unserialize.return_value = job
             await worker._process_job({'id': 'j1', 'payload': 'p', 'attempts': 1})
 
         worker.driver.release.assert_awaited_once()
+        self.assertIn('Job j1 failed', logs.output[0])
+        self.assertIsNotNone(logs.records[0].exc_info)
 
     async def test_failure_with_backoff_enabled_uses_job_delay_calculation(self) -> None:
         worker = self._make_worker(max_tries=3)
@@ -234,11 +275,16 @@ class QueueWorkerProcessJobTests(_WorkerSignalGuard):
         worker.driver = MagicMock()
         worker.driver.delete = AsyncMock()
 
-        with patch('routemq.queue.queue_worker.Job') as mock_job_cls:
+        with (
+            patch('routemq.queue.queue_worker.Job') as mock_job_cls,
+            self.assertLogs('RouteMQ.QueueWorker', level='ERROR') as logs,
+        ):
             mock_job_cls.unserialize.side_effect = ValueError('cannot unserialize')
             await worker._process_job({'id': 'j1', 'payload': 'garbage', 'attempts': 1})
 
         worker.driver.delete.assert_awaited_once()
+        self.assertTrue(any('Failed to unserialize job j1' in output for output in logs.output))
+        self.assertTrue(any(record.exc_info is not None for record in logs.records))
 
 
 class QueueWorkerWorkLoopTests(_WorkerSignalGuard):
@@ -323,9 +369,12 @@ class QueueWorkerWorkLoopTests(_WorkerSignalGuard):
         driver.pop = AsyncMock(side_effect=pop_side_effect)
         worker.queue_manager.get_driver = MagicMock(return_value=driver)
 
-        await worker.work()
+        with self.assertLogs('RouteMQ.QueueWorker', level='ERROR') as logs:
+            await worker.work()
 
         self.assertGreaterEqual(pop_calls, 2)
+        self.assertIn('Error in worker loop for queue default', logs.output[0])
+        self.assertIsNotNone(logs.records[0].exc_info)
 
     async def test_process_job_recovers_if_second_unserialize_succeeds(self) -> None:
         worker = self._make_worker(connection='redis')
@@ -372,7 +421,11 @@ class QueueWorkerFailJobTests(_WorkerSignalGuard):
         worker.driver.failed = AsyncMock(side_effect=RuntimeError('storage down'))
 
         job = _DummyJob()
-        await worker._fail_job(cast(Any, job), RuntimeError('orig'))
+        with self.assertLogs('RouteMQ.QueueWorker', level='ERROR') as logs:
+            await worker._fail_job(cast(Any, job), RuntimeError('orig'))
+
+        self.assertIn('Error handling failed job', logs.output[0])
+        self.assertIsNotNone(logs.records[0].exc_info)
 
 
 if __name__ == '__main__':
