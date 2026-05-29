@@ -1,3 +1,15 @@
+## v0.21.0 (2026-05-29)
+
+### Feat
+
+- **config**: add METRICS_HTTP_* environment variables
+- **worker**: mark workers dead on stop for prometheus multiprocess cleanup
+- **metrics**: add optional routemq[prometheus] extra with multiprocess support
+- **health**: expose /metrics route with renderer-based content type
+- **metrics**: install default hooks for lifecycle counters and span histograms
+- **metrics**: add OpenMetrics text writer with content-type negotiation
+- **metrics**: add MetricsRegistry with counter and histogram primitives
+
 ## v0.20.0 (2026-05-29)
 
 ### Feat
