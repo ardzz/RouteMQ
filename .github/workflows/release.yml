@@ -136,10 +136,36 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           VERSION="${{ steps.bump_detect.outputs.version }}"
-          gh workflow run publish-test.yml --ref "$VERSION" -f ref="$VERSION" \
-            || echo "TestPyPI dispatch failed; run manually: gh workflow run publish-test.yml --ref ${VERSION}"
-          gh workflow run publish.yml --ref "$VERSION" -f ref="$VERSION" \
-            || echo "PyPI dispatch failed; run manually: gh workflow run publish.yml --ref ${VERSION}"
+          REMOTE="https://github.com/${{ github.repository }}.git"
+
+          # A freshly pushed tag is not immediately visible to the workflow-dispatch
+          # API, so poll the remote ref before dispatching to avoid a 404 race.
+          for attempt in 1 2 3 4 5 6; do
+            if git ls-remote --tags "$REMOTE" "refs/tags/${VERSION}" | grep -q "${VERSION}"; then
+              break
+            fi
+            echo "Tag ${VERSION} not yet visible (attempt ${attempt}); waiting..."
+            sleep 5
+          done
+
+          dispatch() {
+            workflow="$1"
+            for attempt in 1 2 3; do
+              if gh workflow run "$workflow" --ref "$VERSION" -f ref="$VERSION"; then
+                echo "Dispatched ${workflow} for ${VERSION}."
+                return 0
+              fi
+              echo "Dispatch of ${workflow} failed (attempt ${attempt}); retrying..."
+              sleep 5
+            done
+            echo "::error::Failed to dispatch ${workflow} for ${VERSION} after 3 attempts."
+            return 1
+          }
+
+          rc=0
+          dispatch publish-test.yml || rc=1
+          dispatch publish.yml || rc=1
+          exit "$rc"
 
   provenance:
     needs: release
