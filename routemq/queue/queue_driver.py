@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Union
+from typing import Any, Optional, Union
 from datetime import datetime
 
 
@@ -98,3 +98,51 @@ class QueueDriver(ABC):
             Number of jobs in the queue
         """
         pass
+
+    async def stats(self, queue: str = 'default') -> dict[str, Any]:
+        """Return queue-depth statistics when supported by the driver."""
+        ready = await self.size(queue)
+        return {
+            'queue': queue,
+            'ready': ready,
+            'reserved': 0,
+            'delayed': 0,
+            'failed': 0,
+            'oldest_ready_age_seconds': 0.0,
+        }
+
+    async def reap_expired(self, queue: str = 'default', visibility_timeout: int = 300) -> int:
+        """Reclaim expired reserved jobs when supported by the driver."""
+        return 0
+
+    async def heartbeat(self, job_id: Union[int, str], queue: str) -> bool:
+        """Refresh an active job reservation when supported by the driver."""
+        return False
+
+    async def write_worker_heartbeat(self, heartbeat: dict[str, Any], ttl: int) -> None:
+        """Publish queue-worker liveness metadata when supported by the driver."""
+        return None
+
+    async def mark_worker_dead(self, worker_id: str) -> None:
+        """Mark a queue worker as dead when supported by the driver."""
+        return None
+
+    async def list_failed_jobs(self, queue: str | None = None) -> list[dict[str, Any]]:
+        """List failed jobs when supported by the driver."""
+        return []
+
+    async def get_failed_job(self, job_id: Union[int, str]) -> dict[str, Any] | None:
+        """Return a failed job by id when supported by the driver."""
+        return None
+
+    async def retry_failed_job(self, job_id: Union[int, str]) -> bool:
+        """Retry a failed job by id when supported by the driver."""
+        return False
+
+    async def forget_failed_job(self, job_id: Union[int, str]) -> bool:
+        """Forget a failed job by id when supported by the driver."""
+        return False
+
+    async def flush_failed_jobs(self, queue: str | None = None) -> int:
+        """Flush failed jobs when supported by the driver."""
+        return 0

@@ -86,6 +86,44 @@ class QueueManagerExtraTestCase(unittest.IsolatedAsyncioTestCase):
         driver.size.assert_awaited_once_with('work')
         self.assertEqual(size, 42)
 
+    async def test_stats_delegates_to_driver_and_emits_lifecycle(self) -> None:
+        manager = QueueManager()
+        stats = {'queue': 'work', 'ready': 2, 'reserved': 1, 'delayed': 0, 'failed': 0}
+        driver = MagicMock(spec=QueueDriver)
+        driver.stats = AsyncMock(return_value=stats)
+
+        with (
+            patch.object(manager, 'get_driver', return_value=driver),
+            patch('routemq.queue.queue_manager._lifecycle') as lifecycle,
+        ):
+            result = await manager.stats(queue='work', connection='redis')
+
+        driver.stats.assert_awaited_once_with('work')
+        lifecycle.assert_called_once_with('queue.stats', stats)
+        self.assertEqual(result, stats)
+
+    async def test_failed_job_admin_methods_delegate_to_driver(self) -> None:
+        manager = QueueManager()
+        driver = MagicMock(spec=QueueDriver)
+        driver.list_failed_jobs = AsyncMock(return_value=[{'id': '1'}])
+        driver.get_failed_job = AsyncMock(return_value={'id': '1'})
+        driver.retry_failed_job = AsyncMock(return_value=True)
+        driver.forget_failed_job = AsyncMock(return_value=True)
+        driver.flush_failed_jobs = AsyncMock(return_value=2)
+
+        with patch.object(manager, 'get_driver', return_value=driver):
+            self.assertEqual(await manager.list_failed_jobs(queue='emails', connection='redis'), [{'id': '1'}])
+            self.assertEqual(await manager.get_failed_job('1', connection='redis'), {'id': '1'})
+            self.assertTrue(await manager.retry_failed_job('1', connection='redis'))
+            self.assertTrue(await manager.forget_failed_job('1', connection='redis'))
+            self.assertEqual(await manager.flush_failed_jobs(queue='emails', connection='redis'), 2)
+
+        driver.list_failed_jobs.assert_awaited_once_with('emails')
+        driver.get_failed_job.assert_awaited_once_with('1')
+        driver.retry_failed_job.assert_awaited_once_with('1')
+        driver.forget_failed_job.assert_awaited_once_with('1')
+        driver.flush_failed_jobs.assert_awaited_once_with('emails')
+
     def test_register_driver_resolves_custom_connection(self) -> None:
         manager = QueueManager()
 
