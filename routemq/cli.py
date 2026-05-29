@@ -43,6 +43,14 @@ DB_PASS=
 # Redis Configuration
 ENABLE_REDIS=false
 
+# TSDB (ClickHouse) Configuration
+ENABLE_TSDB=false
+TSDB_HOST=localhost
+TSDB_PORT=8123
+TSDB_DATABASE=default
+TSDB_USER=default
+TSDB_PASSWORD=
+
 # Queue Configuration
 QUEUE_CONNECTION=redis
 

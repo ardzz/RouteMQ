@@ -36,6 +36,7 @@ from routemq.mqtt_utils import (
 )
 from routemq.worker_manager import WorkerManager
 from routemq.redis_manager import redis_manager
+from routemq.tsdb.tsdb_manager import tsdb_manager
 
 observability = import_module('routemq.observability')
 
@@ -131,6 +132,12 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
             self.logger.info('Redis integration is enabled')
         else:
             self.logger.info('Redis integration is disabled')
+
+        self.tsdb_enabled = os.getenv('ENABLE_TSDB', 'false').lower() == 'true'
+        if self.tsdb_enabled:
+            self.logger.info('TSDB integration is enabled')
+        else:
+            self.logger.info('TSDB integration is disabled')
 
         self.client: Any = None
         self.group_name = get_mqtt_group_name()
@@ -245,13 +252,25 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
             else:
                 self.logger.warning('Redis initialization failed')
 
+    async def initialize_tsdb(self):
+        """Initialize TSDB connection."""
+        if self.tsdb_enabled:
+            success = await tsdb_manager.initialize()
+            if success:
+                self.logger.info('TSDB initialized successfully')
+            else:
+                self.logger.warning('TSDB initialization failed')
+
     async def _initialize_connections(self):
-        """Initialize database and Redis connections."""
+        """Initialize database, Redis, and TSDB connections."""
         await self.initialize_database()
         await self.initialize_redis()
+        await self.initialize_tsdb()
 
     async def _cleanup_connections(self):
-        """Cleanup database and Redis connections."""
+        """Cleanup database, Redis, and TSDB connections."""
+        if self.tsdb_enabled:
+            await tsdb_manager.disconnect()
         if self.redis_enabled:
             await redis_manager.disconnect()
         if self.mysql_enabled:
@@ -401,6 +420,7 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
         try:
             self.loop.run_until_complete(self.initialize_database())
             self.loop.run_until_complete(self.initialize_redis())
+            self.loop.run_until_complete(self.initialize_tsdb())
             self.health_status.startup_complete = True
             self.logger.info('Application started. Press Ctrl+C to exit.')
             self.logger.info(f'Active workers: {self.worker_manager.get_worker_count()}')
@@ -415,6 +435,8 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
             self.logger.info('Application cleanup started')
             self.health_status.shutting_down = True
             self.worker_manager.stop_workers()
+            if self.tsdb_enabled:
+                self.loop.run_until_complete(tsdb_manager.disconnect())
             if self.redis_enabled:
                 self.loop.run_until_complete(redis_manager.disconnect())
             if self.mysql_enabled:

@@ -146,6 +146,10 @@ def _strip_high_cardinality(attributes: Mapping[str, Any]) -> dict[str, Any]:
         job_name = attributes.get('routemq.job.name')
         if isinstance(job_name, str) and job_name:
             cleaned['job_class'] = job_name
+    if 'measurement' not in cleaned:
+        collection = attributes.get('db.collection.name')
+        if isinstance(collection, str) and collection:
+            cleaned['measurement'] = collection
     return cleaned
 
 
@@ -253,6 +257,16 @@ _LIFECYCLE_COUNTERS: dict[str, _CounterRecipe] = {
         help='Queue jobs moved straight to the failed queue without further retry.',
         label_names=('queue', 'job_class', 'reason'),
     ),
+    'tsdb.write.batches': _CounterRecipe(
+        metric='tsdb_write_batches_total',
+        help='TSDB batched inserts completed successfully.',
+        label_names=('measurement',),
+    ),
+    'tsdb.write.errors': _CounterRecipe(
+        metric='tsdb_write_errors_total',
+        help='TSDB batched inserts that exhausted retries and dropped their batch.',
+        label_names=('measurement', 'error'),
+    ),
 }
 
 
@@ -266,5 +280,10 @@ _SPAN_HISTOGRAMS: dict[str, _HistogramRecipe] = {
         metric='queue_job_duration_seconds',
         help='Wall-clock duration of queue job spans, in seconds.',
         label_names=('queue', 'job_class'),
+    ),
+    'tsdb.write.flush': _HistogramRecipe(
+        metric='tsdb_flush_duration_seconds',
+        help='Wall-clock duration of TSDB batched flush spans, in seconds.',
+        label_names=('measurement',),
     ),
 }
