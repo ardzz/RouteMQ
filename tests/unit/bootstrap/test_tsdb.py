@@ -173,6 +173,34 @@ class TSDBManagerTests(unittest.IsolatedAsyncioTestCase):
         manager.enabled = True
         self.assertFalse(manager.is_enabled())
 
+    async def test_get_client_none_without_driver(self) -> None:
+        manager = self._disabled_manager()
+        self.assertIsNone(manager.get_client())
+
+    async def test_get_client_none_when_driver_not_connected(self) -> None:
+        class _UnconnectedDriver:
+            @property
+            def client(self) -> Any:
+                raise RuntimeError('ClickHouse driver is not connected')
+
+        manager = self._disabled_manager()
+        manager.enabled = True
+        manager._driver = _UnconnectedDriver()
+        self.assertIsNone(manager.get_client())
+
+    async def test_get_client_returns_connected_client(self) -> None:
+        sentinel = object()
+
+        class _ConnectedDriver:
+            @property
+            def client(self) -> Any:
+                return sentinel
+
+        manager = self._disabled_manager()
+        manager.enabled = True
+        manager._driver = _ConnectedDriver()
+        self.assertIs(manager.get_client(), sentinel)
+
     async def test_buffer_flushes_on_size_trigger(self) -> None:
         import asyncio
 
