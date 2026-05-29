@@ -2,8 +2,8 @@
 
 The hooks bridge ``routemq.observability`` events to ``MetricsRegistry``
 without coupling the framework to any specific telemetry backend. Lifecycle
-event names map 1:1 to counter families; ``router.dispatch`` and ``queue.job``
-span durations populate latency histograms.
+event names map to counters and operational gauges; ``router.dispatch`` and
+``queue.job`` span durations populate latency histograms.
 """
 
 from __future__ import annotations
@@ -83,6 +83,10 @@ class _DefaultHooksBuilder:
         self._histogram_buckets = histogram_buckets
 
     def on_lifecycle(self, name: str, attributes: dict[str, Any]) -> None:
+        gauge_recipes = _LIFECYCLE_GAUGES.get(name)
+        if gauge_recipes is not None:
+            self._record_gauges(gauge_recipes, attributes)
+            return
         recipe = _LIFECYCLE_COUNTERS.get(name)
         if recipe is None:
             return
@@ -92,6 +96,22 @@ class _DefaultHooksBuilder:
             label_names=recipe.label_names,
         )
         counter.inc(1.0, labels=self._sanitize_labels(recipe.label_names, attributes))
+
+    def _record_gauges(self, recipes: tuple['_GaugeRecipe', ...], attributes: dict[str, Any]) -> None:
+        for recipe in recipes:
+            value = attributes.get(recipe.attribute)
+            if value is None:
+                continue
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError):
+                continue
+            gauge = self._registry.gauge(
+                self._qualify(recipe.metric),
+                help=recipe.help,
+                label_names=recipe.label_names,
+            )
+            gauge.set(numeric, labels=self._sanitize_labels(recipe.label_names, attributes))
 
     def on_span(self, snapshot: SpanSnapshot) -> None:
         recipe = _SPAN_HISTOGRAMS.get(snapshot.name)
@@ -165,6 +185,50 @@ class _HistogramRecipe:
     metric: str
     help: str
     label_names: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class _GaugeRecipe:
+    metric: str
+    help: str
+    attribute: str
+    label_names: tuple[str, ...] = ()
+
+
+_LIFECYCLE_GAUGES: dict[str, tuple[_GaugeRecipe, ...]] = {
+    'queue.stats': (
+        _GaugeRecipe(
+            metric='queue_ready_jobs',
+            help='Jobs currently ready to be reserved by queue workers.',
+            attribute='ready',
+            label_names=('queue',),
+        ),
+        _GaugeRecipe(
+            metric='queue_reserved_jobs',
+            help='Jobs currently reserved by queue workers.',
+            attribute='reserved',
+            label_names=('queue',),
+        ),
+        _GaugeRecipe(
+            metric='queue_delayed_jobs',
+            help='Jobs currently delayed before becoming ready.',
+            attribute='delayed',
+            label_names=('queue',),
+        ),
+        _GaugeRecipe(
+            metric='queue_failed_jobs',
+            help='Jobs currently stored in failed-job storage.',
+            attribute='failed',
+            label_names=('queue',),
+        ),
+        _GaugeRecipe(
+            metric='queue_oldest_ready_age_seconds',
+            help='Age in seconds of the oldest currently ready queue job.',
+            attribute='oldest_ready_age_seconds',
+            label_names=('queue',),
+        ),
+    ),
+}
 
 
 _LIFECYCLE_COUNTERS: dict[str, _CounterRecipe] = {

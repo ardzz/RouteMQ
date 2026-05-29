@@ -27,6 +27,12 @@ class DefaultHooksTestCase(unittest.TestCase):
                 return {sample.label_key: sample.value for sample in samples}
         return {}
 
+    def _gauge_samples(self, name: str) -> dict[tuple[tuple[str, str], ...], float]:
+        for metric_name, _type, _help, samples in self.registry.collect():
+            if metric_name == name:
+                return {sample.label_key: sample.value for sample in samples}
+        return {}
+
     def _histogram_count(self, name: str, labels: dict[str, str]) -> float:
         for metric_name, metric_type, _help, samples in self.registry.collect():
             if metric_name != name or metric_type != 'histogram':
@@ -83,6 +89,26 @@ class LifecycleCounterTests(DefaultHooksTestCase):
     def test_unknown_lifecycle_event_is_ignored(self) -> None:
         observability.lifecycle('unknown.custom.event', {'whatever': True})
         self.assertEqual(list(self.registry.collect()), [])
+
+    def test_queue_stats_lifecycle_updates_operational_gauges(self) -> None:
+        observability.lifecycle(
+            'queue.stats',
+            {
+                'queue': 'default',
+                'ready': 3,
+                'reserved': 2,
+                'delayed': 1,
+                'failed': 4,
+                'oldest_ready_age_seconds': 12.5,
+            },
+        )
+
+        labels = (('queue', 'default'),)
+        self.assertEqual(self._gauge_samples('routemq_queue_ready_jobs')[labels], 3.0)
+        self.assertEqual(self._gauge_samples('routemq_queue_reserved_jobs')[labels], 2.0)
+        self.assertEqual(self._gauge_samples('routemq_queue_delayed_jobs')[labels], 1.0)
+        self.assertEqual(self._gauge_samples('routemq_queue_failed_jobs')[labels], 4.0)
+        self.assertEqual(self._gauge_samples('routemq_queue_oldest_ready_age_seconds')[labels], 12.5)
 
     def test_label_value_truncates_at_max_length(self) -> None:
         long_route = 'x' * 500
