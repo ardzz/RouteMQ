@@ -78,13 +78,22 @@ Built-in metrics:
 | `routemq_queue_job_timed_out_total` | counter | `queue`, `job_class` | `queue.job.timed_out` |
 | `routemq_queue_job_dead_lettered_total` | counter | `queue`, `job_class`, `reason` | `queue.job.dead_lettered` |
 | `routemq_queue_job_duration_seconds` | histogram | `queue`, `job_class` | span duration from `queue.job` |
+| `routemq_queue_ready_jobs` | gauge | `queue` | queue stats snapshot |
+| `routemq_queue_reserved_jobs` | gauge | `queue` | queue stats snapshot |
+| `routemq_queue_delayed_jobs` | gauge | `queue` | queue stats snapshot |
+| `routemq_queue_failed_jobs` | gauge | `queue` | queue stats snapshot |
+| `routemq_queue_oldest_ready_age_seconds` | gauge | `queue` | queue stats snapshot |
 | `routemq_tsdb_write_batches_total` | counter | `measurement` | batched TSDB inserts completed |
 | `routemq_tsdb_write_errors_total` | counter | `measurement`, `error` | TSDB batches dropped after retries |
 | `routemq_tsdb_flush_duration_seconds` | histogram | `measurement` | span duration from `tsdb.write.flush` |
 
+Queue depth gauges are updated when a worker publishes queue statistics during its stale-reservation
+reaper pass, or when application code calls `await QueueManager().stats(queue="default")`. The stdlib
+registry keeps these gauges in the process that emits the lifecycle event; use `routemq[prometheus]`
+plus `PROMETHEUS_MULTIPROC_DIR` when you need metrics merged across queue-worker processes.
+
 The `tsdb.write.flush` span also carries `tsdb.buffer.depth` as a low-cardinality attribute
-(the backpressure signal). A continuously-scrapable buffer-depth gauge is deferred; the
-stdlib registry supports only counters and histograms.
+(the backpressure signal). A continuously-scrapable TSDB buffer-depth gauge is deferred.
 
 Label cardinality rule: label by route pattern, never by concrete topic. `devices/{id}/status` is a
 safe `route` label; `devices/123/status` is not. RouteMQ's default hooks strip high-cardinality

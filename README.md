@@ -262,7 +262,7 @@ curl http://localhost:8080/ready      # MQTT readiness
 curl http://localhost:8080/metrics    # OpenMetrics / Prometheus text
 ```
 
-Built-in metric families include `mqtt_messages_*`, `router_dispatch_*`, `queue_job_*`, `tsdb_write_*`, and latency histograms for each. Spans follow OpenTelemetry-shaped semantics (`db.system`, `db.operation`, `messaging.system`, `kind=client|consumer|producer|internal`).
+Built-in metric families include `mqtt_messages_*`, `router_dispatch_*`, `queue_job_*`, queue-depth gauges, `tsdb_write_*`, and latency histograms for each. Spans follow OpenTelemetry-shaped semantics (`db.system`, `db.operation`, `messaging.system`, `kind=client|consumer|producer|internal`).
 
 For details: [Metrics](./docs/monitoring/metrics.md) · [Health checks](./docs/monitoring/health-checks.md) · [Pool tuning evidence](./docs/monitoring/pool-tuning.md)
 
