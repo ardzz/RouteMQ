@@ -126,6 +126,20 @@ jobs:
             --body "Automated version bump by Commitizen. Tag \`${VERSION}\` already published. Auto-merge enabled; will land on master once CI passes.")
           echo "Opened PR: ${PR_URL}"
           gh pr merge "$BRANCH" --squash --auto --delete-branch
+      - name: Dispatch package publish workflows
+        if: steps.bump_detect.outputs.bumped == 'true'
+        env:
+          # Dispatch via the fine-grained PAT (RELEASE_TOKEN). push:tags and
+          # release:published do not fire from GITHUB_TOKEN-created events, and
+          # trusted-publishing (OIDC) cannot run from a reusable workflow_call,
+          # so an explicit workflow_dispatch is the only reliable trigger here.
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          VERSION="${{ steps.bump_detect.outputs.version }}"
+          gh workflow run publish-test.yml --ref "$VERSION" -f ref="$VERSION" \
+            || echo "TestPyPI dispatch failed; run manually: gh workflow run publish-test.yml --ref ${VERSION}"
+          gh workflow run publish.yml --ref "$VERSION" -f ref="$VERSION" \
+            || echo "PyPI dispatch failed; run manually: gh workflow run publish.yml --ref ${VERSION}"
 
   provenance:
     needs: release
