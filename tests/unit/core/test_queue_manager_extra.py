@@ -167,6 +167,30 @@ class QueueManagerExtraTestCase(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNot(QueueManager._driver_factories['redis'], FakeQueueDriver)
 
+    async def test_queue_driver_optional_defaults_are_safe_noops(self) -> None:
+        driver = FakeQueueDriver()
+
+        self.assertEqual(
+            await driver.stats('emails'),
+            {
+                'queue': 'emails',
+                'ready': 0,
+                'reserved': 0,
+                'delayed': 0,
+                'failed': 0,
+                'oldest_ready_age_seconds': 0.0,
+            },
+        )
+        self.assertEqual(await driver.reap_expired('emails', 30), 0)
+        self.assertFalse(await driver.heartbeat('job-1', 'emails'))
+        self.assertIsNone(await driver.write_worker_heartbeat({'worker_id': 'w1'}, 30))
+        self.assertIsNone(await driver.mark_worker_dead('w1'))
+        self.assertEqual(await driver.list_failed_jobs('emails'), [])
+        self.assertIsNone(await driver.get_failed_job('failed:emails:1'))
+        self.assertFalse(await driver.retry_failed_job('failed:emails:1'))
+        self.assertFalse(await driver.forget_failed_job('failed:emails:1'))
+        self.assertEqual(await driver.flush_failed_jobs('emails'), 0)
+
 
 if __name__ == '__main__':
     unittest.main()

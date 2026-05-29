@@ -251,6 +251,84 @@ class DatabaseQueueFailedTests(DatabaseQueueBase):
         session.add.assert_called_once()
         session.delete.assert_awaited()
 
+    async def test_failed_admin_methods_return_empty_when_mysql_disabled(self) -> None:
+        driver = DatabaseQueue()
+
+        with patch('routemq.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = False
+            self.assertEqual(await driver.list_failed_jobs('q'), [])
+            self.assertIsNone(await driver.get_failed_job(1))
+            self.assertFalse(await driver.forget_failed_job(1))
+            self.assertEqual(await driver.flush_failed_jobs('q'), 0)
+            self.assertIsNone(await driver._get_failed_job_model(1))
+
+    async def test_forget_failed_job_returns_false_when_missing(self) -> None:
+        driver = DatabaseQueue()
+        session = _mock_session()
+        scalars = MagicMock()
+        scalars.first.return_value = None
+        result = MagicMock()
+        result.scalars.return_value = scalars
+        session.execute.return_value = result
+
+        with patch('routemq.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = True
+            mock_model.get_session = AsyncMock(return_value=session)
+            self.assertFalse(await driver.forget_failed_job(999))
+
+        session.delete.assert_not_called()
+
+    async def test_forget_and_flush_failed_jobs_roll_back_on_error(self) -> None:
+        driver = DatabaseQueue()
+        session = _mock_session()
+        session.execute.side_effect = RuntimeError('db down')
+
+        with patch('routemq.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = True
+            mock_model.get_session = AsyncMock(return_value=session)
+            with self.assertRaises(RuntimeError):
+                await driver.forget_failed_job(5)
+            with self.assertRaises(RuntimeError):
+                await driver.flush_failed_jobs('q')
+
+        self.assertEqual(session.rollback.await_count, 2)
+
+
+class DatabaseQueueHeartbeatTests(DatabaseQueueBase):
+    async def test_heartbeat_returns_false_when_mysql_disabled(self) -> None:
+        driver = DatabaseQueue()
+
+        with patch('routemq.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = False
+            self.assertFalse(await driver.heartbeat(1, 'q'))
+
+    async def test_heartbeat_updates_reserved_job(self) -> None:
+        driver = DatabaseQueue()
+        session = _mock_session()
+        result = MagicMock()
+        result.rowcount = 1
+        session.execute.return_value = result
+
+        with patch('routemq.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = True
+            mock_model.get_session = AsyncMock(return_value=session)
+            self.assertTrue(await driver.heartbeat(1, 'q'))
+
+        session.commit.assert_awaited_once()
+
+    async def test_heartbeat_rolls_back_on_error(self) -> None:
+        driver = DatabaseQueue()
+        session = _mock_session()
+        session.execute.side_effect = RuntimeError('db down')
+
+        with patch('routemq.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = True
+            mock_model.get_session = AsyncMock(return_value=session)
+            with self.assertRaises(RuntimeError):
+                await driver.heartbeat(1, 'q')
+
+        session.rollback.assert_awaited_once()
+
 
 class DatabaseQueueVisibilityReaperTests(DatabaseQueueBase):
     async def test_reap_expired_reserved_job_clears_reserved_at_when_attempts_remain(self) -> None:
@@ -277,6 +355,26 @@ class DatabaseQueueVisibilityReaperTests(DatabaseQueueBase):
         self.assertIsInstance(job.available_at, datetime)
         session.add.assert_not_called()
         session.commit.assert_awaited_once()
+
+    async def test_reap_expired_returns_zero_when_mysql_disabled(self) -> None:
+        driver = DatabaseQueue()
+
+        with patch('routemq.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = False
+            self.assertEqual(await driver.reap_expired('q', 300), 0)
+
+    async def test_reap_expired_rolls_back_on_error(self) -> None:
+        driver = DatabaseQueue()
+        session = _mock_session()
+        session.execute.side_effect = RuntimeError('db down')
+
+        with patch('routemq.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = True
+            mock_model.get_session = AsyncMock(return_value=session)
+            with self.assertRaises(RuntimeError):
+                await driver.reap_expired('q', 300)
+
+        session.rollback.assert_awaited_once()
 
     async def test_reap_expired_reserved_job_moves_exhausted_to_failed(self) -> None:
         driver = DatabaseQueue()
@@ -407,6 +505,49 @@ class DatabaseQueueStatsTests(DatabaseQueueBase):
                     'oldest_ready_age_seconds': 0.0,
                 },
             )
+
+    async def test_stats_counts_ready_delayed_reserved_and_failed_jobs(self) -> None:
+        driver = DatabaseQueue()
+        session = _mock_session()
+        now = datetime.now(UTC)
+        ready = MagicMock(
+            reserved_at=None, available_at=now - timedelta(seconds=1), created_at=now - timedelta(seconds=12)
+        )
+        delayed = MagicMock(reserved_at=None, available_at=now + timedelta(seconds=30), created_at=now)
+        reserved = MagicMock(reserved_at=now, available_at=now, created_at=now)
+        jobs_scalars = MagicMock()
+        jobs_scalars.all.return_value = [ready, delayed, reserved]
+        failed_scalars = MagicMock()
+        failed_scalars.all.return_value = [MagicMock(), MagicMock()]
+        jobs_result = MagicMock()
+        jobs_result.scalars.return_value = jobs_scalars
+        failed_result = MagicMock()
+        failed_result.scalars.return_value = failed_scalars
+        session.execute.side_effect = [jobs_result, failed_result]
+
+        with patch('routemq.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = True
+            mock_model.get_session = AsyncMock(return_value=session)
+            stats = await driver.stats('q')
+
+        self.assertEqual(stats['ready'], 1)
+        self.assertEqual(stats['delayed'], 1)
+        self.assertEqual(stats['reserved'], 1)
+        self.assertEqual(stats['failed'], 2)
+        self.assertGreaterEqual(stats['oldest_ready_age_seconds'], 0.0)
+
+    async def test_stats_returns_empty_values_on_query_error(self) -> None:
+        driver = DatabaseQueue()
+        session = _mock_session()
+        session.execute.side_effect = RuntimeError('db down')
+
+        with patch('routemq.queue.database_queue.Model') as mock_model:
+            mock_model._is_enabled = True
+            mock_model.get_session = AsyncMock(return_value=session)
+            stats = await driver.stats('q')
+
+        self.assertEqual(stats['ready'], 0)
+        self.assertEqual(stats['failed'], 0)
 
 
 if __name__ == '__main__':

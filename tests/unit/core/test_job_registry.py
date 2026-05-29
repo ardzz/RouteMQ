@@ -74,6 +74,25 @@ class TestJobRegistry(unittest.TestCase):
 
         self.assertEqual([], loaded)
 
+    def test_registry_returns_empty_list_when_target_is_not_package(self) -> None:
+        (self.root / 'sample_jobs.py').write_text('', encoding='utf-8')
+        importlib.invalidate_caches()
+
+        loaded = JobRegistry('sample_jobs').discover_and_register_jobs()
+
+        self.assertEqual([], loaded)
+
+    def test_registry_skips_job_modules_that_fail_to_import(self) -> None:
+        self._write_package()
+        package = self.root / 'sample_jobs'
+        (package / 'bad_import.py').write_text('import missing_dependency_for_test\n', encoding='utf-8')
+        (package / 'bad_runtime.py').write_text('raise RuntimeError("boom")\n', encoding='utf-8')
+        importlib.invalidate_caches()
+
+        loaded = JobRegistry('sample_jobs').discover_and_register_jobs()
+
+        self.assertEqual(['sample_jobs.email_job'], loaded)
+
 
 class TestExampleJobRegistration(unittest.TestCase):
     def setUp(self) -> None:
