@@ -5,6 +5,7 @@ from routemq.job import Job
 logger = logging.getLogger('RouteMQ.Jobs.ProcessDataJob')
 
 
+@Job.register
 class ProcessDataJob(Job):
     """
     Example job for processing data in the background.

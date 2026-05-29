@@ -5,6 +5,7 @@ from routemq.job import Job
 logger = logging.getLogger('RouteMQ.Jobs.SendEmailJob')
 
 
+@Job.register
 class SendEmailJob(Job):
     """
     Example job for sending emails in the background.
