@@ -1,3 +1,9 @@
+## v0.22.2 (2026-05-29)
+
+### Fix
+
+- **docs**: refresh PyPI README and GitBook examples
+
 ## v0.22.1 (2026-05-29)
 
 ### Fix
