@@ -47,6 +47,42 @@ class TestCliSubcommands(unittest.TestCase):
             self.assertEqual(kwargs['queue'], 'emails')
             self.assertEqual(kwargs['sleep'], 5)
 
+    def test_queue_failed_subcommand_passes_filters(self):
+        with patch('routemq.cli._cmd_queue_failed') as command:
+            self._run_with_argv(['queue-failed', '--queue', 'emails', '--connection', 'redis'])
+
+        command.assert_called_once_with(queue='emails', connection='redis')
+
+    def test_queue_failed_show_subcommand_passes_id(self):
+        with patch('routemq.cli._cmd_queue_failed_show') as command:
+            self._run_with_argv(['queue-failed-show', 'abc123', '--connection', 'redis'])
+
+        command.assert_called_once_with('abc123', connection='redis')
+
+    def test_queue_retry_subcommand_passes_id(self):
+        with patch('routemq.cli._cmd_queue_retry') as command:
+            self._run_with_argv(['queue-retry', 'abc123', '--connection', 'redis'])
+
+        command.assert_called_once_with('abc123', all_jobs=False, queue='default', connection='redis')
+
+    def test_queue_retry_all_subcommand_passes_queue(self):
+        with patch('routemq.cli._cmd_queue_retry') as command:
+            self._run_with_argv(['queue-retry', '--all', '--queue', 'emails'])
+
+        command.assert_called_once_with(None, all_jobs=True, queue='emails', connection=None)
+
+    def test_queue_forget_subcommand_passes_id(self):
+        with patch('routemq.cli._cmd_queue_forget') as command:
+            self._run_with_argv(['queue-forget', 'abc123', '--connection', 'database'])
+
+        command.assert_called_once_with('abc123', connection='database')
+
+    def test_queue_flush_subcommand_passes_queue(self):
+        with patch('routemq.cli._cmd_queue_flush') as command:
+            self._run_with_argv(['queue-flush', '--queue', 'emails', '--connection', 'redis'])
+
+        command.assert_called_once_with(queue='emails', connection='redis')
+
     def test_new_subcommand_calls_scaffolder(self):
         with patch('routemq.scaffold.run_scaffolder', return_value=0) as mock_scaffold:
             self._run_with_argv(['new', 'demo', '--yes', '--with-redis', '--package-manager', 'pip'])

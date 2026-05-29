@@ -6,6 +6,7 @@ RouteMQ - A flexible MQTT routing framework with middleware support
 import argparse
 import logging
 import os
+import json
 import sys
 
 from bootstrap.app import Application
@@ -53,6 +54,10 @@ TSDB_PASSWORD=
 
 # Queue Configuration
 QUEUE_CONNECTION=redis
+QUEUE_VISIBILITY_TIMEOUT=300
+QUEUE_REAPER_INTERVAL=30
+QUEUE_SHUTDOWN_GRACE=300
+QUEUE_HEARTBEAT_INTERVAL=10
 
 # Timezone Configuration
 TIMEZONE=Asia/Jakarta
@@ -293,6 +298,85 @@ def queue_work(
     )
 
 
+def _run_queue_admin(operation):
+    import asyncio
+
+    create_env_file()
+    app = create_app()
+
+    async def run_operation():
+        await app._initialize_connections()
+        try:
+            return await operation()
+        finally:
+            await app._cleanup_connections()
+
+    return asyncio.run(run_operation())
+
+
+def _print_json(value) -> None:
+    print(json.dumps(value, indent=2, default=str))
+
+
+def _cmd_queue_failed(queue='default', connection=None) -> None:
+    from routemq.queue.queue_manager import QueueManager
+
+    async def operation():
+        manager = QueueManager()
+        return await manager.list_failed_jobs(queue=queue, connection=connection)
+
+    _print_json(_run_queue_admin(operation))
+
+
+def _cmd_queue_failed_show(job_id, connection=None) -> None:
+    from routemq.queue.queue_manager import QueueManager
+
+    async def operation():
+        manager = QueueManager()
+        return await manager.get_failed_job(job_id, connection=connection)
+
+    _print_json(_run_queue_admin(operation))
+
+
+def _cmd_queue_retry(job_id=None, *, all_jobs=False, queue='default', connection=None) -> None:
+    from routemq.queue.queue_manager import QueueManager
+
+    async def operation():
+        manager = QueueManager()
+        if all_jobs:
+            failed_jobs = await manager.list_failed_jobs(queue=queue, connection=connection)
+            retried = 0
+            for failed_job in failed_jobs:
+                if await manager.retry_failed_job(failed_job['id'], connection=connection):
+                    retried += 1
+            return {'retried': retried}
+        if job_id is None:
+            return {'retried': 0}
+        return {'retried': 1 if await manager.retry_failed_job(job_id, connection=connection) else 0}
+
+    _print_json(_run_queue_admin(operation))
+
+
+def _cmd_queue_forget(job_id, connection=None) -> None:
+    from routemq.queue.queue_manager import QueueManager
+
+    async def operation():
+        manager = QueueManager()
+        return {'forgotten': await manager.forget_failed_job(job_id, connection=connection)}
+
+    _print_json(_run_queue_admin(operation))
+
+
+def _cmd_queue_flush(queue='default', connection=None) -> None:
+    from routemq.queue.queue_manager import QueueManager
+
+    async def operation():
+        manager = QueueManager()
+        return {'flushed': await manager.flush_failed_jobs(queue=queue, connection=connection)}
+
+    _print_json(_run_queue_admin(operation))
+
+
 def main():
     """Main entry point for the CLI."""
     parser = argparse.ArgumentParser(prog='routemq', description='RouteMQ - MQTT routing framework')
@@ -331,6 +415,28 @@ def main():
     qw_p.add_argument('--sleep', type=int, default=3, help='Seconds to sleep when no job is available (default: 3)')
     qw_p.add_argument('--max-tries', type=int, help='Maximum number of times to attempt a job')
     qw_p.add_argument('--timeout', type=int, default=60, help='Maximum seconds a job can run (default: 60)')
+
+    qf_p = sub.add_parser('queue-failed', help='List failed queue jobs')
+    qf_p.add_argument('--queue', type=str, default='default')
+    qf_p.add_argument('--connection', type=str)
+
+    qfs_p = sub.add_parser('queue-failed-show', help='Show a failed queue job')
+    qfs_p.add_argument('id')
+    qfs_p.add_argument('--connection', type=str)
+
+    qr_p = sub.add_parser('queue-retry', help='Retry failed queue jobs')
+    qr_p.add_argument('id', nargs='?')
+    qr_p.add_argument('--all', action='store_true', dest='all_jobs')
+    qr_p.add_argument('--queue', type=str, default='default')
+    qr_p.add_argument('--connection', type=str)
+
+    qfg_p = sub.add_parser('queue-forget', help='Forget a failed queue job')
+    qfg_p.add_argument('id')
+    qfg_p.add_argument('--connection', type=str)
+
+    qfl_p = sub.add_parser('queue-flush', help='Flush failed queue jobs')
+    qfl_p.add_argument('--queue', type=str, default='default')
+    qfl_p.add_argument('--connection', type=str)
 
     args = parser.parse_args()
 
@@ -379,6 +485,29 @@ def main():
             max_tries=args.max_tries,
             timeout=args.timeout,
         )
+        return
+
+    if effective_command == 'queue-failed':
+        _cmd_queue_failed(queue=args.queue, connection=args.connection)
+        return
+
+    if effective_command == 'queue-failed-show':
+        _cmd_queue_failed_show(args.id, connection=args.connection)
+        return
+
+    if effective_command == 'queue-retry':
+        if not args.all_jobs and args.id is None:
+            parser.error('queue-retry requires an id unless --all is used')
+        _cmd_queue_retry(args.id, all_jobs=args.all_jobs, queue=args.queue, connection=args.connection)
+        return
+
+    if effective_command == 'queue-forget':
+        _cmd_queue_forget(args.id, connection=args.connection)
+        return
+
+    if effective_command == 'queue-flush':
+        _cmd_queue_flush(queue=args.queue, connection=args.connection)
+        return
 
 
 if __name__ == '__main__':
