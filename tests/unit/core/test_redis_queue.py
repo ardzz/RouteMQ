@@ -1,6 +1,7 @@
 import json
 import logging
 import unittest
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -227,11 +228,142 @@ class RedisQueueFailedTests(_RedisQueueBase):
 
         client.rpush.assert_awaited_once()
 
+    async def test_list_get_retry_forget_and_flush_failed_jobs_in_redis(self) -> None:
+        failed = json.dumps({'id': 'failed:q:1', 'connection': 'redis', 'queue': 'q', 'payload': 'p', 'exception': 'boom'})
+        client = MagicMock()
+        client.lrange = AsyncMock(return_value=[failed])
+        client.lrem = AsyncMock(return_value=1)
+        client.rpush = AsyncMock()
+        client.delete = AsyncMock(return_value=1)
+        driver = self._make_driver(client=client)
+
+        with patch('routemq.queue.redis_queue.Model') as mock_model:
+            mock_model._is_enabled = False
+            self.assertEqual(await driver.list_failed_jobs('q'), [json.loads(failed)])
+            self.assertEqual(await driver.get_failed_job('failed:q:1'), json.loads(failed))
+            self.assertTrue(await driver.retry_failed_job('failed:q:1'))
+            self.assertTrue(await driver.forget_failed_job('failed:q:1'))
+            self.assertEqual(await driver.flush_failed_jobs('q'), 1)
+
+        client.rpush.assert_awaited_once()
+        self.assertEqual(client.rpush.await_args.args[0], driver._get_queue_key('q'))
+        self.assertEqual(json.loads(client.rpush.await_args.args[1])['payload'], 'p')
+        client.delete.assert_awaited_once_with('routemq:queue:failed:q')
+
     async def test_failed_logs_when_both_backends_disabled(self) -> None:
         driver = self._make_driver(enabled=False)
         with patch('routemq.queue.redis_queue.Model') as mock_model:
             mock_model._is_enabled = False
             await driver.failed('redis', 'q', 'p', 'exc')
+
+
+class RedisQueueVisibilityReaperTests(_RedisQueueBase):
+    async def test_reap_expired_reserved_job_requeues_when_attempts_remain(self) -> None:
+        reserved_job = json.dumps(
+            {
+                'id': 'q:1',
+                'payload': json.dumps({'max_tries': 3}),
+                'attempts': 1,
+                'reserved_at': (datetime.now(UTC) - timedelta(seconds=301)).isoformat(),
+            }
+        )
+        client = MagicMock()
+        client.lrange = AsyncMock(return_value=[reserved_job])
+        client.lrem = AsyncMock()
+        client.rpush = AsyncMock()
+        driver = self._make_driver(client=client)
+
+        reaped = await driver.reap_expired('q', visibility_timeout=300)
+
+        self.assertEqual(reaped, 1)
+        client.lrem.assert_awaited_once_with(driver._get_reserved_key('q'), 1, reserved_job)
+        client.rpush.assert_awaited_once()
+
+    async def test_reap_expired_reserved_job_moves_exhausted_to_failed(self) -> None:
+        reserved_job = json.dumps(
+            {
+                'id': 'q:1',
+                'payload': json.dumps({'max_tries': 1}),
+                'attempts': 1,
+                'reserved_at': (datetime.now(UTC) - timedelta(seconds=301)).isoformat(),
+            }
+        )
+        client = MagicMock()
+        client.lrange = AsyncMock(return_value=[reserved_job])
+        client.lrem = AsyncMock()
+        client.rpush = AsyncMock()
+        driver = self._make_driver(client=client)
+
+        with patch.object(driver, 'failed', new=AsyncMock()) as failed:
+            reaped = await driver.reap_expired('q', visibility_timeout=300)
+
+        self.assertEqual(reaped, 1)
+        failed.assert_awaited_once()
+        client.rpush.assert_not_called()
+
+    async def test_reap_ignores_unexpired_reserved_jobs(self) -> None:
+        reserved_job = json.dumps(
+            {
+                'id': 'q:1',
+                'payload': json.dumps({'max_tries': 3}),
+                'attempts': 1,
+                'reserved_at': datetime.now(UTC).isoformat(),
+            }
+        )
+        client = MagicMock()
+        client.lrange = AsyncMock(return_value=[reserved_job])
+        client.lrem = AsyncMock()
+        client.rpush = AsyncMock()
+        driver = self._make_driver(client=client)
+
+        reaped = await driver.reap_expired('q', visibility_timeout=300)
+
+        self.assertEqual(reaped, 0)
+        client.lrem.assert_not_called()
+        client.rpush.assert_not_called()
+
+    async def test_reap_returns_zero_when_disabled(self) -> None:
+        driver = self._make_driver(enabled=False)
+
+        self.assertEqual(await driver.reap_expired('q', visibility_timeout=300), 0)
+
+
+class RedisQueueHeartbeatTests(_RedisQueueBase):
+    async def test_heartbeat_refreshes_reserved_job_timestamp(self) -> None:
+        reserved = json.dumps({'id': 'q:1', 'payload': 'p', 'attempts': 1, 'reserved_at': 'old'})
+        client = MagicMock()
+        client.lrange = AsyncMock(return_value=[reserved])
+        client.lrem = AsyncMock()
+        client.rpush = AsyncMock()
+        driver = self._make_driver(client=client)
+
+        refreshed = await driver.heartbeat('q:1', 'q')
+
+        self.assertTrue(refreshed)
+        client.lrem.assert_awaited_once_with(driver._get_reserved_key('q'), 1, reserved)
+        pushed_payload = client.rpush.await_args.args[1]
+        self.assertIn('reserved_at', json.loads(pushed_payload))
+
+    async def test_write_worker_heartbeat_uses_hash_with_ttl(self) -> None:
+        client = MagicMock()
+        client.hset = AsyncMock()
+        client.expire = AsyncMock()
+        driver = self._make_driver(client=client)
+        heartbeat = {'worker_id': 'worker-1', 'queue': 'default', 'state': 'running'}
+
+        await driver.write_worker_heartbeat(heartbeat, ttl=30)
+
+        client.hset.assert_awaited_once()
+        client.expire.assert_awaited_once_with('routemq:queue:workers:worker-1', 30)
+
+    async def test_mark_worker_dead_sets_state_dead(self) -> None:
+        client = MagicMock()
+        client.hset = AsyncMock()
+        driver = self._make_driver(client=client)
+
+        await driver.mark_worker_dead('worker-1')
+
+        client.hset.assert_awaited_once_with('routemq:queue:workers:worker-1', mapping={'state': 'dead'})
 
 
 class RedisQueueSizeTests(_RedisQueueBase):
@@ -251,6 +383,47 @@ class RedisQueueSizeTests(_RedisQueueBase):
         client.llen = AsyncMock(side_effect=RuntimeError('boom'))
         driver = self._make_driver(client=client)
         self.assertEqual(await driver.size('q'), 0)
+
+
+class RedisQueueStatsTests(_RedisQueueBase):
+    async def test_stats_returns_queue_depths_and_oldest_ready_age(self) -> None:
+        old_ready = json.dumps(
+            {
+                'id': 'q:1',
+                'payload': 'p',
+                'attempts': 0,
+                'created_at': (datetime.now(UTC) - timedelta(seconds=20)).isoformat(),
+            }
+        )
+        client = MagicMock()
+        client.llen = AsyncMock(side_effect=[3, 2, 4])
+        client.zcard = AsyncMock(return_value=1)
+        client.lindex = AsyncMock(return_value=old_ready)
+        driver = self._make_driver(client=client)
+
+        stats = await driver.stats('q')
+
+        self.assertEqual(stats['queue'], 'q')
+        self.assertEqual(stats['ready'], 3)
+        self.assertEqual(stats['reserved'], 2)
+        self.assertEqual(stats['delayed'], 1)
+        self.assertEqual(stats['failed'], 4)
+        self.assertGreaterEqual(stats['oldest_ready_age_seconds'], 19.0)
+
+    async def test_stats_returns_empty_values_when_disabled(self) -> None:
+        driver = self._make_driver(enabled=False)
+
+        self.assertEqual(
+            await driver.stats('q'),
+            {
+                'queue': 'q',
+                'ready': 0,
+                'reserved': 0,
+                'delayed': 0,
+                'failed': 0,
+                'oldest_ready_age_seconds': 0.0,
+            },
+        )
 
 
 if __name__ == '__main__':
