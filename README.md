@@ -1,173 +1,225 @@
-<img alt="logo.png" height="200" src="logo.png" width="200"/>
+<p align="center">
+  <img alt="RouteMQ" src="logo.png" width="200" height="200">
+</p>
 
-# RouteMQ Framework
+<h1 align="center">RouteMQ</h1>
 
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ardzz/RouteMQ/badge)](https://scorecard.dev/viewer/?uri=github.com/ardzz/RouteMQ)
+<p align="center">
+  <em>Laravel-style MQTT routing for Python — controllers, middleware, jobs, and shared-subscription scaling, without the callback spaghetti.</em>
+</p>
 
-<!-- TODO(sprint-15-followup): replace <PROJECT_ID> after submitting at https://www.bestpractices.dev/en/projects/new
-[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/<PROJECT_ID>/badge)](https://www.bestpractices.dev/projects/<PROJECT_ID>)
--->
+<p align="center">
+  <a href="https://pypi.org/project/routemq/"><img alt="PyPI" src="https://img.shields.io/pypi/v/routemq.svg"></a>
+  <a href="https://pypi.org/project/routemq/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/routemq.svg"></a>
+  <a href="https://github.com/ardzz/RouteMQ/blob/master/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/ardzz/RouteMQ"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/ardzz/RouteMQ/badge"></a>
+  <img alt="Status: Beta" src="https://img.shields.io/badge/status-beta-orange.svg">
+</p>
 
-A flexible MQTT routing framework with middleware, dynamic routes, queue workers, Redis integration, and horizontal scaling — inspired by Laravel/Django web frameworks.
+> **Status: Beta.** Use RouteMQ in test/staging while we harden the v1 surface. The framework is fully tested (581 unit tests) and supply-chain hardened, but APIs may shift before 1.0.
+
+---
+
+**Documentation:** [docs/](./docs) · **Source:** [github.com/ardzz/RouteMQ](https://github.com/ardzz/RouteMQ) · **PyPI:** [routemq](https://pypi.org/project/routemq/)
+
+RouteMQ is a Python 3.12+ MQTT application framework that turns topics into async controller methods through middleware chains, with optional background jobs and shared-subscription workers.
+
+The key features are:
+
+- **Route topics like web routes.** Declare `devices/{id}/status` once; receive `id` as a typed handler argument.
+- **Controllers and middleware.** Keep handlers in `app/controllers`; layer auth, logging, rate limiting, and validation as reusable middleware.
+- **Async by default.** Use async Redis, MySQL (SQLAlchemy), ClickHouse, and job dispatch naturally inside handlers — RouteMQ bridges `paho-mqtt`'s sync callbacks for you.
+- **Shared-subscription scaling.** Flip `shared=True` on a high-volume route; RouteMQ spawns worker processes against `$share/<group>/<topic>` without you wiring multiple clients.
+- **Background jobs.** Laravel-style `Job` classes with retries, delays, timeouts, and Redis or MySQL queue backends.
+- **Built-in observability.** Optional `/health`, `/ready`, and `/metrics` HTTP endpoints, lifecycle counters, latency histograms, and OpenTelemetry-shaped spans — no mandatory vendor backend.
+- **Optional integrations.** Redis, MySQL, ClickHouse for time-series telemetry, and a Prometheus client adapter — all opt-in extras.
+- **Supply-chain hardened.** OpenSSF Scorecard, SLSA L3 provenance, signed CycloneDX SBOMs, Bandit, pip-audit, and Dependabot on every release.
 
 ## Quick Start
 
-### 1. Install
+Install with [uv](https://docs.astral.sh/uv/) (recommended) or pip:
 
 ```bash
-pip install routemq[cli]
+uv add "routemq[cli]"          # uv-managed project
+# or
+pip install "routemq[cli]"     # classic pip
 ```
 
-### 2. Scaffold a new project
+Create `app.py`:
 
-```bash
-routemq new my-app
-cd my-app
+```python
+from routemq.router import Router
+
+router = Router()
+
+
+async def device_status(device_id, payload, client):
+    print(f"device {device_id} reported {payload}")
+    return {"ok": True, "device_id": device_id}
+
+
+router.on("devices/{device_id}/status", device_status, qos=1)
 ```
 
-The scaffolder asks about optional features (MySQL, Redis, background queue, Docker). Use `--yes` to accept defaults non-interactively.
+Configure broker connection in `.env`:
 
-### 3. Run
+```dotenv
+MQTT_BROKER=test.mosquitto.org
+MQTT_PORT=1883
+```
+
+Run:
 
 ```bash
-# Edit .env with your MQTT broker details
 routemq run
 ```
 
-## Features
+Publish from anywhere — `mosquitto_pub -h test.mosquitto.org -t devices/42/status -m '{"temp": 21}'` — and `device_status(device_id="42", payload={"temp": 21}, ...)` fires.
 
-- **Dynamic Router Loading** - Automatically discover and load routes from multiple files
-- **Route-based MQTT topic handling** - Define routes for MQTT topics
-- **Middleware support** - Process messages through middleware chains
-- **Parameter extraction** - Extract variables from MQTT topics using Laravel-style syntax
-- **Background Task Queue** - Laravel-style queue system for async job processing
-- **Shared Subscriptions** - Horizontal scaling with worker processes
-- **Redis Integration** - Optional Redis support for distributed caching and rate limiting
-- **Advanced Rate Limiting** - Multiple rate limiting strategies with Redis backend
-- **Optional MySQL integration** - Use with or without a database
-- **Docker Support** - Production-ready Docker Compose setup with queue workers
-- **Environment-based configuration** - Configuration through .env files
+For a full project layout (controllers, middleware, models, jobs, routers, optional Docker), use the scaffolder:
 
-## Documentation
-
-**Documentation is available in the [docs](./docs) folder, optimized for GitBook integration.**
-
-See the [Installation Guide](./INSTALL.md) for detailed setup instructions.
-
-### Quick Links
-
-- **[Getting Started](./docs/getting-started/README.md)** - Installation, quick start, and basic setup
-- **[Architecture Overview](./docs/architecture.md)** - High-level runtime components and data flow
-- **[Configuration](./docs/configuration/README.md)** - Environment variables and setup options
-- **[Routing](./docs/routing/README.md)** - Route definition, parameters, and organization
-- **[Controllers](./docs/controllers/README.md)** - Creating and organizing business logic
-- **[Middleware](./docs/middleware/README.md)** - Request processing and middleware chains
-- **[Queue System](./docs/queue/README.md)** - Background task processing and job queues
-- **[Testing](./docs/testing/README.md)** - Unit and Docker-backed integration testing
-- **[Docker Deployment](./docs/docker-deployment.md)** - Production deployment with Docker
-- **[Redis Integration](./docs/redis/README.md)** - Caching, sessions, and distributed features
-- **[Rate Limiting](./docs/rate-limiting/README.md)** - Advanced rate limiting strategies
-- **[Examples](./docs/examples/README.md)** - Practical examples and use cases
-- **[API Reference](./docs/api-reference/README.md)** - Complete API documentation
-- **[Monitoring](./docs/monitoring/README.md)** - Health, readiness, and observability hooks
-- **[Release Conformance](./docs/release-conformance.md)** - SLSA, Scorecard, SBOM, and SemVer evidence
-- **[FAQ](./docs/faq.md)** - Frequently asked questions
-
-### Project Health
-
-- **[Security Policy](./SECURITY.md)** - Private vulnerability reporting and supported versions
-- **[Contributing Guide](./CONTRIBUTING.md)** - Issue reports, pull requests, tests, and coding standards
-- **[Code of Conduct](./CODE_OF_CONDUCT.md)** - Community expectations and enforcement
-- **[Changelog](./CHANGELOG.md)** - Release history
-- **[Issue Tracker](https://github.com/ardzz/RouteMQ/issues)** - Bug reports and feature requests
-
-## Project Structure
-
-Scaffolded projects follow this layout:
-
-```
-my-app/
-├── app/                    # Your application code
-│   ├── controllers/        # Route handlers
-│   ├── middleware/         # Custom middleware
-│   ├── models/             # Database models
-│   ├── jobs/               # Background jobs
-│   └── routers/            # Route definitions
-├── bootstrap/              # Application bootstrap
-├── docker-compose.yml      # Optional Docker setup
-├── pyproject.toml          # Project metadata and dependencies
-└── .env                    # Environment configuration
+```bash
+routemq new my-app
+cd my-app && routemq run
 ```
 
-## Docker Deployment
+## When should I use RouteMQ?
 
-RouteMQ can scaffold Docker support for Redis, MySQL, app runtime, and queue workers:
+| If you need... | Use |
+|---|---|
+| Low-level MQTT protocol control, custom session/QoS handling | [`paho-mqtt`](https://github.com/eclipse-paho/paho.mqtt.python) |
+| **A web-framework-style structure for an MQTT-first app** | **RouteMQ** |
+| Multi-broker streaming across Kafka, RabbitMQ, NATS, Redis, MQTT | [FastStream](https://github.com/ag2ai/faststream) |
+| General distributed task queues independent of a broker protocol | [Celery](https://github.com/celery/celery) |
+
+RouteMQ sits on top of `paho-mqtt` — you keep proven protocol behavior, and add structure, async, and scaling.
+
+## Routes, middleware, and scaling in one snippet
+
+The minimal example above scales up cleanly:
+
+```python
+from routemq.router import Router
+from app.middleware.rate_limit import RateLimit
+from app.controllers.device_controller import DeviceController
+
+router = Router()
+
+with router.group(prefix="devices", middleware=[RateLimit(60)]) as devices:
+    devices.on(
+        "{device_id}/status",
+        DeviceController.handle_status,
+        qos=1,
+        shared=True,
+        worker_count=3,
+    )
+```
+
+- The `{device_id}` token compiles to a regex with a named group and to a `+` wildcard for the MQTT subscription.
+- `shared=True` switches the subscription to `$share/<group>/devices/+/status` and spawns three worker processes.
+- `RateLimit(60)` runs as middleware before the handler — auth, logging, validation work the same way.
+
+## Background jobs
+
+Push slow work out of the MQTT path:
+
+```python
+from routemq.job import Job
+from routemq.queue.queue_manager import dispatch
+
+
+class SendAlertJob(Job):
+    max_tries = 3
+    queue = "alerts"
+
+    async def handle(self):
+        # send the alert
+        ...
+
+
+async def handler(device_id, payload, client):
+    if payload.get("status") == "critical":
+        await dispatch(SendAlertJob(device_id=device_id))
+    return {"ok": True}
+```
+
+Run a worker:
+
+```bash
+routemq queue-work --queue alerts
+```
+
+Queue backends: Redis (with `routemq[redis]`) or MySQL (`routemq` core, when `ENABLE_MYSQL=true`).
+
+## Observability
+
+RouteMQ ships health, readiness, and OpenMetrics endpoints, off by default. Set `METRICS_HTTP_ENABLED=true` to expose them:
+
+```bash
+curl http://localhost:8080/health     # liveness
+curl http://localhost:8080/ready      # MQTT readiness
+curl http://localhost:8080/metrics    # OpenMetrics / Prometheus text
+```
+
+Built-in metric families include `mqtt_messages_*`, `router_dispatch_*`, `queue_job_*`, `tsdb_write_*`, and latency histograms for each. Spans follow OpenTelemetry-shaped semantics (`db.system`, `db.operation`, `messaging.system`, `kind=client|consumer|producer|internal`).
+
+For details: [Metrics](./docs/monitoring/metrics.md) · [Health checks](./docs/monitoring/health-checks.md) · [Pool tuning evidence](./docs/monitoring/pool-tuning.md)
+
+## Optional extras
+
+```bash
+uv add "routemq[redis]"        # Redis queue + rate limiting backend
+uv add "routemq[clickhouse]"   # ClickHouse time-series telemetry
+uv add "routemq[prometheus]"   # multiprocess-safe Prometheus client adapter
+uv add "routemq[all]"          # everything above plus CLI
+
+# pip works too: pip install "routemq[redis]"
+```
+
+## Docker
+
+The scaffolder can drop a complete `docker-compose.yml` with Redis, MySQL, the app, and queue workers:
 
 ```bash
 routemq new my-app --with-docker --with-redis --with-mysql --with-queue
 cd my-app
-
-# Start services from the scaffolded project
 docker compose up -d
-
-# View logs
-docker compose logs -f
-
-# Scale workers
 docker compose up -d --scale queue-worker-default=5
 ```
 
-See [Docker Deployment Guide](./docs/docker-deployment.md) for detailed instructions.
+## Documentation
 
-## Background Task Queue
+- **[Getting Started](./docs/getting-started/README.md)** — installation, first route, environment
+- **[Architecture](./docs/architecture.md)** — message flow diagram and runtime components
+- **[Configuration](./docs/configuration/README.md)** — every environment variable, with defaults
+- **[Routing](./docs/routing/README.md)** · **[Controllers](./docs/controllers/README.md)** · **[Middleware](./docs/middleware/README.md)**
+- **[Queue System](./docs/queue/README.md)** — jobs, workers, drivers
+- **[Rate Limiting](./docs/rate-limiting/README.md)** — strategies and Redis backend
+- **[Redis](./docs/redis/README.md)** · **[Database](./docs/database/README.md)** · **[TSDB / ClickHouse](./docs/tsdb/README.md)**
+- **[Monitoring](./docs/monitoring/README.md)** — metrics, health, traces
+- **[Docker Deployment](./docs/docker-deployment.md)** · **[Testing](./docs/testing/README.md)**
+- **[Examples](./docs/examples/README.md)** · **[API Reference](./docs/api-reference/README.md)** · **[FAQ](./docs/faq.md)**
+- **[Release Conformance](./docs/release-conformance.md)** — SLSA, Scorecard, SBOM, SemVer
 
-Process time-consuming tasks asynchronously with the built-in queue system:
+## Project Health
 
-```python
-# Create a job
-from routemq.job import Job
+- **[Security Policy](./SECURITY.md)** — private vulnerability reporting and supported versions
+- **[Contributing](./CONTRIBUTING.md)** — issues, PRs, tests, coding standards
+- **[Code of Conduct](./CODE_OF_CONDUCT.md)**
+- **[Changelog](./CHANGELOG.md)**
+- **[Issue Tracker](https://github.com/ardzz/RouteMQ/issues)**
 
-class SendEmailJob(Job):
-    max_tries = 3
-    queue = "emails"
-
-    async def handle(self):
-        # Send email logic
-        pass
-
-# Dispatch the job
-from routemq.queue.queue_manager import dispatch
-
-job = SendEmailJob()
-job.to = "user@example.com"
-await dispatch(job)
-```
-
-Run a worker from your scaffolded app:
-
-```bash
-routemq queue-work --queue emails
-```
-
-See [Queue System Documentation](./docs/queue/README.md) for the complete guide.
-
-## Advanced: Fork the framework
-
-If you want to modify the framework internals directly (rather than depend on the published wheel), see [TEMPLATE.md](./TEMPLATE.md). This path is deprecated as the primary workflow; `pip install routemq[cli]` is recommended for application development.
-
-For direct framework development:
+## Hacking on the framework
 
 ```bash
 git clone https://github.com/ardzz/RouteMQ.git
 cd RouteMQ
 uv sync --all-extras --dev
-uv run python run_tests.py
+uv run python run_tests.py     # 581 tests, ~3 seconds
 ```
 
-## Contributing
-
-We welcome contributions! Please see our documentation for development setup and contribution guidelines.
+See [TEMPLATE.md](./TEMPLATE.md) if you want to fork the framework rather than depend on the published wheel.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](./LICENSE).
