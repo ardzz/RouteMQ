@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from routemq.metrics.registry import DEFAULT_HISTOGRAM_BUCKETS
 from routemq.settings import (
+    load_queue_reliability_settings,
     load_database_pool_settings,
     load_health_http_settings,
     load_metrics_http_settings,
@@ -257,6 +258,46 @@ class QueueRetrySettingsTests(unittest.TestCase):
         self.assertFalse(settings.backoff_enabled)
         self.assertEqual(settings.max_delay, 60.0)
         self.assertEqual(settings.jitter, 0.0)
+
+
+class QueueReliabilitySettingsTests(unittest.TestCase):
+    def test_load_queue_reliability_settings_defaults(self) -> None:
+        settings = load_queue_reliability_settings({})
+
+        self.assertEqual(settings.visibility_timeout, 300)
+        self.assertEqual(settings.reaper_interval, 30)
+        self.assertEqual(settings.shutdown_grace, 300)
+        self.assertEqual(settings.heartbeat_interval, 10)
+
+    def test_load_queue_reliability_settings_parses_values(self) -> None:
+        settings = load_queue_reliability_settings(
+            {
+                'QUEUE_VISIBILITY_TIMEOUT': '120',
+                'QUEUE_REAPER_INTERVAL': '15',
+                'QUEUE_SHUTDOWN_GRACE': '45',
+                'QUEUE_HEARTBEAT_INTERVAL': '5',
+            }
+        )
+
+        self.assertEqual(settings.visibility_timeout, 120)
+        self.assertEqual(settings.reaper_interval, 15)
+        self.assertEqual(settings.shutdown_grace, 45)
+        self.assertEqual(settings.heartbeat_interval, 5)
+
+    def test_load_queue_reliability_settings_falls_back_for_invalid_numbers(self) -> None:
+        settings = load_queue_reliability_settings(
+            {
+                'QUEUE_VISIBILITY_TIMEOUT': 'invalid',
+                'QUEUE_REAPER_INTERVAL': '-1',
+                'QUEUE_SHUTDOWN_GRACE': 'invalid',
+                'QUEUE_HEARTBEAT_INTERVAL': '-2',
+            }
+        )
+
+        self.assertEqual(settings.visibility_timeout, 300)
+        self.assertEqual(settings.reaper_interval, 30)
+        self.assertEqual(settings.shutdown_grace, 300)
+        self.assertEqual(settings.heartbeat_interval, 10)
 
 
 if __name__ == '__main__':
