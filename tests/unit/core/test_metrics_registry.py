@@ -1,7 +1,7 @@
 import threading
 import unittest
 
-from routemq.metrics import Counter, Histogram, MetricsRegistry
+from routemq.metrics import Counter, Gauge, Histogram, MetricsRegistry
 
 
 class CounterTests(unittest.TestCase):
@@ -42,6 +42,30 @@ class CounterTests(unittest.TestCase):
             thread.join()
         samples = list(counter.collect())
         self.assertEqual(samples[0].value, 8000.0)
+
+
+class GaugeTests(unittest.TestCase):
+    def test_set_replaces_value(self) -> None:
+        gauge = Gauge(name='depth', help='queue depth', label_names=('queue',))
+        gauge.set(3, labels={'queue': 'default'})
+        gauge.set(1, labels={'queue': 'default'})
+
+        samples = {sample.label_key: sample.value for sample in gauge.collect()}
+        self.assertEqual(samples[(('queue', 'default'),)], 1.0)
+
+    def test_inc_and_dec_adjust_value(self) -> None:
+        gauge = Gauge(name='workers', help='active workers')
+        gauge.inc(2)
+        gauge.dec(0.5)
+
+        sample = next(iter(gauge.collect()))
+        self.assertEqual(sample.name_suffix, '')
+        self.assertEqual(sample.value, 1.5)
+
+    def test_set_rejects_nan(self) -> None:
+        gauge = Gauge(name='depth', help='queue depth')
+        with self.assertRaises(ValueError):
+            gauge.set(float('nan'))
 
 
 class HistogramTests(unittest.TestCase):
@@ -117,9 +141,23 @@ class RegistryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             registry.histogram('latency', help='h', label_names=('route', 'status'))
 
+    def test_gauge_is_idempotent(self) -> None:
+        registry = MetricsRegistry()
+        first = registry.gauge('depth', help='h', label_names=('queue',))
+        second = registry.gauge('depth', help='h', label_names=('queue',))
+        self.assertIs(first, second)
+
+    def test_gauge_rejects_mismatched_labels(self) -> None:
+        registry = MetricsRegistry()
+        registry.gauge('depth', help='h', label_names=('queue',))
+        with self.assertRaises(ValueError):
+            registry.gauge('depth', help='h', label_names=('queue', 'status'))
+
     def test_metric_name_is_unique_across_types(self) -> None:
         registry = MetricsRegistry()
         registry.counter('shared', help='h')
+        with self.assertRaises(ValueError):
+            registry.gauge('shared', help='h')
         with self.assertRaises(ValueError):
             registry.histogram('shared', help='h')
 
@@ -129,12 +167,19 @@ class RegistryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             registry.counter('shared', help='h')
 
-    def test_collect_yields_counters_then_histograms(self) -> None:
+    def test_histogram_rejects_name_already_registered_as_gauge(self) -> None:
+        registry = MetricsRegistry()
+        registry.gauge('shared', help='h')
+        with self.assertRaises(ValueError):
+            registry.histogram('shared', help='h')
+
+    def test_collect_yields_counters_then_gauges_then_histograms(self) -> None:
         registry = MetricsRegistry()
         registry.counter('alpha', help='h').inc()
-        registry.histogram('beta', help='h').observe(0.1)
+        registry.gauge('beta', help='h').set(1)
+        registry.histogram('gamma', help='h').observe(0.1)
         names = [entry[0] for entry in registry.collect()]
-        self.assertEqual(names, ['alpha', 'beta'])
+        self.assertEqual(names, ['alpha', 'beta', 'gamma'])
 
 
 if __name__ == '__main__':

@@ -68,6 +68,16 @@ class RenderPrometheusTests(unittest.TestCase):
         self.assertIn('routemq_test_duration_seconds_count 2\n', output)
         self.assertIn('routemq_test_duration_seconds_sum 1.3\n', output)
 
+    def test_gauge_emits_help_type_and_value(self) -> None:
+        registry = MetricsRegistry()
+        gauge = registry.gauge('routemq_queue_ready_jobs', help='ready jobs', label_names=('queue',))
+        gauge.set(7, labels={'queue': 'default'})
+
+        output = render(registry).decode('utf-8')
+        self.assertIn('# HELP routemq_queue_ready_jobs ready jobs\n', output)
+        self.assertIn('# TYPE routemq_queue_ready_jobs gauge\n', output)
+        self.assertIn('routemq_queue_ready_jobs{queue="default"} 7\n', output)
+
 
 class RenderOpenMetricsTests(unittest.TestCase):
     def test_openmetrics_adds_eof_trailer(self) -> None:
@@ -93,6 +103,8 @@ class RenderStaticLabelsTests(unittest.TestCase):
         registry = MetricsRegistry()
         counter = registry.counter('routemq_test_counter', help='h', label_names=('queue',))
         counter.inc(labels={'queue': 'default'})
+        gauge = registry.gauge('routemq_test_gauge', help='h', label_names=('queue',))
+        gauge.set(2, labels={'queue': 'default'})
         histogram = registry.histogram('routemq_test_duration_seconds', help='h')
         histogram.observe(0.1)
         output = render(
@@ -100,6 +112,7 @@ class RenderStaticLabelsTests(unittest.TestCase):
             static_labels={'service': 'routemq-app', 'env': 'prod'},
         ).decode('utf-8')
         self.assertIn('routemq_test_counter_total{service="routemq-app",env="prod",queue="default"} 1', output)
+        self.assertIn('routemq_test_gauge{service="routemq-app",env="prod",queue="default"} 2', output)
         self.assertIn('routemq_test_duration_seconds_bucket{service="routemq-app",env="prod",le="0.1"}', output)
         self.assertIn('routemq_test_duration_seconds_count{service="routemq-app",env="prod"} 1', output)
 
