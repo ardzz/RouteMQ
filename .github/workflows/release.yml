@@ -22,6 +22,8 @@ jobs:
       pull-requests: write
     outputs:
       hashes: ${{ steps.hash.outputs.hashes }}
+      bumped: ${{ steps.bump_detect.outputs.bumped }}
+      version: ${{ steps.bump_detect.outputs.version }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -61,6 +63,11 @@ jobs:
           path: |
             sbom.json
             sbom.json.sigstore.json
+      - name: Read version before bump
+        id: pre_version
+        run: |
+          PRE=$(grep -E '^version *=' pyproject.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "version=${PRE}" >> "$GITHUB_OUTPUT"
       - name: Commitizen release (no push)
         uses: commitizen-tools/commitizen-action@338bbd841b75aaee6bf5340e1fa12f6ab58ff9ff # 0.27.1
         with:
@@ -70,9 +77,11 @@ jobs:
       - name: Detect Commitizen bump
         id: bump_detect
         run: |
+          PRE="${{ steps.pre_version.outputs.version }}"
+          POST=$(grep -E '^version *=' pyproject.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
           NEW_COMMITS=$(git rev-list --count origin/master..HEAD)
-          if [ "$NEW_COMMITS" -gt 0 ] && [ -n "$REVISION" ]; then
-            VERSION="v${REVISION}"
+          if [ "$NEW_COMMITS" -gt 0 ] && [ "$PRE" != "$POST" ]; then
+            VERSION="v${POST}"
             BRANCH="release/auto-bump-${VERSION}"
             echo "bumped=true" >> "$GITHUB_OUTPUT"
             echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
@@ -127,3 +136,14 @@ jobs:
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
     with:
       base64-subjects: "${{ needs.release.outputs.hashes }}"
+
+  publish-release:
+    needs: release
+    if: needs.release.outputs.bumped == 'true'
+    permissions:
+      contents: write
+      id-token: write
+    uses: ./.github/workflows/github-release.yml
+    with:
+      tag: ${{ needs.release.outputs.version }}
+    secrets: inherit
