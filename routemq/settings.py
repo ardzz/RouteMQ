@@ -134,6 +134,14 @@ class QueueRetrySettings:
     jitter: float = 0.0
 
 
+@dataclass(frozen=True, slots=True)
+class QueueReliabilitySettings:
+    visibility_timeout: int = 300
+    reaper_interval: int = 30
+    shutdown_grace: int = 300
+    heartbeat_interval: int = 10
+
+
 def _parse_int_env(env: Mapping[str, str], name: str, default: int, *, fallback_on_invalid: bool = True) -> int:
     value = env_int(env, name, default, fallback_on_invalid=fallback_on_invalid)
     return default if value < 0 else value
@@ -248,4 +256,15 @@ def load_queue_retry_settings(env: Mapping[str, str] | None = None) -> QueueRetr
         backoff_enabled=env_bool(values, 'QUEUE_RETRY_BACKOFF_ENABLED', False),
         max_delay=env_float(values, 'QUEUE_RETRY_MAX_DELAY', 60.0, fallback_on_invalid=True),
         jitter=env_float(values, 'QUEUE_RETRY_JITTER', 0.0, fallback_on_invalid=True),
+    )
+
+
+def load_queue_reliability_settings(env: Mapping[str, str] | None = None) -> QueueReliabilitySettings:
+    """Load queue reliability settings from an environment mapping."""
+    values = _environment(env)
+    return QueueReliabilitySettings(
+        visibility_timeout=_parse_int_env(values, 'QUEUE_VISIBILITY_TIMEOUT', 300),
+        reaper_interval=_parse_int_env(values, 'QUEUE_REAPER_INTERVAL', 30),
+        shutdown_grace=_parse_int_env(values, 'QUEUE_SHUTDOWN_GRACE', 300),
+        heartbeat_interval=_parse_int_env(values, 'QUEUE_HEARTBEAT_INTERVAL', 10),
     )
