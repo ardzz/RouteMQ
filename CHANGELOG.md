@@ -1,3 +1,9 @@
+## v0.19.2 (2026-05-29)
+
+### Fix
+
+- fail-fast logging audit for routemq and bootstrap (Sprint 06F) (#66)
+
 ## v0.19.1 (2026-05-28)
 
 ### Fix
