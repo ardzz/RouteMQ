@@ -310,6 +310,33 @@ class QueueManager:
         driver = self.get_driver(connection)
         return await driver.size(queue)
 
+    async def stats(self, queue: str = 'default', connection: Optional[str] = None) -> dict:
+        """Get queue-depth statistics and publish them to observability hooks."""
+        driver = self.get_driver(connection)
+        stats = await driver.stats(queue)
+        _lifecycle('queue.stats', stats)
+        return stats
+
+    async def list_failed_jobs(self, queue: str | None = None, connection: Optional[str] = None) -> list[dict]:
+        driver = self.get_driver(connection)
+        return await driver.list_failed_jobs(queue)
+
+    async def get_failed_job(self, job_id: int | str, connection: Optional[str] = None) -> dict | None:
+        driver = self.get_driver(connection)
+        return await driver.get_failed_job(job_id)
+
+    async def retry_failed_job(self, job_id: int | str, connection: Optional[str] = None) -> bool:
+        driver = self.get_driver(connection)
+        return await driver.retry_failed_job(job_id)
+
+    async def forget_failed_job(self, job_id: int | str, connection: Optional[str] = None) -> bool:
+        driver = self.get_driver(connection)
+        return await driver.forget_failed_job(job_id)
+
+    async def flush_failed_jobs(self, queue: str | None = None, connection: Optional[str] = None) -> int:
+        driver = self.get_driver(connection)
+        return await driver.flush_failed_jobs(queue)
+
 
 # Global queue manager instance
 queue = QueueManager()
