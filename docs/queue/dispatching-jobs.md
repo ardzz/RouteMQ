@@ -1,13 +1,13 @@
 # Dispatching Jobs
 
-Once you've created a job, you need to dispatch it to the queue for processing. RouteMQ provides several methods for dispatching jobs.
+Once you have created and registered a job, dispatch it to a queue for processing. RouteMQ provides a helper for the common case and a queue manager for delayed, bulk, or connection-specific dispatch.
 
 ## Using the dispatch() Helper
 
 The simplest way to dispatch a job:
 
 ```python
-from routemq.queue.queue_manager import dispatch
+from routemq.queue import dispatch
 from app.jobs.send_notification_job import SendNotificationJob
 
 # In your MQTT handler or anywhere in your code
@@ -305,13 +305,13 @@ Then run workers with appropriate settings:
 
 ```bash
 # High priority - check every second
-routemq --queue-work --queue high-priority --sleep 1
+routemq queue-work --queue high-priority --sleep 1
 
 # Normal priority - check every 3 seconds
-routemq --queue-work --queue default --sleep 3
+routemq queue-work --queue default --sleep 3
 
 # Low priority - check every 10 seconds
-routemq --queue-work --queue low-priority --sleep 10
+routemq queue-work --queue low-priority --sleep 10
 ```
 
 ### Pattern 4: Rate Limiting

@@ -33,7 +33,7 @@ router.on("hello/{name}", MyController.handle_hello, qos=1)
 Start the application:
 
 ```bash
-uv run routemq --run
+uv run routemq run
 ```
 
 Publish a test message to your route using an MQTT client:

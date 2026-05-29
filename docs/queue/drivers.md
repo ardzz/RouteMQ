@@ -33,11 +33,18 @@ Fast, in-memory queue backed by Redis.
 - ✅ **Delayed jobs** - Efficient sorted sets for scheduling
 - ✅ **Scalable** - Easy to cluster Redis for more capacity
 
-###Requirements
+### Requirements
 
 - Redis server running (v5.0+)
+- `routemq[redis]` installed
 - `ENABLE_REDIS=true` in `.env`
 - `QUEUE_CONNECTION=redis` in `.env`
+
+```bash
+uv add "routemq[redis]"
+# or
+pip install "routemq[redis]"
+```
 
 ### Configuration
 
@@ -479,8 +486,8 @@ mysql> SHOW OPEN TABLES WHERE In_use > 0;
 
 3. **Check worker connection:**
    ```bash
-   routemq --queue-work --connection redis
-   routemq --queue-work --connection database
+routemq queue-work --connection redis
+routemq queue-work --connection database
    ```
 
 ## Best Practices

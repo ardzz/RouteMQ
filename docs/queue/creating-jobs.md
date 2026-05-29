@@ -1,6 +1,6 @@
 # Creating Jobs
 
-Jobs are classes that extend the `Job` base class. Each job must implement the `handle()` method which contains the logic to be executed in the background.
+Jobs extend the `Job` base class and implement `handle()`. Register each concrete job with `@Job.register` so workers can deserialize it safely.
 
 ## Basic Job Structure
 
@@ -12,6 +12,7 @@ from routemq.job import Job
 logger = logging.getLogger("RouteMQ.Jobs.SendNotificationJob")
 
 
+@Job.register
 class SendNotificationJob(Job):
     """Send a notification to a user."""
 
@@ -44,6 +45,25 @@ class SendNotificationJob(Job):
         # Handle failure (e.g., log to monitoring service, alert admin)
 ```
 
+## Job registration and constructors
+
+Workers restore jobs with `Job.unserialize()`. By default, RouteMQ refuses to load a job class that was not registered with `@Job.register`.
+
+Keep constructors compatible with no arguments. Put job data on public instance attributes so RouteMQ can serialize and restore it:
+
+```python
+@Job.register
+class StoreTelemetryJob(Job):
+    queue = "telemetry"
+
+    def __init__(self):
+        super().__init__()
+        self.device_id = None
+        self.payload = {}
+```
+
+Then set those attributes before dispatching the job.
+
 ## Job Properties
 
 Configure your job's behavior with these class attributes:
@@ -60,6 +80,7 @@ Configure your job's behavior with these class attributes:
 All public instance attributes are automatically serialized and restored when the job is processed:
 
 ```python
+@Job.register
 class ProcessOrderJob(Job):
     def __init__(self):
         super().__init__()
@@ -140,6 +161,7 @@ async def failed(self, exception: Exception) -> None:
 import asyncio
 from routemq.job import Job
 
+@Job.register
 class SendEmailJob(Job):
     max_tries = 3
     timeout = 30
@@ -170,6 +192,7 @@ class SendEmailJob(Job):
 ```python
 from routemq.job import Job
 
+@Job.register
 class ProcessDataJob(Job):
     max_tries = 5
     timeout = 120  # Longer timeout for data processing
@@ -205,6 +228,7 @@ class ProcessDataJob(Job):
 from datetime import datetime
 from routemq.job import Job
 
+@Job.register
 class GenerateReportJob(Job):
     max_tries = 2
     timeout = 300  # 5 minutes for report generation

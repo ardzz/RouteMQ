@@ -4,6 +4,14 @@ RouteMQ includes optional Redis integration for distributed caching, session man
 
 ## Quick Setup
 
+Install the Redis extra first:
+
+```bash
+uv add "routemq[redis]"
+# or
+pip install "routemq[redis]"
+```
+
 Enable Redis in your `.env` file:
 
 ```env
