@@ -96,7 +96,34 @@ WantedBy=multi-user.target
 
 ## Shutdown
 
-Workers handle `SIGTERM` and `SIGINT`. In containers and process managers, give the worker enough time to finish the current job before killing the process.
+Workers handle `SIGTERM` and `SIGINT`. When a shutdown signal arrives, the worker stops reserving new
+jobs, marks itself as stopping, and lets the active job finish for up to `QUEUE_SHUTDOWN_GRACE`
+seconds. If the grace window expires, the worker releases the active job back to the queue so another
+worker can retry it instead of losing the reservation.
+
+In containers and process managers, set the platform stop timeout longer than `QUEUE_SHUTDOWN_GRACE`.
+For example, if `QUEUE_SHUTDOWN_GRACE=300`, configure Docker, systemd, or Supervisor to wait at least
+five minutes before sending a hard kill.
+
+## Visibility timeout and heartbeats
+
+Redis and database queue drivers reserve jobs before calling `handle()`. The worker refreshes the
+active reservation every `QUEUE_HEARTBEAT_INTERVAL` seconds. If a worker crashes and the reservation is
+not refreshed for `QUEUE_VISIBILITY_TIMEOUT` seconds, the stale-reservation reaper runs every
+`QUEUE_REAPER_INTERVAL` seconds and either:
+
+- returns the job to the ready queue when attempts remain; or
+- moves it to failed-job storage when the job has exhausted `max_tries`.
+
+Redis also stores worker heartbeat metadata under `routemq:queue:workers:{worker_id}` with a TTL. The
+database driver refreshes active job reservations, but worker heartbeat metadata is Redis-only.
+
+```env
+QUEUE_VISIBILITY_TIMEOUT=300
+QUEUE_REAPER_INTERVAL=30
+QUEUE_SHUTDOWN_GRACE=300
+QUEUE_HEARTBEAT_INTERVAL=10
+```
 
 ## Common checks
 

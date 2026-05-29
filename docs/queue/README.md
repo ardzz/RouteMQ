@@ -73,7 +73,8 @@ await dispatch(job)
 - Redis or database queue drivers
 - Custom drivers registered in code or with Python package entry points
 - Retries, delays, multiple queues, and failed-job storage
-- Workers that handle SIGTERM/SIGINT cleanly
+- Visibility timeouts, reservation reaping, heartbeats, and graceful SIGTERM/SIGINT drain
+- Failed-job CLI commands for listing, retrying, forgetting, and flushing failures
 
 ## Documentation
 
