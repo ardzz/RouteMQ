@@ -1,3 +1,9 @@
+## v0.22.1 (2026-05-29)
+
+### Fix
+
+- **tsdb**: return None from get_client when driver is not connected
+
 ## v0.22.0 (2026-05-29)
 
 ### Feat
