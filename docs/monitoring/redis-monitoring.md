@@ -26,5 +26,19 @@ Operational checks should watch:
 
 ## Reliability note
 
-RouteMQ currently records reserved jobs, but automatic lease reaping for worker crashes is future work.
-If workers are interrupted, inspect reserved and failed job keys before restarting high-volume queues.
+RouteMQ records reserved jobs and refreshes active reservations with worker heartbeats. If a worker
+crashes and stops refreshing a reservation, the worker reaper returns the job to the ready queue after
+`QUEUE_VISIBILITY_TIMEOUT` seconds, or moves it to failed-job storage when attempts are exhausted. The
+reaper runs every `QUEUE_REAPER_INTERVAL` seconds from active queue workers.
+
+Redis worker heartbeat metadata is stored as `routemq:queue:workers:{worker_id}` with a TTL of roughly
+three heartbeat intervals. Inspect these keys when diagnosing stuck workers:
+
+```bash
+redis-cli keys 'routemq:queue:workers:*'
+redis-cli hgetall routemq:queue:workers:<worker_id>
+redis-cli llen routemq:queue:default
+redis-cli llen routemq:queue:default:reserved
+redis-cli zcard routemq:queue:default:delayed
+redis-cli llen routemq:queue:failed:default
+```

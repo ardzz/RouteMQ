@@ -72,7 +72,7 @@
   * [Chat Application](examples/chat-app.md)
   * [IoT Device Management](examples/iot-devices.md)
   * [Real-time Notifications](examples/notifications.md)
-  * [Sensor Data](examples/sensor-data.md)
+  * [Sensor Data Collection](examples/sensor-data.md)
 * [API Reference](api-reference/README.md)
   * [Controller API](api-reference/controller-api.md)
   * [Health and Observability API](api-reference/health-observability-api.md)
