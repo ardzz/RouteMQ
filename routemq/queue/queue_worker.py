@@ -1,14 +1,19 @@
 import asyncio
+import contextlib
+import inspect
 import logging
 import os
 import signal
+import socket
 import traceback
+import uuid
+from datetime import UTC, datetime
 from typing import Optional
 
 from routemq.job import Job
 from routemq.queue.queue_driver import QueueDriver
 from routemq.queue.queue_manager import QueueManager
-from routemq.settings import load_queue_retry_settings
+from routemq.settings import load_queue_reliability_settings, load_queue_retry_settings
 from ..observability import lifecycle, reset_context, set_context, start_span
 
 try:
@@ -20,6 +25,10 @@ except ImportError:
 
 
 logger = logging.getLogger('RouteMQ.QueueWorker')
+
+
+class ShutdownGraceExpired(RuntimeError):
+    """Raised when an active job outlives the worker shutdown grace window."""
 
 
 class QueueWorker:
@@ -58,14 +67,26 @@ class QueueWorker:
         self.max_tries = max_tries
         self.timeout = timeout
         retry_settings = load_queue_retry_settings()
+        reliability_settings = load_queue_reliability_settings()
         self.retry_backoff_enabled = retry_settings.backoff_enabled
         self.retry_backoff_max_delay = retry_settings.max_delay
         self.retry_backoff_jitter = retry_settings.jitter
+        self.visibility_timeout = reliability_settings.visibility_timeout
+        self.reaper_interval = reliability_settings.reaper_interval
+        self.shutdown_grace = reliability_settings.shutdown_grace
+        self.heartbeat_interval = reliability_settings.heartbeat_interval
 
         self.should_quit = False
         self.paused = False
         self.jobs_processed = 0
+        self.jobs_failed = 0
         self.start_time = None
+        self.started_at = datetime.now(UTC)
+        self.worker_id = f'{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:8]}'
+        self.state = 'running'
+        self.current_job_id: str | int | None = None
+        self._shutdown_event = asyncio.Event()
+        self._last_reaper_run = 0.0
 
         self.queue_manager = QueueManager()
         self.driver: Optional[QueueDriver] = None
@@ -78,6 +99,8 @@ class QueueWorker:
         """Handle shutdown signals."""
         logger.info(f'Received signal {signum}, initiating graceful shutdown...')
         self.should_quit = True
+        self.state = 'stopping'
+        self._shutdown_event.set()
         try:
             mark_worker_dead(os.getpid())
         except Exception:
@@ -92,6 +115,8 @@ class QueueWorker:
 
         self.driver = self.queue_manager.get_driver(self.connection)
         self.start_time = asyncio.get_running_loop().time()
+        self.state = 'running'
+        await self._write_worker_heartbeat()
 
         while not self.should_quit:
             # Check if we've reached max jobs or max time
@@ -101,11 +126,12 @@ class QueueWorker:
 
             # Check if paused
             if self.paused:
-                await asyncio.sleep(self.sleep)
+                await self._interruptible_sleep(self.sleep)
                 continue
 
             # Try to get a job from the queue
             try:
+                await self._run_reaper_if_due()
                 job_data = await self.driver.pop(self.queue_name)
 
                 if job_data:
@@ -114,7 +140,7 @@ class QueueWorker:
                 else:
                     # No jobs available, sleep
                     logger.debug(f'No jobs available, sleeping for {self.sleep}s')
-                    await asyncio.sleep(self.sleep)
+                    await self._interruptible_sleep(self.sleep)
 
             except Exception as e:
                 logger.error(
@@ -122,8 +148,10 @@ class QueueWorker:
                     exc_info=True,
                     extra={'queue': self.queue_name, 'error': e.__class__.__name__},
                 )
-                await asyncio.sleep(self.sleep)
+                await self._interruptible_sleep(self.sleep)
 
+        self.state = 'dead'
+        await self._mark_worker_dead()
         logger.info(f'Queue worker stopped. Processed {self.jobs_processed} jobs.')
 
     async def _process_job(self, job_data: dict) -> None:
@@ -144,6 +172,8 @@ class QueueWorker:
 
         token = None
         job: Job | None = None
+        heartbeat_task: asyncio.Task[None] | None = None
+        self.current_job_id = job_id
         try:
             # Unserialize the job
             job = Job.unserialize(payload)
@@ -176,7 +206,8 @@ class QueueWorker:
                 # Execute the job with timeout
                 try:
                     lifecycle('queue.job.started', attributes)
-                    await asyncio.wait_for(job.handle(), timeout=job.timeout or self.timeout)
+                    heartbeat_task = asyncio.create_task(self._heartbeat_active_job(job_id))
+                    await asyncio.wait_for(self._run_job_with_shutdown_grace(job), timeout=job.timeout or self.timeout)
 
                     # Job succeeded, delete from queue
                     await driver.delete(job_id, self.queue_name)
@@ -269,10 +300,100 @@ class QueueWorker:
                     },
                 )
                 await self._fail_job(job, e)
+                self.jobs_failed += 1
                 await driver.delete(job_id, self.queue_name)
         finally:
+            if heartbeat_task is not None:
+                heartbeat_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await heartbeat_task
+            self.current_job_id = None
+            if self.state == 'draining' and self.should_quit:
+                self.state = 'stopping'
             if token is not None:
                 reset_context(token)
+
+    async def _run_job_with_shutdown_grace(self, job: Job) -> None:
+        handle_task = asyncio.create_task(job.handle())
+        shutdown_task = asyncio.create_task(self._shutdown_event.wait())
+        try:
+            done, _pending = await asyncio.wait({handle_task, shutdown_task}, return_when=asyncio.FIRST_COMPLETED)
+            if handle_task in done:
+                await handle_task
+                return
+
+            self.state = 'draining'
+            try:
+                await asyncio.wait_for(asyncio.shield(handle_task), timeout=self.shutdown_grace)
+            except asyncio.TimeoutError as exc:
+                handle_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await handle_task
+                raise ShutdownGraceExpired(f'Job exceeded shutdown grace of {self.shutdown_grace}s') from exc
+        finally:
+            shutdown_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await shutdown_task
+
+    async def _heartbeat_active_job(self, job_id: str | int) -> None:
+        while self.current_job_id == job_id:
+            await self._call_driver_optional('heartbeat', job_id, self.queue_name)
+            await self._write_worker_heartbeat()
+            await asyncio.sleep(self.heartbeat_interval)
+
+    async def _write_worker_heartbeat(self) -> None:
+        heartbeat = {
+            'worker_id': self.worker_id,
+            'queue': self.queue_name,
+            'pid': os.getpid(),
+            'hostname': socket.gethostname(),
+            'state': self.state,
+            'started_at': self.started_at.isoformat(),
+            'last_seen_at': datetime.now(UTC).isoformat(),
+            'current_job_id': '' if self.current_job_id is None else str(self.current_job_id),
+            'processed_count': self.jobs_processed,
+            'failed_count': self.jobs_failed,
+        }
+        await self._call_driver_optional('write_worker_heartbeat', heartbeat, self.heartbeat_interval * 3)
+
+    async def _mark_worker_dead(self) -> None:
+        await self._call_driver_optional('mark_worker_dead', self.worker_id)
+
+    async def _run_reaper_if_due(self) -> None:
+        if self.reaper_interval <= 0:
+            return
+        now = asyncio.get_running_loop().time()
+        if now - self._last_reaper_run < self.reaper_interval:
+            return
+        self._last_reaper_run = now
+        await self._call_driver_optional('reap_expired', self.queue_name, self.visibility_timeout)
+        await self._publish_queue_stats()
+
+    async def _publish_queue_stats(self) -> None:
+        stats = await self._call_driver_optional('stats', self.queue_name)
+        if isinstance(stats, dict):
+            lifecycle('queue.stats', {**stats, 'queue': stats.get('queue') or self.queue_name})
+
+    async def _call_driver_optional(self, method_name: str, *args):
+        driver = self.driver
+        if driver is None:
+            return None
+        method = getattr(driver, method_name, None)
+        if method is None:
+            return None
+        result = method(*args)
+        if inspect.isawaitable(result):
+            return await result
+        return result
+
+    async def _interruptible_sleep(self, seconds: float) -> None:
+        if seconds <= 0:
+            await asyncio.sleep(0)
+            return
+        try:
+            await asyncio.wait_for(self._shutdown_event.wait(), timeout=seconds)
+        except asyncio.TimeoutError:
+            return
 
     async def _fail_job(self, job: Job, exception: Exception) -> None:
         """
@@ -344,4 +465,6 @@ class QueueWorker:
     def stop(self) -> None:
         """Stop the worker gracefully."""
         self.should_quit = True
+        self.state = 'stopping'
+        self._shutdown_event.set()
         logger.info('Worker stop requested')
