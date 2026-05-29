@@ -1,3 +1,18 @@
+## v0.23.0 (2026-05-29)
+
+### Feat
+
+- **metrics**: publish queue stats gauges
+- **metrics**: add gauge registry support
+- **cli**: add failed job management commands
+- **queue**: drain workers with heartbeat support
+- **queue**: harden database queue reliability
+- **queue**: harden redis queue reliability
+- **queue**: add driver admin and stats hooks
+- **queue**: register bundled example jobs
+- **queue**: discover registered job classes at boot
+- **queue**: add reliability environment settings
+
 ## v0.22.2 (2026-05-29)
 
 ### Fix
