@@ -1,3 +1,11 @@
+## v0.20.0 (2026-05-29)
+
+### Feat
+
+- **bootstrap**: wire DatabasePoolSettings into Model.configure
+- **model**: accept pool kwargs in Model.configure
+- **config**: add DatabasePoolSettings parser
+
 ## v0.19.2 (2026-05-29)
 
 ### Fix
