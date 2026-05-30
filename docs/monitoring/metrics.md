@@ -83,17 +83,27 @@ Built-in metrics:
 | `routemq_queue_delayed_jobs` | gauge | `queue` | queue stats snapshot |
 | `routemq_queue_failed_jobs` | gauge | `queue` | queue stats snapshot |
 | `routemq_queue_oldest_ready_age_seconds` | gauge | `queue` | queue stats snapshot |
-| `routemq_tsdb_write_batches_total` | counter | `measurement` | batched TSDB inserts completed |
-| `routemq_tsdb_write_errors_total` | counter | `measurement`, `error` | TSDB batches dropped after retries |
-| `routemq_tsdb_flush_duration_seconds` | histogram | `measurement` | span duration from `tsdb.write.flush` |
+| `routemq_telemetry_queue_depth` | gauge | (none) | `telemetry.queue.depth` |
+| `routemq_telemetry_points_accepted_total` | counter | (none) | `telemetry.points.accepted` |
+| `routemq_telemetry_points_flushed_total` | counter | (none) | `telemetry.points.flushed` |
+| `routemq_telemetry_points_dropped_total` | counter | `strategy` | `telemetry.points.dropped` |
+| `routemq_telemetry_write_batches_total` | counter | (none) | `telemetry.write.batches` |
+| `routemq_telemetry_write_errors_total` | counter | (none) | `telemetry.write.errors` |
+| `routemq_telemetry_flush_duration_seconds` | histogram | (none) | span duration from `telemetry.flush` |
+| `routemq_tsdb_write_batches_total` | counter | `measurement` | legacy `tsdb.write.batches` lifecycle |
+| `routemq_tsdb_write_errors_total` | counter | `measurement`, `error` | legacy `tsdb.write.errors` lifecycle |
+| `routemq_tsdb_flush_duration_seconds` | histogram | `measurement` | span duration from legacy `tsdb.write.flush` |
 
 Queue depth gauges are updated when a worker publishes queue statistics during its stale-reservation
 reaper pass, or when application code calls `await QueueManager().stats(queue="default")`. The stdlib
 registry keeps these gauges in the process that emits the lifecycle event; use `routemq[prometheus]`
 plus `PROMETHEUS_MULTIPROC_DIR` when you need metrics merged across queue-worker processes.
 
-The `tsdb.write.flush` span also carries `tsdb.buffer.depth` as a low-cardinality attribute
-(the backpressure signal). A continuously-scrapable TSDB buffer-depth gauge is deferred.
+Telemetry runtime metrics come from `TelemetryManager.write()`, `flush()`, and the background flush loop.
+`telemetry.points.accepted`, `telemetry.points.dropped`, `telemetry.points.flushed`, `telemetry.write.batches`,
+`telemetry.write.errors`, and `telemetry.queue.depth` are backend-neutral lifecycle events. The
+`telemetry.flush` span records adapter write latency. The `tsdb.*` metrics remain for legacy TSDB paths and
+ClickHouse-only integrations that still emit `tsdb.write.*` lifecycle events.
 
 Label cardinality rule: label by route pattern, never by concrete topic. `devices/{id}/status` is a
 safe `route` label; `devices/123/status` is not. RouteMQ's default hooks strip high-cardinality
