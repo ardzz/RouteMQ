@@ -3,12 +3,14 @@ from unittest.mock import patch
 
 from routemq.metrics.registry import DEFAULT_HISTOGRAM_BUCKETS
 from routemq.settings import (
+    load_database_connection_settings,
     load_queue_reliability_settings,
     load_database_pool_settings,
     load_health_http_settings,
     load_metrics_http_settings,
     load_mqtt_settings,
     load_queue_retry_settings,
+    load_telemetry_settings,
 )
 
 
@@ -113,6 +115,150 @@ class DatabasePoolSettingsTests(unittest.TestCase):
         self.assertTrue(settings.pool_pre_ping)
         self.assertFalse(settings.pool_use_lifo)
         self.assertEqual(settings.pool_class, 'default')
+
+
+class DatabaseConnectionSettingsTests(unittest.TestCase):
+    def test_defaults_preserve_legacy_mysql_url(self) -> None:
+        settings = load_database_connection_settings({})
+
+        self.assertTrue(settings.enabled)
+        self.assertEqual(settings.connection, 'mysql')
+        self.assertEqual(settings.url, 'mysql+aiomysql://root:@localhost:3306/mqtt_framework')
+        self.assertFalse(settings.auto_create_tables)
+
+    def test_database_auto_create_tables_is_explicit_opt_in(self) -> None:
+        settings = load_database_connection_settings({'DB_AUTO_CREATE_TABLES': 'true'})
+
+        self.assertTrue(settings.auto_create_tables)
+
+    def test_enable_mysql_false_disables_database_without_url(self) -> None:
+        settings = load_database_connection_settings({'ENABLE_MYSQL': 'false'})
+
+        self.assertFalse(settings.enabled)
+
+    def test_database_url_wins_and_normalizes_driver(self) -> None:
+        settings = load_database_connection_settings({'ENABLE_MYSQL': 'false', 'DATABASE_URL': 'postgres://u:p@db:5432/app'})
+
+        self.assertTrue(settings.enabled)
+        self.assertEqual(settings.url, 'postgresql+asyncpg://u:p@db:5432/app')
+
+    def test_postgres_selector_builds_asyncpg_url(self) -> None:
+        settings = load_database_connection_settings(
+            {
+                'DB_CONNECTION': 'postgres',
+                'DB_HOST': 'postgres',
+                'DB_NAME': 'app',
+                'DB_USER': 'route',
+                'DB_PASSWORD': 'secret',
+            }
+        )
+
+        self.assertEqual(settings.connection, 'postgres')
+        self.assertEqual(settings.url, 'postgresql+asyncpg://route:secret@postgres:5432/app')
+
+    def test_mysql_selector_keeps_db_pass_alias(self) -> None:
+        settings = load_database_connection_settings({'DB_CONNECTION': 'mysql', 'DB_PASS': 'legacy'})
+
+        self.assertEqual(settings.url, 'mysql+aiomysql://root:legacy@localhost:3306/mqtt_framework')
+
+    def test_invalid_selector_falls_back_to_mysql(self) -> None:
+        settings = load_database_connection_settings({'DB_CONNECTION': 'sqlite'})
+
+        self.assertEqual(settings.connection, 'mysql')
+
+
+class TelemetrySettingsTests(unittest.TestCase):
+    def test_defaults_disable_telemetry(self) -> None:
+        settings = load_telemetry_settings({})
+
+        self.assertFalse(settings.enabled)
+        self.assertEqual(settings.connection, 'clickhouse')
+        self.assertEqual(settings.url, 'http://localhost:8123/default')
+
+    def test_explicit_connection_enables_and_parses_runtime(self) -> None:
+        settings = load_telemetry_settings(
+            {
+                'ENABLE_TELEMETRY': 'true',
+                'TELEMETRY_CONNECTION': 'influxdb',
+                'TELEMETRY_URL': 'http://influx:8086?bucket=iot&org=factory',
+                'TELEMETRY_QUEUE_MAX_SIZE': '12',
+                'TELEMETRY_QUEUE_FULL_STRATEGY': 'drop_oldest',
+                'TELEMETRY_BATCH_SIZE': '7',
+                'TELEMETRY_FLUSH_INTERVAL': '0.25',
+                'TELEMETRY_FLUSH_TIMEOUT': '2',
+                'TELEMETRY_MAX_RETRIES': '5',
+                'TELEMETRY_RETRY_BACKOFF': 'constant',
+                'TELEMETRY_ASYNC_INSERT': 'false',
+                'ENABLE_TSDB': 'true',
+                'TSDB_BATCH_SIZE': '99',
+            }
+        )
+
+        self.assertTrue(settings.enabled)
+        self.assertEqual(settings.connection, 'influxdb')
+        self.assertEqual(settings.queue_max_size, 12)
+        self.assertEqual(settings.queue_full_strategy, 'drop_oldest')
+        self.assertEqual(settings.batch_size, 7)
+        self.assertEqual(settings.flush_interval, 0.25)
+        self.assertEqual(settings.flush_timeout, 2)
+        self.assertEqual(settings.max_retries, 5)
+        self.assertEqual(settings.retry_backoff, 'constant')
+        self.assertFalse(settings.async_insert)
+
+    def test_legacy_tsdb_enables_clickhouse_defaults(self) -> None:
+        settings = load_telemetry_settings(
+            {
+                'ENABLE_TSDB': 'true',
+                'TSDB_HOST': 'clickhouse',
+                'TSDB_PORT': '9000',
+                'TSDB_DATABASE': 'iot',
+                'TSDB_BATCH_SIZE': '88',
+                'TSDB_BUFFER_MAXSIZE': '99',
+            }
+        )
+
+        self.assertTrue(settings.enabled)
+        self.assertEqual(settings.connection, 'clickhouse')
+        self.assertEqual(settings.url, 'http://clickhouse:9000/iot')
+        self.assertEqual(settings.batch_size, 88)
+        self.assertEqual(settings.queue_max_size, 99)
+
+    def test_enable_telemetry_false_overrides_legacy_tsdb_enable(self) -> None:
+        settings = load_telemetry_settings({'ENABLE_TELEMETRY': 'false', 'ENABLE_TSDB': 'true'})
+
+        self.assertFalse(settings.enabled)
+
+    def test_explicit_telemetry_url_wins_over_legacy_clickhouse_fields(self) -> None:
+        settings = load_telemetry_settings(
+            {
+                'TELEMETRY_URL': 'http://new-clickhouse:8123/canonical',
+                'TSDB_HOST': 'legacy-clickhouse',
+                'TSDB_DATABASE': 'legacy',
+            }
+        )
+
+        self.assertEqual(settings.url, 'http://new-clickhouse:8123/canonical')
+
+    def test_invalid_values_fall_back_to_safe_defaults(self) -> None:
+        settings = load_telemetry_settings(
+            {
+                'TELEMETRY_CONNECTION': 'unknown',
+                'TELEMETRY_QUEUE_MAX_SIZE': '-1',
+                'TELEMETRY_QUEUE_FULL_STRATEGY': 'discard',
+                'TELEMETRY_BATCH_SIZE': '0',
+                'TELEMETRY_FLUSH_INTERVAL': '-1',
+                'TELEMETRY_FLUSH_TIMEOUT': 'bad',
+                'TELEMETRY_RETRY_BACKOFF': 'weird',
+            }
+        )
+
+        self.assertEqual(settings.connection, 'clickhouse')
+        self.assertEqual(settings.queue_max_size, 10000)
+        self.assertEqual(settings.queue_full_strategy, 'block')
+        self.assertEqual(settings.batch_size, 1)
+        self.assertEqual(settings.flush_interval, 1.0)
+        self.assertEqual(settings.flush_timeout, 10.0)
+        self.assertEqual(settings.retry_backoff, 'exponential')
 
     def test_load_database_pool_settings_parses_values(self) -> None:
         settings = load_database_pool_settings(
