@@ -9,6 +9,9 @@ from routemq.metrics.registry import DEFAULT_HISTOGRAM_BUCKETS
 
 _TRUE_VALUES = {'1', 'true', 'yes', 'on'}
 _DATABASE_POOL_CLASSES = {'default', 'null'}
+_DATABASE_CONNECTIONS = {'mysql', 'postgres'}
+_TELEMETRY_CONNECTIONS = {'clickhouse', 'timescaledb', 'influxdb', 'iotdb'}
+_TELEMETRY_QUEUE_FULL_STRATEGIES = {'block', 'fail', 'drop_newest', 'drop_oldest'}
 
 
 def _environment(env: Mapping[str, str] | None) -> Mapping[str, str]:
@@ -31,6 +34,14 @@ def env_bool(env: Mapping[str, str], name: str, default: bool = False) -> bool:
     value = env.get(name)
     if value is None:
         return default
+    return value.lower() in _TRUE_VALUES
+
+
+def env_optional_bool(env: Mapping[str, str], name: str) -> bool | None:
+    """Read an optional boolean while preserving absence vs explicit false."""
+    value = env.get(name)
+    if value is None:
+        return None
     return value.lower() in _TRUE_VALUES
 
 
@@ -113,6 +124,29 @@ class DatabasePoolSettings:
     pool_pre_ping: bool = True
     pool_use_lifo: bool = False
     pool_class: str = 'default'
+
+
+@dataclass(frozen=True, slots=True)
+class DatabaseConnectionSettings:
+    enabled: bool = True
+    connection: str = 'mysql'
+    url: str = 'mysql+aiomysql://root:@localhost:3306/mqtt_framework'
+    auto_create_tables: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class TelemetrySettings:
+    enabled: bool = False
+    connection: str = 'clickhouse'
+    url: str = 'http://localhost:8123/default'
+    queue_max_size: int = 10000
+    queue_full_strategy: str = 'block'
+    batch_size: int = 1000
+    flush_interval: float = 1.0
+    flush_timeout: float = 10.0
+    max_retries: int = 3
+    retry_backoff: str = 'exponential'
+    async_insert: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,6 +240,143 @@ def load_database_pool_settings(env: Mapping[str, str] | None = None) -> Databas
         pool_use_lifo=_parse_bool_env(values, 'DB_POOL_USE_LIFO', False),
         pool_class=pool_class,
     )
+
+
+def load_database_connection_settings(env: Mapping[str, str] | None = None) -> DatabaseConnectionSettings:
+    """Load backend-neutral SQLAlchemy connection settings.
+
+    ``DATABASE_URL`` wins when present. Otherwise RouteMQ builds an async SQLAlchemy URL from
+    ``DB_CONNECTION`` and canonical ``DB_*`` fields while preserving legacy MySQL defaults.
+    """
+
+    values = _environment(env)
+    explicit_url = env_optional_str(values, 'DATABASE_URL')
+    connection = _parse_database_connection(values.get('DB_CONNECTION'))
+    if explicit_url:
+        connection = _connection_from_database_url(explicit_url) or connection
+    explicit_selector = bool(values.get('DB_CONNECTION'))
+    enabled = env_bool(values, 'ENABLE_MYSQL', True) or bool(explicit_url) or explicit_selector
+    if explicit_url:
+        return DatabaseConnectionSettings(
+            enabled=enabled,
+            connection=connection,
+            url=_normalize_database_url(explicit_url),
+            auto_create_tables=env_bool(values, 'DB_AUTO_CREATE_TABLES', False),
+        )
+
+    host = env_str(values, 'DB_HOST', 'localhost')
+    port = env_str(values, 'DB_PORT', '5432' if connection == 'postgres' else '3306')
+    name = env_str(values, 'DB_NAME', 'mqtt_framework')
+    user = env_str(values, 'DB_USER', 'root')
+    password = _database_password(values)
+    driver = 'postgresql+asyncpg' if connection == 'postgres' else 'mysql+aiomysql'
+    return DatabaseConnectionSettings(
+        enabled=enabled,
+        connection=connection,
+        url=f'{driver}://{user}:{password}@{host}:{port}/{name}',
+        auto_create_tables=env_bool(values, 'DB_AUTO_CREATE_TABLES', False),
+    )
+
+
+def _parse_database_connection(value: str | None) -> str:
+    if value is None or not value.strip():
+        return 'mysql'
+    normalized = value.strip().lower()
+    if normalized == 'postgresql':
+        return 'postgres'
+    if normalized not in _DATABASE_CONNECTIONS:
+        return 'mysql'
+    return normalized
+
+
+def _normalize_database_url(url: str) -> str:
+    if url.startswith('postgresql+asyncpg://') or url.startswith('mysql+aiomysql://'):
+        return url
+    if url.startswith('postgresql://'):
+        return 'postgresql+asyncpg://' + url.removeprefix('postgresql://')
+    if url.startswith('postgres://'):
+        return 'postgresql+asyncpg://' + url.removeprefix('postgres://')
+    if url.startswith('mysql://'):
+        return 'mysql+aiomysql://' + url.removeprefix('mysql://')
+    return url
+
+
+def _connection_from_database_url(url: str) -> str | None:
+    normalized = url.lower()
+    if normalized.startswith(('postgresql://', 'postgres://', 'postgresql+asyncpg://')):
+        return 'postgres'
+    if normalized.startswith(('mysql://', 'mysql+aiomysql://')):
+        return 'mysql'
+    return None
+
+
+def _database_password(env: Mapping[str, str]) -> str:
+    password = env_optional_str(env, 'DB_PASSWORD')
+    if password is not None:
+        return password
+    return env_str(env, 'DB_PASS', '')
+
+
+def load_telemetry_settings(env: Mapping[str, str] | None = None) -> TelemetrySettings:
+    """Load IoT telemetry runtime settings, including legacy ClickHouse fallbacks."""
+
+    values = _environment(env)
+    connection = _parse_telemetry_connection(values.get('TELEMETRY_CONNECTION'))
+    legacy_tsdb_enabled = env_bool(values, 'ENABLE_TSDB', False)
+    explicit_enabled = env_optional_bool(values, 'ENABLE_TELEMETRY')
+    enabled = (
+        explicit_enabled
+        if explicit_enabled is not None
+        else legacy_tsdb_enabled or bool(values.get('TELEMETRY_CONNECTION')) or bool(values.get('TELEMETRY_URL'))
+    )
+    url = env_str(values, 'TELEMETRY_URL', _legacy_clickhouse_url(values))
+    queue_strategy = env_str(values, 'TELEMETRY_QUEUE_FULL_STRATEGY', 'block').lower()
+    if queue_strategy not in _TELEMETRY_QUEUE_FULL_STRATEGIES:
+        queue_strategy = 'block'
+    retry_backoff = env_str(values, 'TELEMETRY_RETRY_BACKOFF', 'exponential').lower()
+    if retry_backoff not in {'none', 'constant', 'exponential'}:
+        retry_backoff = 'exponential'
+
+    return TelemetrySettings(
+        enabled=enabled,
+        connection=connection,
+        url=url,
+        queue_max_size=_positive_int(values, 'TELEMETRY_QUEUE_MAX_SIZE', _parse_int_env(values, 'TSDB_BUFFER_MAXSIZE', 10000)),
+        queue_full_strategy=queue_strategy,
+        batch_size=_positive_int(values, 'TELEMETRY_BATCH_SIZE', _parse_int_env(values, 'TSDB_BATCH_SIZE', 1000)),
+        flush_interval=_positive_float(values, 'TELEMETRY_FLUSH_INTERVAL', env_float(values, 'TSDB_FLUSH_INTERVAL', 1.0, fallback_on_invalid=True)),
+        flush_timeout=_positive_float(values, 'TELEMETRY_FLUSH_TIMEOUT', 10.0),
+        max_retries=_parse_int_env(values, 'TELEMETRY_MAX_RETRIES', 3),
+        retry_backoff=retry_backoff,
+        async_insert=env_bool(values, 'TELEMETRY_ASYNC_INSERT', env_bool(values, 'TSDB_ASYNC_INSERT', True)),
+    )
+
+
+def _parse_telemetry_connection(value: str | None) -> str:
+    if value is None or not value.strip():
+        return 'clickhouse'
+    normalized = value.strip().lower()
+    return normalized if normalized in _TELEMETRY_CONNECTIONS else 'clickhouse'
+
+
+def _legacy_clickhouse_url(env: Mapping[str, str]) -> str:
+    host = env_str(env, 'TSDB_HOST', 'localhost')
+    port = env_str(env, 'TSDB_PORT', '8123')
+    database = env_str(env, 'TSDB_DATABASE', 'default')
+    username = env_optional_str(env, 'TSDB_USER')
+    password = env_optional_str(env, 'TSDB_PASSWORD')
+    credentials = '' if username is None else f'{username}:{password or ""}@'
+    return f'http://{credentials}{host}:{port}/{database}'
+
+
+def _positive_int(env: Mapping[str, str], name: str, default: int) -> int:
+    value = _parse_int_env(env, name, default)
+    return max(1, value)
+
+
+def _positive_float(env: Mapping[str, str], name: str, default: float) -> float:
+    value = env_float(env, name, default, fallback_on_invalid=True)
+    return default if value <= 0 else value
 
 
 def load_metrics_http_settings(env: Mapping[str, str] | None = None) -> MetricsHttpSettings:
