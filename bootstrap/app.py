@@ -23,10 +23,13 @@ from routemq.router import Router
 from routemq.router_registry import RouterRegistry
 from routemq.settings import (
     MetricsHttpSettings,
+    load_database_connection_settings,
     load_database_pool_settings,
     load_health_http_settings,
     load_metrics_http_settings,
+    load_telemetry_settings,
 )
+from routemq.telemetry import telemetry
 from routemq.mqtt_utils import (
     connect_mqtt_client_with_retries,
     create_mqtt_client,
@@ -37,6 +40,7 @@ from routemq.mqtt_utils import (
 )
 from routemq.worker_manager import WorkerManager
 from routemq.redis_manager import redis_manager
+from routemq.tsdb.telemetry_adapters import adapter_from_settings
 from routemq.tsdb.tsdb_manager import tsdb_manager
 
 observability = import_module('routemq.observability')
@@ -124,11 +128,13 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
                 self.logger.warning(f'Could not load routers dynamically: {str(e)}')
                 self.logger.info('Using empty router. Register routes manually.')
 
-        self.mysql_enabled = os.getenv('ENABLE_MYSQL', 'true').lower() == 'true'
-        if self.mysql_enabled:
+        self.database_settings = load_database_connection_settings()
+        self.database_enabled = self.database_settings.enabled
+        self.mysql_enabled = self.database_enabled
+        if self.database_enabled:
             self._setup_database()
         else:
-            self.logger.info('MySQL integration is disabled')
+            self.logger.info('Database integration is disabled')
 
         self.redis_enabled = os.getenv('ENABLE_REDIS', 'false').lower() == 'true'
         if self.redis_enabled:
@@ -136,11 +142,19 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
         else:
             self.logger.info('Redis integration is disabled')
 
-        self.tsdb_enabled = os.getenv('ENABLE_TSDB', 'false').lower() == 'true'
+        self.telemetry_settings = load_telemetry_settings()
+        self.telemetry_enabled = self.telemetry_settings.enabled
+
+        self.tsdb_enabled = os.getenv('ENABLE_TSDB', 'false').lower() == 'true' and not self.telemetry_enabled
         if self.tsdb_enabled:
             self.logger.info('TSDB integration is enabled')
         else:
             self.logger.info('TSDB integration is disabled')
+
+        if self.telemetry_enabled:
+            self.logger.info(f'Telemetry integration is enabled ({self.telemetry_settings.connection})')
+        else:
+            self.logger.info('Telemetry integration is disabled')
 
         self.client: Any = None
         self.group_name = get_mqtt_group_name()
@@ -169,16 +183,13 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
 
     def _setup_database(self):
         """Configure database connection."""
-        db_host = os.getenv('DB_HOST', 'localhost')
-        db_port = os.getenv('DB_PORT', '3306')
-        db_name = os.getenv('DB_NAME', 'mqtt_framework')
-        db_user = os.getenv('DB_USER', 'root')
-        db_pass = os.getenv('DB_PASS', '')
+        settings = getattr(self, 'database_settings', None)
+        if settings is None:
+            settings = load_database_connection_settings()
         pool_settings = load_database_pool_settings()
 
-        conn_str = f'mysql+aiomysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}'
         Model.configure(
-            conn_str,
+            settings.url,
             pool_size=pool_settings.pool_size,
             max_overflow=pool_settings.max_overflow,
             pool_timeout=pool_settings.pool_timeout,
@@ -243,7 +254,10 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
 
     async def initialize_database(self):
         """Create database tables."""
-        if self.mysql_enabled:
+        database_settings = getattr(self, 'database_settings', None)
+        if database_settings is None:
+            database_settings = load_database_connection_settings()
+        if getattr(self, 'database_enabled', self.mysql_enabled) and database_settings.auto_create_tables:
             await Model.create_tables()
 
     async def initialize_redis(self):
@@ -264,19 +278,36 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
             else:
                 self.logger.warning('TSDB initialization failed')
 
+    async def initialize_telemetry(self):
+        """Initialize public telemetry runtime."""
+        if getattr(self, 'telemetry_enabled', False):
+            adapter = adapter_from_settings(
+                self.telemetry_settings.connection,
+                self.telemetry_settings.url,
+                async_insert=self.telemetry_settings.async_insert,
+            )
+            success = await telemetry.start(adapter=adapter, settings=self.telemetry_settings)
+            if success:
+                self.logger.info('Telemetry initialized successfully')
+            else:
+                self.logger.warning('Telemetry initialization skipped')
+
     async def _initialize_connections(self):
-        """Initialize database, Redis, and TSDB connections."""
+        """Initialize database, Redis, TSDB, and telemetry connections."""
         await self.initialize_database()
         await self.initialize_redis()
         await self.initialize_tsdb()
+        await self.initialize_telemetry()
 
     async def _cleanup_connections(self):
-        """Cleanup database, Redis, and TSDB connections."""
+        """Cleanup database, Redis, TSDB, and telemetry connections."""
+        if getattr(self, 'telemetry_enabled', False):
+            await telemetry.close()
         if self.tsdb_enabled:
             await tsdb_manager.disconnect()
         if self.redis_enabled:
             await redis_manager.disconnect()
-        if self.mysql_enabled:
+        if getattr(self, 'database_enabled', self.mysql_enabled):
             await Model.cleanup()
 
     def _on_connect(self, client, userdata, flags, rc):
@@ -411,6 +442,8 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
             self.metrics_health_server = None
         if not hasattr(self, '_shutdown_requested'):
             self._shutdown_requested = False
+        if not hasattr(self, 'telemetry_enabled'):
+            self.telemetry_enabled = False
         previous_handlers = self._install_signal_handlers()
         self.start_workers()
         if self.health_server is not None:
@@ -424,6 +457,7 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
             self.loop.run_until_complete(self.initialize_database())
             self.loop.run_until_complete(self.initialize_redis())
             self.loop.run_until_complete(self.initialize_tsdb())
+            self.loop.run_until_complete(self.initialize_telemetry())
             self.health_status.startup_complete = True
             self.logger.info('Application started. Press Ctrl+C to exit.')
             self.logger.info(f'Active workers: {self.worker_manager.get_worker_count()}')
@@ -438,11 +472,13 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
             self.logger.info('Application cleanup started')
             self.health_status.shutting_down = True
             self.worker_manager.stop_workers()
+            if getattr(self, 'telemetry_enabled', False):
+                self.loop.run_until_complete(telemetry.close())
             if self.tsdb_enabled:
                 self.loop.run_until_complete(tsdb_manager.disconnect())
             if self.redis_enabled:
                 self.loop.run_until_complete(redis_manager.disconnect())
-            if self.mysql_enabled:
+            if getattr(self, 'database_enabled', self.mysql_enabled):
                 self.loop.run_until_complete(Model.cleanup())
             if self.health_server is not None:
                 self.health_server.stop()
