@@ -6,12 +6,12 @@ import unittest
 from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from bootstrap.app import Application
+from bootstrap.app import Application, _combine_metrics_payloads, _without_openmetrics_eof
 from routemq.health import HealthStatus
 from routemq.metrics import MetricsRegistry
-from routemq.settings import DatabasePoolSettings, MetricsHttpSettings, load_metrics_http_settings
+from routemq.settings import DatabaseConnectionSettings, DatabasePoolSettings, MetricsHttpSettings, load_metrics_http_settings
 
 
 class TestApplicationInitialization(unittest.TestCase):
@@ -293,6 +293,30 @@ class TestApplicationMetrics(unittest.TestCase):
         self.assertIs(app.health_server, health_server)
         self.assertIsNone(app.metrics_health_server)
 
+    def test_setup_metrics_creates_metrics_server_when_health_server_disabled(self) -> None:
+        app = object.__new__(Application)
+        app.health_status = HealthStatus()
+        app.metrics_settings = MetricsHttpSettings(enabled=True, host='127.0.0.3', port=9191, path='/metrics')
+        renderer = MagicMock(name='renderer')
+        metrics_server = MagicMock(name='metrics_server')
+
+        with (
+            patch.object(Application, '_build_metrics_renderer', return_value=renderer),
+            patch('bootstrap.app.health_server_from_env', return_value=None),
+            patch('bootstrap.app.load_health_http_settings', return_value=MagicMock(host='127.0.0.3', port=9191)),
+            patch('bootstrap.app.HealthServer', return_value=metrics_server) as health_server_cls,
+        ):
+            app._setup_metrics()
+
+        health_server_cls.assert_called_once_with(
+            app.health_status,
+            host='127.0.0.3',
+            port=9191,
+            metrics_renderer=renderer,
+            metrics_path='/metrics',
+        )
+        self.assertIs(app.health_server, metrics_server)
+
     def test_build_metrics_renderer_closes_over_registry_and_default_labels(self) -> None:
         app = object.__new__(Application)
         app.metrics_registry = MetricsRegistry()
@@ -306,6 +330,24 @@ class TestApplicationMetrics(unittest.TestCase):
 
         self.assertEqual(content_type, 'text/plain; version=0.0.4; charset=utf-8')
         self.assertIn(b'routemq_test_counter_total{env="test"} 1', body)
+
+    def test_build_metrics_renderer_combines_prometheus_payload(self) -> None:
+        app = object.__new__(Application)
+        app.metrics_registry = MetricsRegistry()
+        app.metrics_registry.counter('routemq_render_counter', help='h').inc()
+        prometheus_adapter = MagicMock()
+        prometheus_adapter.render.return_value = ('text/plain; version=0.0.4; charset=utf-8', b'prom_metric 1\n')
+
+        with (
+            patch('bootstrap.app.find_spec', return_value=object()),
+            patch('bootstrap.app.PrometheusAdapter', return_value=prometheus_adapter),
+        ):
+            renderer = app._build_metrics_renderer(MetricsHttpSettings(enabled=True))
+            content_type, body = renderer('text/plain')
+
+        self.assertEqual(content_type, 'text/plain; version=0.0.4; charset=utf-8')
+        self.assertIn(b'prom_metric 1', body)
+        self.assertIn(b'# HELP', body)
 
     def test_setup_metrics_configures_separate_metrics_server(self) -> None:
         app = object.__new__(Application)
@@ -353,6 +395,7 @@ class TestApplicationMetrics(unittest.TestCase):
         app.initialize_database = MagicMock(return_value=None)
         app.initialize_redis = MagicMock(return_value=None)
         app.initialize_tsdb = MagicMock(return_value=None)
+        app.initialize_telemetry = MagicMock(return_value=None)
         app.health_status = HealthStatus()
         app.health_server = MagicMock(name='health_server')
         app.metrics_health_server = MagicMock(name='metrics_health_server')
@@ -407,6 +450,33 @@ class TestApplicationConnections(unittest.IsolatedAsyncioTestCase):
             pool_class='null',
         )
 
+    def test_setup_database_uses_database_url_override(self) -> None:
+        app = object.__new__(Application)
+        pool_settings = DatabasePoolSettings()
+
+        with (
+            patch.dict(os.environ, {'DATABASE_URL': 'postgres://u:p@postgres:5432/app'}, clear=True),
+            patch('bootstrap.app.load_database_pool_settings', return_value=pool_settings),
+            patch('bootstrap.app.Model.configure') as configure,
+        ):
+            app._setup_database()
+
+        self.assertEqual(configure.call_args.args[0], 'postgresql+asyncpg://u:p@postgres:5432/app')
+
+    def test_setup_database_uses_stored_database_settings(self) -> None:
+        app = object.__new__(Application)
+        app.database_settings = MagicMock(url='postgresql+asyncpg://u:p@postgres:5432/app')
+
+        with (
+            patch('bootstrap.app.load_database_connection_settings') as load_connection,
+            patch('bootstrap.app.load_database_pool_settings', return_value=DatabasePoolSettings()),
+            patch('bootstrap.app.Model.configure') as configure,
+        ):
+            app._setup_database()
+
+        load_connection.assert_not_called()
+        self.assertEqual(configure.call_args.args[0], 'postgresql+asyncpg://u:p@postgres:5432/app')
+
     async def test_initialize_database_skips_when_mysql_disabled(self) -> None:
         """Database initialization is gated by mysql_enabled."""
         app = object.__new__(Application)
@@ -416,6 +486,72 @@ class TestApplicationConnections(unittest.IsolatedAsyncioTestCase):
             await app.initialize_database()
 
         create_tables.assert_not_called()
+
+    async def test_initialize_database_skips_schema_creation_by_default(self) -> None:
+        app = object.__new__(Application)
+        app.mysql_enabled = False
+        app.database_enabled = True
+        app.database_settings = DatabaseConnectionSettings(enabled=True, auto_create_tables=False)
+
+        with patch('bootstrap.app.Model.create_tables') as create_tables:
+            await app.initialize_database()
+
+        create_tables.assert_not_called()
+
+    async def test_initialize_database_uses_database_enabled_alias_when_schema_creation_enabled(self) -> None:
+        app = object.__new__(Application)
+        app.mysql_enabled = False
+        app.database_enabled = True
+        app.database_settings = DatabaseConnectionSettings(enabled=True, auto_create_tables=True)
+
+        with patch('bootstrap.app.Model.create_tables') as create_tables:
+            await app.initialize_database()
+
+        create_tables.assert_called_once_with()
+
+    async def test_initialize_telemetry_starts_runtime_from_settings(self) -> None:
+        app = object.__new__(Application)
+        app.telemetry_enabled = True
+        app.telemetry_settings = MagicMock(connection='clickhouse', url='http://clickhouse:8123/iot', async_insert=False)
+        app.logger = MagicMock()
+        adapter = MagicMock(name='adapter')
+
+        with (
+            patch('bootstrap.app.adapter_from_settings', return_value=adapter) as adapter_factory,
+            patch('bootstrap.app.telemetry.start', new_callable=AsyncMock, return_value=True) as start,
+        ):
+            await app.initialize_telemetry()
+
+        adapter_factory.assert_called_once_with('clickhouse', 'http://clickhouse:8123/iot', async_insert=False)
+        start.assert_awaited_once_with(adapter=adapter, settings=app.telemetry_settings)
+
+    async def test_initialize_telemetry_logs_warning_when_runtime_skips(self) -> None:
+        app = object.__new__(Application)
+        app.telemetry_enabled = True
+        app.telemetry_settings = MagicMock(connection='clickhouse', url='http://clickhouse:8123/iot', async_insert=True)
+        app.logger = MagicMock()
+
+        with (
+            patch('bootstrap.app.adapter_from_settings', return_value=MagicMock(name='adapter')),
+            patch('bootstrap.app.telemetry.start', new_callable=AsyncMock, return_value=False),
+        ):
+            await app.initialize_telemetry()
+
+        app.logger.warning.assert_called_once_with('Telemetry initialization skipped')
+
+    async def test_initialize_tsdb_logs_success_and_warning(self) -> None:
+        app = object.__new__(Application)
+        app.tsdb_enabled = True
+        app.logger = MagicMock()
+
+        with patch('bootstrap.app.tsdb_manager.initialize', new_callable=AsyncMock, return_value=True):
+            await app.initialize_tsdb()
+        app.logger.info.assert_called_with('TSDB initialized successfully')
+
+        app.logger.reset_mock()
+        with patch('bootstrap.app.tsdb_manager.initialize', new_callable=AsyncMock, return_value=False):
+            await app.initialize_tsdb()
+        app.logger.warning.assert_called_with('TSDB initialization failed')
 
     async def test_initialize_redis_skips_when_redis_disabled(self) -> None:
         """Redis initialization is gated by redis_enabled."""
@@ -566,6 +702,7 @@ class TestApplicationMqtt(unittest.TestCase):
         app.initialize_database = MagicMock(return_value=None)
         app.initialize_redis = MagicMock(return_value=None)
         app.initialize_tsdb = MagicMock(return_value=None)
+        app.initialize_telemetry = MagicMock(return_value=None)
         app._cleanup_connections = MagicMock(return_value=None)
         app.health_status = HealthStatus()
         app.health_server = None
@@ -588,6 +725,35 @@ class TestApplicationMqtt(unittest.TestCase):
         self.assertTrue(app._shutdown_requested)
         self.assertTrue(app.health_status.shutting_down)
         app.loop.call_soon_threadsafe.assert_called_once_with(app.loop.stop)
+
+    def test_install_signal_handlers_logs_when_signal_install_fails(self) -> None:
+        app = object.__new__(Application)
+        app.logger = MagicMock()
+
+        with patch('bootstrap.app.signal.signal', side_effect=ValueError):
+            handlers = app._install_signal_handlers()
+
+        self.assertTrue(handlers)
+        app.logger.debug.assert_called_once_with('SIGTERM handler not installed outside the main thread')
+
+    def test_restore_signal_handlers_ignores_restore_failures(self) -> None:
+        app = object.__new__(Application)
+
+        with patch('bootstrap.app.signal.signal', side_effect=RuntimeError):
+            app._restore_signal_handlers({15: MagicMock(name='handler')})
+
+
+class MetricsPayloadHelperTests(unittest.TestCase):
+    def test_combine_metrics_payloads_for_text_adds_separator_when_needed(self) -> None:
+        self.assertEqual(_combine_metrics_payloads(b'prom 1', b'std 2\n', openmetrics=False), b'prom 1\nstd 2\n')
+
+    def test_combine_metrics_payloads_for_openmetrics_strips_duplicate_eof(self) -> None:
+        combined = _combine_metrics_payloads(b'prom 1\n# EOF\n', b'std 2\n# EOF\n', openmetrics=True)
+
+        self.assertEqual(combined, b'prom 1\nstd 2\n# EOF\n')
+
+    def test_without_openmetrics_eof_leaves_body_without_marker_unchanged(self) -> None:
+        self.assertEqual(_without_openmetrics_eof(b'plain\n'), b'plain\n')
 
 
 if __name__ == '__main__':

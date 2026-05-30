@@ -5,6 +5,8 @@ from importlib.metadata import PackageNotFoundError
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from bootstrap.app import Application
+from routemq.health import HealthStatus
+from routemq.settings import DatabaseConnectionSettings
 
 
 class GetVersionExceptionPathTests(unittest.TestCase):
@@ -126,12 +128,21 @@ class SetupDatabaseTests(unittest.TestCase):
 
 
 class ConnectionsEnabledTests(unittest.IsolatedAsyncioTestCase):
-    async def test_initialize_database_calls_create_tables_when_enabled(self) -> None:
+    async def test_initialize_database_calls_create_tables_when_auto_create_enabled(self) -> None:
         app = object.__new__(Application)
         app.mysql_enabled = True
+        app.database_settings = DatabaseConnectionSettings(enabled=True, auto_create_tables=True)
         with patch('bootstrap.app.Model.create_tables', new=AsyncMock()) as create_tables:
             await app.initialize_database()
         create_tables.assert_awaited_once()
+
+    async def test_initialize_database_skips_create_tables_by_default(self) -> None:
+        app = object.__new__(Application)
+        app.mysql_enabled = True
+        app.database_settings = DatabaseConnectionSettings(enabled=True, auto_create_tables=False)
+        with patch('bootstrap.app.Model.create_tables', new=AsyncMock()) as create_tables:
+            await app.initialize_database()
+        create_tables.assert_not_awaited()
 
     async def test_initialize_redis_logs_success(self) -> None:
         app = object.__new__(Application)
@@ -154,21 +165,27 @@ class ConnectionsEnabledTests(unittest.IsolatedAsyncioTestCase):
         app.initialize_database = AsyncMock()
         app.initialize_redis = AsyncMock()
         app.initialize_tsdb = AsyncMock()
+        app.initialize_telemetry = AsyncMock()
         await app._initialize_connections()
         app.initialize_database.assert_awaited_once()
         app.initialize_redis.assert_awaited_once()
         app.initialize_tsdb.assert_awaited_once()
+        app.initialize_telemetry.assert_awaited_once()
 
     async def test_cleanup_connections_disconnects_redis_and_model_when_enabled(self) -> None:
         app = object.__new__(Application)
         app.redis_enabled = True
         app.mysql_enabled = True
+        app.database_enabled = True
         app.tsdb_enabled = False
+        app.telemetry_enabled = True
         with (
+            patch('bootstrap.app.telemetry.close', new=AsyncMock()) as telemetry_close,
             patch('bootstrap.app.redis_manager.disconnect', new=AsyncMock()) as disconnect,
             patch('bootstrap.app.Model.cleanup', new=AsyncMock()) as cleanup,
         ):
             await app._cleanup_connections()
+        telemetry_close.assert_awaited_once()
         disconnect.assert_awaited_once()
         cleanup.assert_awaited_once()
 
@@ -186,6 +203,25 @@ class OnConnectTests(unittest.TestCase):
         app._on_connect(client, None, None, 0)
 
         client.subscribe.assert_called_once_with('devices/+/status', 1)
+
+    def test_on_connect_updates_health_status(self) -> None:
+        app = object.__new__(Application)
+        app.logger = MagicMock()
+        app.health_status = HealthStatus()
+        app.router = MagicMock(routes=[])
+
+        app._on_connect(MagicMock(), None, None, 0)
+
+        self.assertTrue(app.health_status.mqtt_connected)
+
+    def test_on_disconnect_marks_health_disconnected(self) -> None:
+        app = object.__new__(Application)
+        app.logger = MagicMock()
+        app.health_status = HealthStatus(mqtt_connected=True)
+
+        app._on_disconnect(MagicMock(), None, 1)
+
+        self.assertFalse(app.health_status.mqtt_connected)
 
 
 class OnMessageErrorTests(unittest.TestCase):
@@ -240,6 +276,7 @@ class RunCleanupTests(unittest.TestCase):
         app.initialize_database = MagicMock(return_value=None)
         app.initialize_redis = MagicMock(return_value=None)
         app.initialize_tsdb = MagicMock(return_value=None)
+        app.initialize_telemetry = MagicMock(return_value=None)
 
         with (
             patch('bootstrap.app.redis_manager.disconnect', new=MagicMock()) as disconnect,
@@ -248,6 +285,38 @@ class RunCleanupTests(unittest.TestCase):
             app.run()
 
         self.assertGreaterEqual(app.loop.run_until_complete.call_count, 4)
+
+    def test_run_closes_telemetry_and_tsdb_when_enabled(self) -> None:
+        app = object.__new__(Application)
+        app.client = None
+        app.logger = MagicMock()
+        app.worker_manager = MagicMock()
+        app.worker_manager.get_worker_count.return_value = 0
+        app.loop = MagicMock()
+        app.loop.run_forever.side_effect = KeyboardInterrupt()
+        app.loop.run_until_complete = MagicMock()
+        app.mysql_enabled = False
+        app.database_enabled = False
+        app.redis_enabled = False
+        app.tsdb_enabled = True
+        app.telemetry_enabled = True
+        app.health_status = HealthStatus()
+        app.start_workers = MagicMock()
+        app.initialize_database = MagicMock(return_value=None)
+        app.initialize_redis = MagicMock(return_value=None)
+        app.initialize_tsdb = MagicMock(return_value=None)
+        app.initialize_telemetry = MagicMock(return_value=None)
+
+        with (
+            patch('bootstrap.app.telemetry.close', new=MagicMock(return_value='telemetry-close')) as telemetry_close,
+            patch('bootstrap.app.tsdb_manager.disconnect', new=MagicMock(return_value='tsdb-disconnect')) as tsdb_disconnect,
+        ):
+            app.run()
+
+        telemetry_close.assert_called_once_with()
+        tsdb_disconnect.assert_called_once_with()
+        app.loop.run_until_complete.assert_any_call('telemetry-close')
+        app.loop.run_until_complete.assert_any_call('tsdb-disconnect')
 
 
 if __name__ == '__main__':
