@@ -36,12 +36,16 @@ Complete reference for all RouteMQ configuration options.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ENABLE_MYSQL` | true | Enable/disable MySQL integration |
-| `DB_HOST` | localhost | Database hostname |
-| `DB_PORT` | 3306 | Database port |
+| `ENABLE_MYSQL` | true | Enable SQLAlchemy database integration. The name is kept for compatibility; PostgreSQL is also supported. `DATABASE_URL` or `DB_CONNECTION` also enables the database settings. |
+| `DB_CONNECTION` | mysql | Relational database selector: `mysql` or `postgres` (`postgresql` is accepted as an alias). |
+| `DATABASE_URL` | (unset) | Full SQLAlchemy URL. When set, this wins over `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and password fields. `mysql://`, `postgres://`, and `postgresql://` are normalized to async drivers. |
+| `DB_HOST` | localhost | Database hostname when `DATABASE_URL` is not set. |
+| `DB_PORT` | 3306 for MySQL, 5432 for PostgreSQL | Database port when `DATABASE_URL` is not set. |
 | `DB_NAME` | mqtt_framework | Database name |
 | `DB_USER` | root | Database username |
-| `DB_PASS` | (empty) | Database password |
+| `DB_PASSWORD` | (empty) | Database password. Preferred over `DB_PASS` when both are set. |
+| `DB_PASS` | (empty) | Legacy database password fallback. |
+| `DB_AUTO_CREATE_TABLES` | false | Create RouteMQ-managed database tables at startup. Keep `false` for controlled environments and create tables through your own migration flow. |
 
 ## Database Pool Configuration
 
@@ -59,7 +63,7 @@ Complete reference for all RouteMQ configuration options.
 
 The Sprint 06E defaults are conservative production-safe values: SQLAlchemy's async engine defaults for
 `DB_POOL_SIZE`, `DB_POOL_MAX_OVERFLOW`, and `DB_POOL_TIMEOUT`, plus `DB_POOL_RECYCLE=1800` and
-`DB_POOL_PRE_PING=true` to reduce stale MySQL connection risk. The empirical database queue-driver matrix is
+`DB_POOL_PRE_PING=true` to reduce stale database connection risk. The empirical database queue-driver matrix is
 deferred until the Sprint 06D benchmark harness merges. A follow-up sprint will run that matrix and may confirm
 or revise these defaults. Operators with measured workload knowledge can override every pool value through env
 without changing application code.
@@ -77,23 +81,37 @@ without changing application code.
 | `REDIS_MAX_CONNECTIONS` | 10 | Redis connection pool size |
 | `REDIS_SOCKET_TIMEOUT` | 5.0 | Redis socket timeout |
 
-## TSDB (ClickHouse) Configuration
+## Telemetry Configuration
 
-Optional time-series persistence; requires the `routemq[clickhouse]` extra. See
-[TSDB Integration](../tsdb/README.md).
+Optional IoT telemetry persistence. The runtime accepts `TelemetryPoint` objects and writes them through the configured adapter. ClickHouse remains the default backend for compatibility, but telemetry settings are no longer named around TSDB only.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ENABLE_TSDB` | false | Enable/disable ClickHouse time-series integration |
-| `TSDB_HOST` | localhost | ClickHouse hostname |
-| `TSDB_PORT` | 8123 | ClickHouse HTTP port |
-| `TSDB_DATABASE` | default | Target database |
-| `TSDB_USER` | default | ClickHouse username |
-| `TSDB_PASSWORD` | (empty) | ClickHouse password |
-| `TSDB_BATCH_SIZE` | 10000 | Rows that trigger a flush by size |
-| `TSDB_FLUSH_INTERVAL` | 1.0 | Seconds that trigger a flush by time |
-| `TSDB_BUFFER_MAXSIZE` | 50000 | Bounded buffer capacity (backpressure) |
-| `TSDB_ASYNC_INSERT` | true | Enable ClickHouse server-side async_insert |
+| `ENABLE_TELEMETRY` | false | Enable the telemetry runtime. When unset, legacy `ENABLE_TSDB=true`, `TELEMETRY_CONNECTION`, or `TELEMETRY_URL` can enable it. |
+| `TELEMETRY_CONNECTION` | clickhouse | Backend selector: `clickhouse`, `timescaledb`, `influxdb`, or `iotdb`. |
+| `TELEMETRY_BACKEND` | (unset) | Compatibility name used by some examples and deployment templates. Map it to `TELEMETRY_CONNECTION`; the core settings loader reads `TELEMETRY_CONNECTION`. |
+| `TELEMETRY_URL` | `http://localhost:8123/default` | Adapter URL. If unset, RouteMQ builds the default ClickHouse URL from legacy `TSDB_*` values. |
+| `TELEMETRY_QUEUE_MAX_SIZE` | 10000 | Maximum buffered telemetry points before queue-full handling applies. Legacy fallback: `TSDB_BUFFER_MAXSIZE`. |
+| `TELEMETRY_BATCH_SIZE` | 1000 | Points that trigger a flush by size. Legacy fallback: `TSDB_BATCH_SIZE`. |
+| `TELEMETRY_FLUSH_INTERVAL` | 1.0 | Seconds between background flush attempts. Legacy fallback: `TSDB_FLUSH_INTERVAL`. |
+| `TELEMETRY_FLUSH_TIMEOUT` | 10.0 | Seconds allowed for one adapter write attempt. |
+| `TELEMETRY_QUEUE_FULL_STRATEGY` | block | Queue-full behavior: `block`, `fail`, `drop_newest`, or `drop_oldest`. |
+| `TELEMETRY_MAX_RETRIES` | 3 | Retry attempts after an adapter write failure. |
+| `TELEMETRY_RETRY_BACKOFF` | exponential | Retry delay strategy: `none`, `constant`, or `exponential`. |
+| `TELEMETRY_ASYNC_INSERT` | true | ClickHouse async insert toggle. Legacy fallback: `TSDB_ASYNC_INSERT`. |
+
+### Legacy TSDB mapping
+
+Older ClickHouse-only deployments can keep `TSDB_*` values while moving to the telemetry names above.
+
+| Legacy variable | Maps to |
+|-----------------|---------|
+| `ENABLE_TSDB` | Enables telemetry only when `ENABLE_TELEMETRY` is unset |
+| `TSDB_HOST`, `TSDB_PORT`, `TSDB_DATABASE`, `TSDB_USER`, `TSDB_PASSWORD` | Build the default ClickHouse `TELEMETRY_URL` |
+| `TSDB_BUFFER_MAXSIZE` | Default for `TELEMETRY_QUEUE_MAX_SIZE` |
+| `TSDB_BATCH_SIZE` | Default for `TELEMETRY_BATCH_SIZE` |
+| `TSDB_FLUSH_INTERVAL` | Default for `TELEMETRY_FLUSH_INTERVAL` |
+| `TSDB_ASYNC_INSERT` | Default for `TELEMETRY_ASYNC_INSERT` |
 
 ## Queue Retry Configuration
 
@@ -210,11 +228,15 @@ MQTT_RETRY_JITTER=0.0
 
 # Database Configuration
 ENABLE_MYSQL=true
+DB_CONNECTION=mysql
+# DATABASE_URL=mysql://root:your_password@localhost:3306/mqtt_framework
 DB_HOST=localhost
 DB_PORT=3306
 DB_NAME=mqtt_framework
 DB_USER=root
+DB_PASSWORD=your_password
 DB_PASS=your_password
+DB_AUTO_CREATE_TABLES=false
 
 # Database Pool Configuration
 # DB_POOL_SIZE=5
@@ -234,6 +256,30 @@ REDIS_PASSWORD=your_redis_password
 REDIS_USERNAME=your_redis_username
 REDIS_MAX_CONNECTIONS=10
 REDIS_SOCKET_TIMEOUT=5.0
+
+# Telemetry Configuration
+ENABLE_TELEMETRY=false
+TELEMETRY_CONNECTION=clickhouse
+# TELEMETRY_BACKEND=clickhouse
+TELEMETRY_URL=http://localhost:8123/default
+TELEMETRY_QUEUE_MAX_SIZE=10000
+TELEMETRY_BATCH_SIZE=1000
+TELEMETRY_FLUSH_INTERVAL=1.0
+TELEMETRY_QUEUE_FULL_STRATEGY=block
+TELEMETRY_MAX_RETRIES=3
+TELEMETRY_RETRY_BACKOFF=exponential
+
+# Legacy ClickHouse TSDB compatibility
+ENABLE_TSDB=false
+TSDB_HOST=localhost
+TSDB_PORT=8123
+TSDB_DATABASE=default
+TSDB_USER=default
+TSDB_PASSWORD=
+TSDB_BUFFER_MAXSIZE=10000
+TSDB_BATCH_SIZE=1000
+TSDB_FLUSH_INTERVAL=1.0
+TSDB_ASYNC_INSERT=true
 
 # Queue Retry Configuration
 QUEUE_RETRY_BACKOFF_ENABLED=false
