@@ -35,6 +35,7 @@ services:
     environment:
       - MQTT_BROKER=mqtt
       - ENABLE_MYSQL=true
+      - DB_CONNECTION=mysql
       - DB_HOST=mysql
       - ENABLE_REDIS=true
       - REDIS_HOST=redis
@@ -77,5 +78,5 @@ services:
 ## Next Steps
 
 - [Docker Deployment](docker.md) - Detailed Docker setup
-- [Production Configuration](production-config.md) - Production settings
+- [Configuration Reference](../configuration/environment-variables.md) - Production settings
 - [Monitoring](../monitoring/README.md) - Application monitoring
