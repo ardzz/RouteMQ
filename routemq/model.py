@@ -67,7 +67,7 @@ class Model(Base):
     async def get_session(cls) -> Optional[AsyncSession]:
         """Get a new session for database operations."""
         if not cls._is_enabled:
-            logger.warning('Database operations attempted while MySQL is disabled')
+            logger.warning('Database operations attempted while database integration is disabled')
             return None
 
         if cls._session_factory is None:
@@ -78,7 +78,7 @@ class Model(Base):
     async def create_tables(cls):
         """Create all tables defined in models."""
         if not cls._is_enabled:
-            logger.info('Skipping table creation as MySQL is disabled')
+            logger.info('Skipping table creation as database integration is disabled')
             return
 
         engine = cls._engine
@@ -90,7 +90,7 @@ class Model(Base):
     async def find(cls, model_class, id_value):
         """Find a record by ID."""
         if not cls._is_enabled:
-            logger.warning(f'Find operation on {model_class.__name__} skipped - MySQL disabled')
+            logger.warning(f'Find operation on {model_class.__name__} skipped - database integration disabled')
             return None
 
         session = await cls.get_session()
@@ -105,7 +105,7 @@ class Model(Base):
     async def all(cls, model_class):
         """Get all records of a model."""
         if not cls._is_enabled:
-            logger.warning(f'All records query on {model_class.__name__} skipped - MySQL disabled')
+            logger.warning(f'All records query on {model_class.__name__} skipped - database integration disabled')
             return []
 
         session = await cls.get_session()
@@ -120,7 +120,7 @@ class Model(Base):
     async def create(cls, model_class, **kwargs):
         """Create a new record."""
         if not cls._is_enabled:
-            logger.warning(f'Create operation on {model_class.__name__} skipped - MySQL disabled')
+            logger.warning(f'Create operation on {model_class.__name__} skipped - database integration disabled')
             return None
 
         session = await cls.get_session()

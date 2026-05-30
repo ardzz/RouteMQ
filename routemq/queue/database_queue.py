@@ -14,7 +14,7 @@ logger = logging.getLogger('RouteMQ.DatabaseQueue')
 
 class DatabaseQueue(QueueDriver):
     """
-    Database-backed queue driver using MySQL/SQLAlchemy.
+    Database-backed queue driver using SQLAlchemy.
     Provides persistent job storage with ACID guarantees.
     """
 
@@ -30,8 +30,8 @@ class DatabaseQueue(QueueDriver):
     ) -> None:
         """Push a new job onto the queue."""
         if not Model._is_enabled:
-            logger.error('Cannot push job to database queue - MySQL is disabled')
-            raise RuntimeError('MySQL is disabled. Enable it to use DatabaseQueue.')
+            logger.error('Cannot push job to database queue - database integration is disabled')
+            raise RuntimeError('Database integration is disabled. Enable it to use DatabaseQueue.')
 
         session = cast(AsyncSession, await Model.get_session())
         try:
@@ -61,7 +61,7 @@ class DatabaseQueue(QueueDriver):
     async def pop(self, queue: str = 'default') -> Optional[dict]:
         """Pop the next available job from the queue."""
         if not Model._is_enabled:
-            logger.error('Cannot pop job from database queue - MySQL is disabled')
+            logger.error('Cannot pop job from database queue - database integration is disabled')
             return None
 
         session = cast(AsyncSession, await Model.get_session())
@@ -118,7 +118,7 @@ class DatabaseQueue(QueueDriver):
     ) -> None:
         """Release a job back to the queue for retry."""
         if not Model._is_enabled:
-            logger.error('Cannot release job - MySQL is disabled')
+            logger.error('Cannot release job - database integration is disabled')
             return
 
         session = cast(AsyncSession, await Model.get_session())
@@ -147,7 +147,7 @@ class DatabaseQueue(QueueDriver):
     async def delete(self, job_id: Union[int, str], queue: str) -> None:
         """Delete a job from the queue."""
         if not Model._is_enabled:
-            logger.error('Cannot delete job - MySQL is disabled')
+            logger.error('Cannot delete job - database integration is disabled')
             return
 
         session = cast(AsyncSession, await Model.get_session())
@@ -199,7 +199,7 @@ class DatabaseQueue(QueueDriver):
     ) -> None:
         """Store a failed job."""
         if not Model._is_enabled:
-            logger.error('Cannot store failed job - MySQL is disabled')
+            logger.error('Cannot store failed job - database integration is disabled')
             return
 
         session = cast(AsyncSession, await Model.get_session())
@@ -297,7 +297,7 @@ class DatabaseQueue(QueueDriver):
     async def reap_expired(self, queue: str = 'default', visibility_timeout: int = 300) -> int:
         """Return stale reserved jobs to the queue or move exhausted ones to failed jobs."""
         if not Model._is_enabled:
-            logger.error('Cannot reap expired jobs - MySQL is disabled')
+            logger.error('Cannot reap expired jobs - database integration is disabled')
             return 0
 
         session = cast(AsyncSession, await Model.get_session())
@@ -346,7 +346,7 @@ class DatabaseQueue(QueueDriver):
     async def size(self, queue: str = 'default') -> int:
         """Get the size of the queue."""
         if not Model._is_enabled:
-            logger.error('Cannot get queue size - MySQL is disabled')
+            logger.error('Cannot get queue size - database integration is disabled')
             return 0
 
         session = cast(AsyncSession, await Model.get_session())
@@ -371,7 +371,7 @@ class DatabaseQueue(QueueDriver):
         """Return ready/reserved/delayed/failed queue depth statistics."""
         empty_stats = _empty_queue_stats(queue)
         if not Model._is_enabled:
-            logger.error('Cannot get queue stats - MySQL is disabled')
+            logger.error('Cannot get queue stats - database integration is disabled')
             return empty_stats
 
         session = cast(AsyncSession, await Model.get_session())
