@@ -110,6 +110,24 @@ class LifecycleCounterTests(DefaultHooksTestCase):
         self.assertEqual(self._gauge_samples('routemq_queue_failed_jobs')[labels], 4.0)
         self.assertEqual(self._gauge_samples('routemq_queue_oldest_ready_age_seconds')[labels], 12.5)
 
+    def test_telemetry_lifecycle_updates_counters_and_queue_depth(self) -> None:
+        observability.lifecycle('telemetry.points.accepted', {'count': 2, 'device_id': 'pump-7'})
+        observability.lifecycle('telemetry.points.flushed', {'count': 2})
+        observability.lifecycle('telemetry.points.dropped', {'count': 1, 'strategy': 'drop_newest'})
+        observability.lifecycle('telemetry.write.batches', {'count': 1})
+        observability.lifecycle('telemetry.write.errors', {'count': 1, 'device_id': 'pump-7'})
+        observability.lifecycle('telemetry.queue.depth', {'depth': 4, 'device_id': 'pump-7'})
+
+        self.assertEqual(self._counter_samples('routemq_telemetry_points_accepted_total')[()], 2.0)
+        self.assertEqual(self._counter_samples('routemq_telemetry_points_flushed_total')[()], 2.0)
+        self.assertEqual(
+            self._counter_samples('routemq_telemetry_points_dropped_total')[(('strategy', 'drop_newest'),)],
+            1.0,
+        )
+        self.assertEqual(self._counter_samples('routemq_telemetry_write_batches_total')[()], 1.0)
+        self.assertEqual(self._counter_samples('routemq_telemetry_write_errors_total')[()], 1.0)
+        self.assertEqual(self._gauge_samples('routemq_telemetry_queue_depth')[()], 4.0)
+
     def test_label_value_truncates_at_max_length(self) -> None:
         long_route = 'x' * 500
         observability.lifecycle(
@@ -120,6 +138,11 @@ class LifecycleCounterTests(DefaultHooksTestCase):
         only_key = next(iter(samples))
         only_label_value = dict(only_key)['route']
         self.assertEqual(len(only_label_value), 200)
+
+    def test_counter_attribute_falls_back_to_one_when_not_numeric(self) -> None:
+        observability.lifecycle('telemetry.points.accepted', {'count': 'not-a-number'})
+
+        self.assertEqual(self._counter_samples('routemq_telemetry_points_accepted_total')[()], 1.0)
 
 
 class SpanHistogramTests(DefaultHooksTestCase):
@@ -151,6 +174,13 @@ class SpanHistogramTests(DefaultHooksTestCase):
         with observability.start_span('custom.unrelated'):
             pass
         self.assertEqual(list(self.registry.collect()), [])
+
+    def test_telemetry_flush_span_populates_histogram(self) -> None:
+        with observability.start_span('telemetry.flush', {'device_id': 'pump-7'}):
+            pass
+
+        count = self._histogram_count('routemq_telemetry_flush_duration_seconds', {})
+        self.assertEqual(count, 1.0)
 
     def test_unregister_removes_hooks(self) -> None:
         self.handle.unregister()
