@@ -154,8 +154,8 @@ class QueueManager:
         if resolved == 'database':
             if not Model._is_enabled:
                 raise RuntimeError(
-                    'Cannot use database queue - MySQL is disabled. '
-                    'Enable MySQL or configure Redis as queue connection.'
+                    'Cannot use database queue - database integration is disabled. '
+                    'Enable database integration or configure Redis as queue connection.'
                 )
             return 'database'
 

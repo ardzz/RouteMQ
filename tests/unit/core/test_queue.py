@@ -109,7 +109,7 @@ class TestQueueManager(QueueTestCase):
         manager = QueueManager()
 
         with patch.object(Model, '_is_enabled', False):
-            with self.assertRaisesRegex(RuntimeError, 'MySQL is disabled'):
+            with self.assertRaisesRegex(RuntimeError, 'database integration is disabled'):
                 manager.get_driver('database')
 
     def test_resolve_connection_raises_when_redis_and_database_disabled(self) -> None:
@@ -119,7 +119,7 @@ class TestQueueManager(QueueTestCase):
 
         with patch('routemq.queue.queue_manager.RedisManager', return_value=redis_manager):
             with patch.object(Model, '_is_enabled', False):
-                with self.assertRaisesRegex(RuntimeError, 'MySQL is disabled'):
+                with self.assertRaisesRegex(RuntimeError, 'database integration is disabled'):
                     manager._resolve_connection('redis')
 
     async def test_push_serializes_job_to_expected_backend(self) -> None:
