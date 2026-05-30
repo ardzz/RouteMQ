@@ -24,13 +24,19 @@ RouteMQ works with any MQTT broker that supports MQTT 3.1.1 or 5.0, including:
 
 ## Installation and Setup
 
-### Do I need Redis or MySQL?
+### Do I need Redis or a database?
 No, both are optional:
 - **Redis**: Recommended for caching, rate limiting, and distributed features
-- **MySQL**: Only needed if you want persistent data storage
+- **Relational database**: Use MySQL or PostgreSQL for persistent models, database queues, or failed-job inspection
 
 ### Can I use other databases besides MySQL?
-Currently, RouteMQ officially supports MySQL through SQLAlchemy. However, you can extend it to support other databases by modifying the database configuration.
+RouteMQ supports MySQL and PostgreSQL through SQLAlchemy. Set `DB_CONNECTION=mysql` or `DB_CONNECTION=postgres`, or provide `DATABASE_URL` directly. `ENABLE_MYSQL` is still the compatibility flag name for enabling database integration.
+
+### Are database tables created automatically?
+Only when `DB_AUTO_CREATE_TABLES=true`. The default is `false`, so shared environments should create RouteMQ-managed tables with their own migration process.
+
+### Is telemetry only ClickHouse or TSDB?
+No. The current telemetry runtime accepts `TelemetryPoint` values through `telemetry.write()` and uses backend-neutral settings such as `ENABLE_TELEMETRY`, `TELEMETRY_CONNECTION`, `TELEMETRY_URL`, and batching controls. Legacy `TSDB_*` variables still map to the ClickHouse defaults for older deployments.
 
 ### How do I migrate from a basic MQTT application?
 1. Install RouteMQ
