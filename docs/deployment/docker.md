@@ -350,8 +350,8 @@ FLUSH PRIVILEGES;
 
 USE routemq_production;
 
--- Create initial tables (optional - app will create them)
--- Tables will be created automatically by the application
+-- Create RouteMQ-managed tables here, or set DB_AUTO_CREATE_TABLES=true
+-- for controlled development environments.
 ```
 
 ### Redis Configuration
@@ -699,7 +699,7 @@ volumes:
 
 ## Next Steps
 
-- [Production Configuration](production-config.md) - Configure for production deployment
+- [Configuration Reference](../configuration/environment-variables.md) - Configure production settings
 - [Scaling](scaling.md) - Scale your Docker deployment
 - [Load Balancing](load-balancing.md) - Distribute traffic across containers
-- [Security](security.md) - Secure your containerized deployment
+- [Security](../security.md) - Secure your containerized deployment

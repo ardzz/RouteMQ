@@ -165,7 +165,7 @@ result = await session.execute(select(Device))  # Don't do this in tinker
 - Press `Tab` for auto-completion
 - Use `Ctrl+D` or type `exit()` to quit
 - All your models are automatically imported and available by name
-- The session is automatically created and available when MySQL is enabled
+- The session is created and available when the relational database layer is enabled
 
 ## Prerequisites
 
@@ -177,16 +177,19 @@ pip install IPython==8.16.1 nest-asyncio==1.5.8
 
 ## Configuration
 
-Enable MySQL in your `.env` file for database operations:
+Enable the relational database layer in your `.env` file for database operations:
 
 ```env
 ENABLE_MYSQL=true
+DB_CONNECTION=mysql
 DB_HOST=localhost
 DB_PORT=3306
 DB_NAME=your_database
 DB_USER=your_username
-DB_PASS=your_password
+DB_PASSWORD=your_password
 ```
+
+Use `DB_CONNECTION=postgres` and port `5432` for PostgreSQL, or set `DATABASE_URL` directly.
 
 Enable Redis if you want to test Redis operations:
 
