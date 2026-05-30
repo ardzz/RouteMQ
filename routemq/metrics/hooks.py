@@ -95,7 +95,7 @@ class _DefaultHooksBuilder:
             help=recipe.help,
             label_names=recipe.label_names,
         )
-        counter.inc(1.0, labels=self._sanitize_labels(recipe.label_names, attributes))
+        counter.inc(recipe.value(attributes), labels=self._sanitize_labels(recipe.label_names, attributes))
 
     def _record_gauges(self, recipes: tuple['_GaugeRecipe', ...], attributes: dict[str, Any]) -> None:
         for recipe in recipes:
@@ -178,6 +178,15 @@ class _CounterRecipe:
     metric: str
     help: str
     label_names: tuple[str, ...] = ()
+    attribute: str | None = None
+
+    def value(self, attributes: Mapping[str, Any]) -> float:
+        if self.attribute is None:
+            return 1.0
+        try:
+            return float(attributes.get(self.attribute, 1.0))
+        except (TypeError, ValueError):
+            return 1.0
 
 
 @dataclass(frozen=True)
@@ -226,6 +235,13 @@ _LIFECYCLE_GAUGES: dict[str, tuple[_GaugeRecipe, ...]] = {
             help='Age in seconds of the oldest currently ready queue job.',
             attribute='oldest_ready_age_seconds',
             label_names=('queue',),
+        ),
+    ),
+    'telemetry.queue.depth': (
+        _GaugeRecipe(
+            metric='telemetry_queue_depth',
+            help='Telemetry points currently buffered for adapter writes.',
+            attribute='depth',
         ),
     ),
 }
@@ -331,6 +347,32 @@ _LIFECYCLE_COUNTERS: dict[str, _CounterRecipe] = {
         help='TSDB batched inserts that exhausted retries and dropped their batch.',
         label_names=('measurement', 'error'),
     ),
+    'telemetry.points.accepted': _CounterRecipe(
+        metric='telemetry_points_accepted_total',
+        help='Telemetry points accepted into the RouteMQ telemetry runtime.',
+        attribute='count',
+    ),
+    'telemetry.points.flushed': _CounterRecipe(
+        metric='telemetry_points_flushed_total',
+        help='Telemetry points written by telemetry adapters.',
+        attribute='count',
+    ),
+    'telemetry.points.dropped': _CounterRecipe(
+        metric='telemetry_points_dropped_total',
+        help='Telemetry points dropped by queue-full strategy.',
+        label_names=('strategy',),
+        attribute='count',
+    ),
+    'telemetry.write.batches': _CounterRecipe(
+        metric='telemetry_write_batches_total',
+        help='Telemetry adapter write batches attempted by RouteMQ.',
+        attribute='count',
+    ),
+    'telemetry.write.errors': _CounterRecipe(
+        metric='telemetry_write_errors_total',
+        help='Telemetry adapter write failures after retry handling.',
+        attribute='count',
+    ),
 }
 
 
@@ -349,5 +391,9 @@ _SPAN_HISTOGRAMS: dict[str, _HistogramRecipe] = {
         metric='tsdb_flush_duration_seconds',
         help='Wall-clock duration of TSDB batched flush spans, in seconds.',
         label_names=('measurement',),
+    ),
+    'telemetry.flush': _HistogramRecipe(
+        metric='telemetry_flush_duration_seconds',
+        help='Wall-clock duration of telemetry flush spans, in seconds.',
     ),
 }
