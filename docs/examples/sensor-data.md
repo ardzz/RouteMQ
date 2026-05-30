@@ -20,7 +20,7 @@ cd sensor-demo
 
 ## Local services
 
-Use Mosquitto for MQTT and Redis for the queue:
+Use Mosquitto for MQTT and Redis for the queue. Add a telemetry backend such as ClickHouse only when you want durable time-series writes from this example.
 
 ```yaml
 # docker-compose.yml
@@ -51,6 +51,11 @@ REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_DB=0
 QUEUE_CONNECTION=redis
+
+# Optional telemetry runtime
+ENABLE_TELEMETRY=false
+TELEMETRY_CONNECTION=clickhouse
+# TELEMETRY_URL=http://localhost:8123/default
 ```
 
 ## Router
@@ -99,8 +104,11 @@ The controller does the minimum work needed to acknowledge the message. The queu
 
 ```python
 # app/jobs/store_telemetry_job.py
+from datetime import UTC, datetime
+
 from routemq.job import Job
 from routemq.redis_manager import redis_manager
+from routemq.telemetry import Measurement, TelemetryPoint, telemetry
 
 
 @Job.register
@@ -119,6 +127,26 @@ class StoreTelemetryJob(Job):
         await redis_manager.set_json(key, self.payload, ex=3600)
 
         temperature = self.payload.get("temperature")
+        rpm = self.payload.get("rpm")
+
+        point = TelemetryPoint(
+            device_id=self.device_id,
+            observed_at=self.payload.get("observed_at") or datetime.now(UTC),
+            measurements={
+                "temperature": Measurement.from_value({
+                    "value": temperature,
+                    "unit": "celsius",
+                }),
+                "rpm": Measurement.from_value({
+                    "value": rpm,
+                    "unit": "rpm",
+                }),
+            },
+            tags={"source": "mqtt"},
+            attributes={"route": "sensors/{device_id}/telemetry"},
+        )
+        await telemetry.write(point)
+
         if temperature is not None and temperature >= 30:
             print(f"high temperature from {self.device_id}: {temperature}")
 ```
@@ -154,5 +182,5 @@ redis-cli get sensor:pump-7:latest
 ## Where to go next
 
 - Add validation middleware before dispatching jobs.
-- Store long-term telemetry in ClickHouse with `routemq[clickhouse]`.
+- Store long-term telemetry through the telemetry runtime. For ClickHouse, install `routemq[clickhouse]`, set `ENABLE_TELEMETRY=true`, and point `TELEMETRY_URL` at your backend.
 - Expose `/metrics` with `routemq[prometheus]` and `METRICS_HTTP_ENABLED=true`.
