@@ -1,346 +1,263 @@
 # Database Configuration
 
-RouteMQ supports MySQL integration for persistent data storage using SQLAlchemy with async support.
+RouteMQ configures relational database access through SQLAlchemy's async engine. The public database layer supports MySQL and PostgreSQL.
 
-## Environment Setup
+## Supported backends
 
-Configure your database connection in the `.env` file:
+| `DB_CONNECTION` | SQLAlchemy driver | Default port | Python dependency |
+|---|---|---:|---|
+| `mysql` | `mysql+aiomysql` | `3306` | `aiomysql` |
+| `postgres` or `postgresql` | `postgresql+asyncpg` | `5432` | `asyncpg` |
+
+`SQLAlchemy` and `aiomysql` are base dependencies. PostgreSQL support needs the `postgres` extra or an explicit `asyncpg` dependency:
+
+```bash
+uv add "routemq[postgres]"
+# or
+uv add asyncpg
+```
+
+## Enabling and disabling
+
+The legacy flag is still named `ENABLE_MYSQL`, but it gates the backend-neutral SQLAlchemy database layer.
 
 ```env
-# Enable/disable database integration
 ENABLE_MYSQL=true
-
-# Database connection settings
-DB_HOST=localhost
-DB_PORT=3306
-DB_NAME=mqtt_framework
-DB_USER=root
-DB_PASS=your_password
 ```
 
-## Database Dependencies
-
-The framework uses these database-related packages:
-
-- **SQLAlchemy 2.0+**: Modern async ORM
-- **aiomysql**: Async MySQL driver
-- **python-dotenv**: Environment variable management
-
-These are included in `requirements.txt`:
-
-```txt
-SQLAlchemy==2.0.23
-aiomysql==0.2.0
-python-dotenv==1.0.0
-```
-
-## Connection Configuration
-
-### Automatic Configuration
-
-The framework automatically configures the database connection on startup:
-
-```python
-# bootstrap/app.py
-def _setup_database(self):
-    """Configure database connection from environment variables"""
-    db_host = os.getenv("DB_HOST", "localhost")
-    db_port = os.getenv("DB_PORT", "3306")
-    db_name = os.getenv("DB_NAME", "mqtt_framework")
-    db_user = os.getenv("DB_USER", "root")
-    db_pass = os.getenv("DB_PASS", "")
-    
-    # Build connection string for MySQL with async support
-    conn_str = f"mysql+aiomysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
-    Model.configure(conn_str)
-```
-
-### Manual Configuration
-
-You can also configure the database manually:
-
-```python
-from routemq.model import Model
-
-# Configure with custom connection string
-Model.configure("mysql+aiomysql://user:pass@localhost:3306/mydb")
-
-# Create tables
-await Model.create_tables()
-```
-
-## Connection String Format
-
-The connection string follows SQLAlchemy's format for async MySQL:
-
-```
-mysql+aiomysql://username:password@host:port/database_name
-```
-
-### Connection String Examples
-
-```python
-# Local development
-"mysql+aiomysql://root:password@localhost:3306/mqtt_dev"
-
-# Production with remote database
-"mysql+aiomysql://app_user:secure_pass@db.example.com:3306/mqtt_prod"
-
-# With special characters in password (URL encoded)
-"mysql+aiomysql://user:p%40ssw0rd@localhost:3306/mqtt_db"
-
-# Custom port
-"mysql+aiomysql://user:pass@localhost:3307/mqtt_db"
-```
-
-## Database Setup
-
-### Creating the Database
-
-Before running your application, create the database:
-
-```sql
--- Connect to MySQL as admin user
-CREATE DATABASE mqtt_framework CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
--- Create application user (recommended for production)
-CREATE USER 'mqtt_user'@'localhost' IDENTIFIED BY 'secure_password';
-GRANT ALL PRIVILEGES ON mqtt_framework.* TO 'mqtt_user'@'localhost';
-FLUSH PRIVILEGES;
-```
-
-### Table Creation
-
-The framework automatically creates tables when the application starts:
-
-```python
-# Application initialization
-app = Application()
-await app.initialize_database()  # Creates all tables defined in models
-```
-
-## Configuration Options
-
-### Development Settings
-
-```env
-# Development configuration
-ENABLE_MYSQL=true
-DB_HOST=localhost
-DB_PORT=3306
-DB_NAME=mqtt_dev
-DB_USER=root
-DB_PASS=dev_password
-```
-
-### Production Settings
-
-```env
-# Production configuration
-ENABLE_MYSQL=true
-DB_HOST=prod-db.example.com
-DB_PORT=3306
-DB_NAME=mqtt_production
-DB_USER=mqtt_app
-DB_PASS=complex_secure_password
-```
-
-### Docker Configuration
-
-```env
-# Docker Compose configuration
-ENABLE_MYSQL=true
-DB_HOST=mysql
-DB_PORT=3306
-DB_NAME=mqtt_framework
-DB_USER=mqtt_user
-DB_PASS=mqtt_password
-```
-
-## Connection Pool Settings
-
-SQLAlchemy's async engine provides connection pooling by default. You can customize pool settings:
-
-```python
-from sqlalchemy.ext.asyncio import create_async_engine
-
-class Model:
-    @classmethod
-    def configure(cls, connection_string: str, **engine_kwargs):
-        """Configure with custom engine options"""
-        cls._engine = create_async_engine(
-            connection_string,
-            pool_size=10,          # Number of connections to maintain
-            max_overflow=20,       # Additional connections when pool is full
-            pool_timeout=30,       # Seconds to wait for connection
-            pool_recycle=3600,     # Seconds before recreating connection
-            echo=False,            # Set to True for SQL query logging
-            **engine_kwargs
-        )
-```
-
-## SSL Configuration
-
-For secure connections, configure SSL in the connection string:
-
-```python
-# SSL connection string
-conn_str = "mysql+aiomysql://user:pass@host:port/db?ssl_ca=/path/to/ca.pem&ssl_cert=/path/to/cert.pem&ssl_key=/path/to/key.pem"
-
-# Or with SSL verification disabled (not recommended for production)
-conn_str = "mysql+aiomysql://user:pass@host:port/db?ssl_disabled=true"
-```
-
-## Disabling Database Integration
-
-To run without database support:
+RouteMQ keeps the old default: if no database env vars are set, it builds an enabled MySQL connection from defaults. Set `ENABLE_MYSQL=false` for apps that don't use relational models.
 
 ```env
 ENABLE_MYSQL=false
 ```
 
-When disabled:
-- Database operations return `None` or empty results
-- No database connections are created
-- Models can still be defined but won't persist data
-- Warnings are logged when database operations are attempted
+An explicit `DATABASE_URL` or `DB_CONNECTION` enables the database path even when `ENABLE_MYSQL=false` is present.
 
-## Troubleshooting
+## Configuration precedence
 
-### Common Connection Issues
+`DATABASE_URL` has the highest precedence. When it is set, RouteMQ ignores the composed `DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and password settings for the connection URL.
 
-**Error: `aiomysql` not installed**
-```bash
-pip install aiomysql
+RouteMQ normalizes common URL schemes to async SQLAlchemy drivers:
+
+| Input scheme | Runtime scheme |
+|---|---|
+| `postgres://` | `postgresql+asyncpg://` |
+| `postgresql://` | `postgresql+asyncpg://` |
+| `mysql://` | `mysql+aiomysql://` |
+| `postgresql+asyncpg://` | unchanged |
+| `mysql+aiomysql://` | unchanged |
+
+Example:
+
+```env
+DATABASE_URL=postgres://mqtt_user:secret@localhost:5432/mqtt_framework
 ```
 
-**Error: Access denied for user**
+RouteMQ uses this at runtime as:
+
+```text
+postgresql+asyncpg://mqtt_user:secret@localhost:5432/mqtt_framework
+```
+
+## Composed connection settings
+
+When `DATABASE_URL` is not set, RouteMQ builds the SQLAlchemy URL from these settings:
+
+| Variable | Default | Behavior |
+|---|---|---|
+| `DB_CONNECTION` | `mysql` | Accepts `mysql`, `postgres`, or `postgresql`. Unknown values fall back to `mysql`. |
+| `DB_HOST` | `localhost` | Database host. |
+| `DB_PORT` | `3306` for MySQL, `5432` for PostgreSQL | Database port. |
+| `DB_NAME` | `mqtt_framework` | Database name. |
+| `DB_USER` | `root` | Database user. |
+| `DB_PASSWORD` | empty string | Preferred password variable. |
+| `DB_PASS` | empty string | Legacy fallback used only when `DB_PASSWORD` is absent. |
+
+MySQL example:
+
+```env
+ENABLE_MYSQL=true
+DB_CONNECTION=mysql
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=mqtt_framework
+DB_USER=mqtt_user
+DB_PASSWORD=mqtt_password
+```
+
+PostgreSQL example:
+
+```env
+ENABLE_MYSQL=true
+DB_CONNECTION=postgres
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=mqtt_framework
+DB_USER=mqtt_user
+DB_PASSWORD=mqtt_password
+```
+
+Full URL examples:
+
+```env
+# MySQL
+DATABASE_URL=mysql://mqtt_user:mqtt_password@localhost:3306/mqtt_framework
+
+# PostgreSQL
+DATABASE_URL=postgresql://mqtt_user:mqtt_password@localhost:5432/mqtt_framework
+```
+
+## Table creation
+
+RouteMQ does not create or change tables by default. Startup calls SQLAlchemy `create_all()` only when `DB_AUTO_CREATE_TABLES=true` and the database layer is enabled.
+
+```env
+DB_AUTO_CREATE_TABLES=true
+```
+
+Leave this unset or set it to `false` when you manage schema changes outside RouteMQ.
+
+## Database setup examples
+
+Create the database and user before starting RouteMQ.
+
+MySQL:
+
 ```sql
--- Check user permissions
-SHOW GRANTS FOR 'your_user'@'localhost';
-
--- Grant necessary permissions
-GRANT ALL PRIVILEGES ON your_database.* TO 'your_user'@'localhost';
+CREATE DATABASE mqtt_framework CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'mqtt_user'@'%' IDENTIFIED BY 'mqtt_password';
+GRANT ALL PRIVILEGES ON mqtt_framework.* TO 'mqtt_user'@'%';
+FLUSH PRIVILEGES;
 ```
 
-**Error: Unknown database**
+PostgreSQL:
+
 ```sql
--- Create the database
-CREATE DATABASE your_database_name;
+CREATE USER mqtt_user WITH PASSWORD 'mqtt_password';
+CREATE DATABASE mqtt_framework OWNER mqtt_user;
 ```
 
-**Error: Connection timeout**
-- Check if MySQL server is running
-- Verify host and port settings
-- Check firewall settings
+## Manual configuration
 
-### Debug Connection Issues
-
-Enable SQL query logging:
+Applications can configure the model layer directly with an async SQLAlchemy URL:
 
 ```python
-Model.configure(connection_string, echo=True)
+from routemq.model import Model
+
+Model.configure("postgresql+asyncpg://mqtt_user:mqtt_password@localhost:5432/mqtt_framework")
 ```
 
-Check connection in logs:
+Create tables manually only when that behavior is intentional:
 
 ```python
-import logging
-logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
+await Model.create_tables()
 ```
 
-### Testing Database Connection
+## Connection pool settings
 
-```python
-async def test_connection():
-    """Test database connection"""
-    try:
-        session = await Model.get_session()
-        if session:
-            print("Database connection successful")
-            await session.close()
-        else:
-            print("Database is disabled")
-    except Exception as e:
-        print(f"Database connection failed: {e}")
+RouteMQ passes pool options to SQLAlchemy when it configures the engine.
 
-# Run the test
-import asyncio
-asyncio.run(test_connection())
+| Variable | Default |
+|---|---:|
+| `DB_POOL_SIZE` | `5` |
+| `DB_POOL_MAX_OVERFLOW` | `10` |
+| `DB_POOL_TIMEOUT` | `30` |
+| `DB_POOL_RECYCLE` | `1800` |
+| `DB_POOL_PRE_PING` | `true` |
+| `DB_POOL_USE_LIFO` | `false` |
+| `DB_POOL_CLASS` | `default` |
+
+Set `DB_POOL_CLASS=null` to use SQLAlchemy `NullPool`. Any other value uses the default pool class.
+
+## SSL and driver options
+
+Pass driver-specific options in `DATABASE_URL` query parameters. RouteMQ preserves query parameters during scheme normalization.
+
+```env
+DATABASE_URL=postgresql://mqtt_user:mqtt_password@db.example.com:5432/mqtt_framework?ssl=require
 ```
 
-## Configuration Best Practices
+## Docker Compose examples
 
-### Security
-
-1. **Use environment variables** for sensitive data
-2. **Create dedicated database users** with minimal privileges
-3. **Use SSL connections** in production
-4. **Regularly rotate passwords**
-
-### Performance
-
-1. **Configure appropriate pool sizes** based on expected load
-2. **Use connection recycling** to prevent stale connections
-3. **Monitor connection usage** in production
-4. **Consider read replicas** for high-read workloads
-
-### Development
-
-1. **Use separate databases** for development, testing, and production
-2. **Keep connection strings** in version-controlled `.env.example` files
-3. **Document required database setup** for new developers
-
-## Docker Setup
-
-### Docker Compose Example
+MySQL service:
 
 ```yaml
-# docker-compose.yml
-version: '3.8'
-
 services:
   app:
     build: .
     environment:
-      - ENABLE_MYSQL=true
-      - DB_HOST=mysql
-      - DB_PORT=3306
-      - DB_NAME=mqtt_framework
-      - DB_USER=mqtt_user
-      - DB_PASS=mqtt_password
+      ENABLE_MYSQL: "true"
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_NAME: mqtt_framework
+      DB_USER: mqtt_user
+      DB_PASSWORD: mqtt_password
     depends_on:
       - mysql
 
   mysql:
     image: mysql:8.0
     environment:
-      - MYSQL_ROOT_PASSWORD=root_password
-      - MYSQL_DATABASE=mqtt_framework
-      - MYSQL_USER=mqtt_user
-      - MYSQL_PASSWORD=mqtt_password
-    volumes:
-      - mysql_data:/var/lib/mysql
-    ports:
-      - "3306:3306"
-
-volumes:
-  mysql_data:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: mqtt_framework
+      MYSQL_USER: mqtt_user
+      MYSQL_PASSWORD: mqtt_password
 ```
 
-### Initialization Script
+PostgreSQL service:
 
-```sql
--- init.sql (mounted to /docker-entrypoint-initdb.d/)
-CREATE DATABASE IF NOT EXISTS mqtt_framework CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER IF NOT EXISTS 'mqtt_user'@'%' IDENTIFIED BY 'mqtt_password';
-GRANT ALL PRIVILEGES ON mqtt_framework.* TO 'mqtt_user'@'%';
-FLUSH PRIVILEGES;
+```yaml
+services:
+  app:
+    build: .
+    environment:
+      ENABLE_MYSQL: "true"
+      DB_CONNECTION: postgres
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: mqtt_framework
+      DB_USER: mqtt_user
+      DB_PASSWORD: mqtt_password
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: mqtt_framework
+      POSTGRES_USER: mqtt_user
+      POSTGRES_PASSWORD: mqtt_password
 ```
 
-## Next Steps
+## Troubleshooting
+
+**Missing MySQL driver**
+
+```bash
+uv add aiomysql
+```
+
+**Missing PostgreSQL driver**
+
+```bash
+uv add "routemq[postgres]"
+```
+
+**Tables are not created at startup**
+
+Set `DB_AUTO_CREATE_TABLES=true`, or create tables with your own schema workflow.
+
+**Access denied or authentication failed**
+
+Check `DB_USER`, `DB_PASSWORD`, host permissions, and grants for the selected database.
+
+**Unknown database**
+
+Create the database named by `DB_NAME` or by the path segment in `DATABASE_URL`.
+
+## Next steps
 
 - [Creating Models](creating-models.md) - Define your database models
 - [Database Operations](operations.md) - Perform CRUD operations
-- [Migrations](migrations.md) - Manage schema changes
-- [Best Practices](best-practices.md) - Optimize performance and organization
+- [Queue Drivers](../queue/drivers.md) - Use the database queue backend
