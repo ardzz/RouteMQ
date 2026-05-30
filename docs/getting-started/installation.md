@@ -11,10 +11,11 @@ RouteMQ is published on PyPI as `routemq`. Install the base runtime when you alr
 
 | Package | Includes | Use it when |
 |---|---|---|
-| `routemq` | Router, middleware, app boot, jobs, MySQL-backed queue | You already have an `app/` layout or you are adding RouteMQ to an existing project. |
+| `routemq` | Router, middleware, app boot, jobs, MySQL-backed database queue | You already have an `app/` layout or you are adding RouteMQ to an existing project. |
 | `routemq[cli]` | Base runtime plus the `routemq new` scaffolder UI | You are starting a new app. |
 | `routemq[redis]` | Base runtime plus Redis client support | You want Redis queues, cache, rate limits, or shared state. |
-| `routemq[all]` | CLI, Redis, Prometheus, and ClickHouse extras | You want every optional integration in one install. |
+| `routemq[postgres]` | Base runtime plus the PostgreSQL async driver | You want PostgreSQL models or database queues. |
+| `routemq[all]` | CLI, Redis, PostgreSQL, Prometheus, and ClickHouse extras | You want every optional integration in one install. |
 
 ## uv
 
@@ -24,6 +25,7 @@ Use `uv add` inside a uv-managed project, then run the CLI with `uv run`:
 uv add routemq
 uv add "routemq[cli]"
 uv add "routemq[redis]"
+uv add "routemq[postgres]"
 uv add "routemq[all]"
 uv run routemq --help
 ```
@@ -42,6 +44,7 @@ routemq --help
 pip install routemq
 pip install "routemq[cli]"
 pip install "routemq[redis]"
+pip install "routemq[postgres]"
 pip install "routemq[all]"
 ```
 

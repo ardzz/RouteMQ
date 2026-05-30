@@ -28,11 +28,11 @@ RouteMQ gives you:
 
 - **Route topics like web routes.** Declare `devices/{id}/status` once; receive `id` as a typed handler argument.
 - **Controllers and middleware.** Keep handlers in `app/controllers`; layer auth, logging, rate limiting, and validation as reusable middleware.
-- **Async by default.** Use async Redis, MySQL (SQLAlchemy), ClickHouse, and job dispatch naturally inside handlers. RouteMQ bridges `paho-mqtt`'s sync callbacks for you.
+- **Async by default.** Use async Redis, SQLAlchemy for MySQL or PostgreSQL, telemetry adapters, and job dispatch naturally inside handlers. RouteMQ bridges `paho-mqtt`'s sync callbacks for you.
 - **Shared-subscription scaling.** Flip `shared=True` on a high-volume route; RouteMQ spawns worker processes against `$share/<group>/<topic>` without you wiring multiple clients.
-- **Background jobs.** Laravel-style `Job` classes with retries, delays, timeouts, and Redis or MySQL queue backends.
+- **Background jobs.** Laravel-style `Job` classes with retries, delays, timeouts, and Redis or database-backed queue backends.
 - **Built-in observability.** Optional `/health`, `/ready`, and `/metrics` HTTP endpoints, lifecycle counters, latency histograms, and OpenTelemetry-shaped spans. No mandatory vendor backend.
-- **Optional integrations.** Redis, MySQL, ClickHouse for time-series telemetry, and a Prometheus client adapter. All opt-in extras.
+- **Optional integrations.** Redis, PostgreSQL, ClickHouse telemetry, and a Prometheus client adapter. MySQL support ships with the base runtime.
 - **Supply-chain hardened.** OpenSSF Scorecard, SLSA L3 provenance, signed CycloneDX SBOMs, Bandit, pip-audit, and Dependabot on every release.
 
 ## Quick Start
@@ -41,10 +41,10 @@ Install the mode you need:
 
 | Install | Use it for |
 |---|---|
-| `routemq` | Runtime engine: routing, middleware, jobs, MySQL queue, app boot. |
+| `routemq` | Runtime engine: routing, middleware, jobs, MySQL database queue, app boot. |
 | `routemq[cli]` | Runtime plus the `routemq new` scaffolder. Start here for a new project. |
 | `routemq[redis]` | Runtime plus Redis support for queues, cache, rate limits, and shared state. |
-| `routemq[all]` | CLI, Redis, Prometheus, and ClickHouse extras in one install. |
+| `routemq[all]` | CLI, Redis, PostgreSQL, Prometheus, and ClickHouse extras in one install. |
 
 ```bash
 uv add "routemq[cli]"          # add to an existing uv project
@@ -262,7 +262,7 @@ curl http://localhost:8080/ready      # MQTT readiness
 curl http://localhost:8080/metrics    # OpenMetrics / Prometheus text
 ```
 
-Built-in metric families include `mqtt_messages_*`, `router_dispatch_*`, `queue_job_*`, queue-depth gauges, `tsdb_write_*`, and latency histograms for each. Spans follow OpenTelemetry-shaped semantics (`db.system`, `db.operation`, `messaging.system`, `kind=client|consumer|producer|internal`).
+Built-in metric families include `mqtt_messages_*`, `router_dispatch_*`, `queue_job_*`, queue-depth gauges, `telemetry_*`, legacy `tsdb_write_*`, and latency histograms. Spans follow OpenTelemetry-shaped semantics (`db.system`, `db.operation`, `messaging.system`, `kind=client|consumer|producer|internal`).
 
 For details: [Metrics](./docs/monitoring/metrics.md) · [Health checks](./docs/monitoring/health-checks.md) · [Pool tuning evidence](./docs/monitoring/pool-tuning.md)
 
@@ -272,7 +272,8 @@ For details: [Metrics](./docs/monitoring/metrics.md) · [Health checks](./docs/m
 uv add routemq                 # base runtime
 uv add "routemq[cli]"          # scaffolder and rich terminal prompts
 uv add "routemq[redis]"        # Redis queue + rate limiting backend
-uv add "routemq[clickhouse]"   # ClickHouse time-series telemetry
+uv add "routemq[postgres]"     # PostgreSQL async driver
+uv add "routemq[clickhouse]"   # ClickHouse telemetry adapter
 uv add "routemq[prometheus]"   # multiprocess-safe Prometheus client adapter
 uv add "routemq[all]"          # everything above plus CLI
 
@@ -314,7 +315,7 @@ Then set `MQTT_BROKER=mosquitto` for containers, or `MQTT_BROKER=localhost` when
 - **[Routing](./docs/routing/README.md)** · **[Controllers](./docs/controllers/README.md)** · **[Middleware](./docs/middleware/README.md)**
 - **[Queue System](./docs/queue/README.md)**, jobs, workers, drivers
 - **[Rate Limiting](./docs/rate-limiting/README.md)**, strategies and Redis backend
-- **[Redis](./docs/redis/README.md)** · **[Database](./docs/database/README.md)** · **[TSDB / ClickHouse](./docs/tsdb/README.md)**
+- **[Redis](./docs/redis/README.md)** · **[Database](./docs/database/README.md)** · **[Telemetry / TSDB](./docs/tsdb/README.md)**
 - **[Monitoring](./docs/monitoring/README.md)**, metrics, health, traces
 - **[Docker Deployment](./docs/docker-deployment.md)** · **[Testing](./docs/testing/README.md)**
 - **[Examples](./docs/examples/README.md)** · **[API Reference](./docs/api-reference/README.md)** · **[FAQ](./docs/faq.md)**
