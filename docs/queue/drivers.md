@@ -17,7 +17,7 @@ Built-in drivers use these connection names:
 | Connection | Driver | Backend |
 |------------|--------|---------|
 | `redis` | `RedisQueue` | Redis lists and sorted sets |
-| `database` | `DatabaseQueue` | MySQL tables via SQLAlchemy |
+| `database` | `DatabaseQueue` | Relational tables via SQLAlchemy, MySQL or PostgreSQL |
 
 Custom drivers use the same connection-name model through `QueueManager.register_driver()` or Python package entry points.
 
@@ -126,38 +126,46 @@ Redis queue uses different data structures for different purposes:
 
 ## Database Queue Driver
 
-Persistent queue backed by MySQL.
+Persistent queue backed by a relational database through SQLAlchemy.
 
 ### Features
 
-- ✅ **Persistent** - Jobs survive crashes
+- ✅ **Persistent** - Jobs are stored outside the worker process
 - ✅ **ACID** - Transactional guarantees
 - ✅ **Inspectable** - Easy to query with SQL
-- ✅ **Reliable** - No job loss
-- ✅ **No extra service** - Uses existing MySQL
+- ✅ **Durable records** - Jobs are stored on disk by the database backend
+- ✅ **No extra service** - Uses an existing relational database
 
 ### Requirements
 
-- MySQL server running (v8.0+)
-- `ENABLE_MYSQL=true` in `.env`
+- MySQL 8.0+ or PostgreSQL reachable by the app and workers
+- `DATABASE_URL`, or `DB_CONNECTION` plus the `DB_*` host/user/password fields
+- `ENABLE_MYSQL=true` in `.env` when you use the legacy enable flag
 - `QUEUE_CONNECTION=database` in `.env`
 
 ### Configuration
 
 ```env
-# Enable MySQL
+# Enable the relational database integration
 ENABLE_MYSQL=true
+DB_CONNECTION=mysql  # mysql or postgres
 DB_HOST=localhost
 DB_PORT=3306
 DB_NAME=mqtt_framework
 DB_USER=root
-DB_PASS=your_password
+DB_PASSWORD=your_password
+# DATABASE_URL=mysql://root:your_password@localhost:3306/mqtt_framework
+# DB_AUTO_CREATE_TABLES=false
 
 # Use database for queue
 QUEUE_CONNECTION=database
 ```
 
 ### Database Tables
+
+RouteMQ uses `queue_jobs` and `queue_failed_jobs`. It creates RouteMQ-managed tables only when
+`DB_AUTO_CREATE_TABLES=true`; otherwise create the tables through your own migration process before
+starting workers.
 
 **queue_jobs:**
 
@@ -188,7 +196,7 @@ QUEUE_CONNECTION=database
 ```sql
 INSERT INTO queue_jobs
 (queue, payload, attempts, available_at, created_at)
-VALUES (?, ?, 0, ?, NOW())
+VALUES (?, ?, 0, ?, CURRENT_TIMESTAMP)
 ```
 
 **Popping a job:**
@@ -218,20 +226,23 @@ DELETE FROM queue_jobs WHERE id = ?
 -- If retrying
 UPDATE queue_jobs
 SET reserved_at = NULL,
-    available_at = DATE_ADD(NOW(), INTERVAL ? SECOND)
+    available_at = ?
 WHERE id = ?
 
 -- If permanently failed
 INSERT INTO queue_failed_jobs
 (connection, queue, payload, exception, failed_at)
-VALUES (?, ?, ?, ?, NOW());
+VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP);
 
 DELETE FROM queue_jobs WHERE id = ?
 ```
 
+The SQL snippets show the storage model. The driver uses SQLAlchemy so emitted SQL and timestamp
+functions vary by backend.
+
 ### Advantages
 
-- **Persistence**: Jobs survive crashes
+- **Persistence**: Jobs are stored outside the worker process
 - **Reliability**: ACID transactions
 - **Visibility**: Easy to inspect with SQL
 - **Simplicity**: No additional infrastructure
@@ -435,8 +446,10 @@ GROUP BY queue;
 
 -- Find stuck jobs (reserved > 1 hour ago)
 SELECT * FROM queue_jobs
-WHERE reserved_at < DATE_SUB(NOW(), INTERVAL 1 HOUR);
+WHERE reserved_at < ?;
 ```
+
+Use a timestamp parameter for the cutoff so the query works across MySQL and PostgreSQL.
 
 ## Troubleshooting
 
@@ -457,10 +470,13 @@ redis-cli INFO server
 ### Database Connection Issues
 
 ```bash
-# Test connection
+# Test MySQL connection
 mysql -h localhost -u root -p -e "SELECT 1"
 
-# Check if MySQL is running
+# Test PostgreSQL connection
+psql "$DATABASE_URL" -c "SELECT 1"
+
+# Check if the database service is running
 sudo systemctl status mysql
 
 # Check for locks
@@ -482,6 +498,9 @@ mysql> SHOW OPEN TABLES WHERE In_use > 0;
 
    # MySQL
    mysql -h localhost -u root -p -e "SELECT 1"
+
+   # PostgreSQL
+   psql "$DATABASE_URL" -c "SELECT 1"
    ```
 
 3. **Check worker connection:**
@@ -503,7 +522,8 @@ Already using Redis → Redis
 
 ### 2. Monitor Both
 
-Even if using Redis, keep failed jobs in database:
+If you configure the relational database integration, failed jobs can be inspected with SQL even when
+Redis handles the ready queue:
 
 ```python
 # RedisQueue already does this
@@ -516,8 +536,10 @@ await driver.failed(connection, queue, payload, exception)
 ```sql
 -- Clean old failed jobs (> 30 days)
 DELETE FROM queue_failed_jobs
-WHERE failed_at < DATE_SUB(NOW(), INTERVAL 30 DAY);
+WHERE failed_at < ?;
 ```
+
+Pass the cutoff timestamp from your cleanup script so the same statement works across database backends.
 
 ### 4. Backup Important Queues
 
@@ -528,6 +550,9 @@ cp /var/lib/redis/dump.rdb /backup/
 
 # MySQL
 mysqldump -u root -p mqtt_framework queue_jobs > backup.sql
+
+# PostgreSQL
+pg_dump "$DATABASE_URL" -t queue_jobs -f backup.sql
 ```
 
 ## Next Steps

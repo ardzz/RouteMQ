@@ -6,8 +6,8 @@ This guide will help you set up and configure the RouteMQ queue system.
 
 You'll need one of the following:
 
-- **Redis** (recommended for production) - Fast, in-memory queue
-- **MySQL** - Persistent, database-backed queue
+- **Redis** - Fast, in-memory queue for high-throughput workloads
+- **Relational database** - Persistent queue storage with MySQL or PostgreSQL
 
 ## Installation
 
@@ -33,7 +33,7 @@ Edit your `.env` file:
 QUEUE_CONNECTION=redis  # or 'database'
 ```
 
-### 2. Configure Redis (Recommended)
+### 2. Configure Redis
 
 If using Redis queue:
 
@@ -68,21 +68,25 @@ docker run -d -p 6379:6379 redis:7-alpine
 If using database queue:
 
 ```env
-# Enable MySQL
+# Enable the relational database integration
 ENABLE_MYSQL=true
+DB_CONNECTION=mysql  # mysql or postgres
 DB_HOST=localhost
 DB_PORT=3306
 DB_NAME=mqtt_framework
 DB_USER=root
-DB_PASS=your_password
+DB_PASSWORD=your_password
+# DATABASE_URL=mysql://root:your_password@localhost:3306/mqtt_framework
+DB_AUTO_CREATE_TABLES=false
 
 # Queue connection
 QUEUE_CONNECTION=database
 ```
 
-**Create Tables:**
+**Create tables:**
 
-The queue tables will be created automatically when you start the application. They include:
+The queue tables are not created automatically unless you set `DB_AUTO_CREATE_TABLES=true`. Keep the
+default `false` in shared environments and create these tables through your own migration flow:
 
 - `queue_jobs` - Stores pending and reserved jobs
 - `queue_failed_jobs` - Stores permanently failed jobs
@@ -103,7 +107,7 @@ The queue tables will be created automatically when you start the application. T
 - ⚠️ Jobs lost if Redis crashes (unless persistence enabled)
 - ⚠️ Additional infrastructure
 
-**Best for:** Production environments with high job volumes
+**Best for:** High-throughput queues and latency-sensitive jobs
 
 ### Database Driver
 
@@ -143,6 +147,9 @@ print(r.ping())  # Should print: True
 ```bash
 # Using MySQL client
 mysql -h localhost -u root -p -e "SHOW DATABASES;"
+
+# Using PostgreSQL client
+psql "$DATABASE_URL" -c "SELECT 1;"
 
 # In Python
 python -c "
@@ -185,12 +192,16 @@ See [Docker Deployment](../docker-deployment.md) for details.
 | `REDIS_PORT` | `6379` | Redis server port |
 | `REDIS_DB` | `0` | Redis database number |
 | `REDIS_PASSWORD` | - | Redis password (optional) |
-| `ENABLE_MYSQL` | `false` | Enable MySQL integration |
-| `DB_HOST` | `localhost` | MySQL server hostname |
-| `DB_PORT` | `3306` | MySQL server port |
-| `DB_NAME` | `mqtt_framework` | MySQL database name |
-| `DB_USER` | `root` | MySQL username |
-| `DB_PASS` | - | MySQL password |
+| `ENABLE_MYSQL` | `true` | Legacy flag for relational database integration |
+| `DB_CONNECTION` | `mysql` | Database selector: `mysql` or `postgres` |
+| `DATABASE_URL` | - | Full SQLAlchemy database URL. Wins over individual `DB_*` fields. |
+| `DB_HOST` | `localhost` | Database server hostname |
+| `DB_PORT` | `3306` for MySQL, `5432` for PostgreSQL | Database server port |
+| `DB_NAME` | `mqtt_framework` | Database name |
+| `DB_USER` | `root` | Database username |
+| `DB_PASSWORD` | - | Database password. Preferred over `DB_PASS`. |
+| `DB_PASS` | - | Legacy database password fallback |
+| `DB_AUTO_CREATE_TABLES` | `false` | Create RouteMQ-managed tables during startup |
 
 ## Next Steps
 
@@ -223,8 +234,11 @@ redis-cli ping
 # Check if MySQL is running
 sudo systemctl status mysql
 
-# Test connection
+# Test MySQL connection
 mysql -h localhost -u root -p
+
+# Test PostgreSQL connection
+psql "$DATABASE_URL" -c "SELECT 1"
 
 # Check credentials in .env file
 ```
@@ -233,5 +247,5 @@ mysql -h localhost -u root -p
 
 1. Verify queue configuration matches between app and worker
 2. Check worker logs: `docker compose logs queue-worker-default`
-3. Ensure Redis/MySQL is accessible
+3. Ensure Redis or the configured database is accessible
 4. Verify queue name matches in dispatch and worker
