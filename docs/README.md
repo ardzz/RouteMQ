@@ -19,7 +19,7 @@ Welcome to the RouteMQ Framework documentation! This guide will help you get sta
 * [Queue System](queue/) - Background task processing and pluggable queue drivers
 * [Redis Integration](redis/) - Caching, sessions, and distributed features
 * [Rate Limiting](rate-limiting/) - Advanced rate limiting strategies
-* [Database](database/) - MySQL integration and models
+* [Database](database/) - Relational database integration and models
 * [Testing](testing/) - Writing and running tests
 * [Deployment](deployment/) - Docker, production setup, and scaling
 * [Monitoring](monitoring/) - Metrics, health checks, and debugging
@@ -54,7 +54,7 @@ RouteMQ is a flexible MQTT routing framework with middleware support, dynamic ro
 * **Shared Subscriptions**: Horizontal scaling with worker processes for high-throughput routes
 * **Redis Integration**: Optional Redis support for distributed caching and rate limiting
 * **Advanced Rate Limiting**: Multiple rate limiting strategies with Redis backend
-* **Optional MySQL integration**: Use with or without a database
+* **Optional relational database integration**: Use MySQL or PostgreSQL when your app needs persistent models or database queues
 * **Group-based routing**: Group routes with shared prefixes and middleware
 * **Context manager for route groups**: Use Python's `with` statement for cleaner route definitions
 * **Environment-based configuration**: Flexible configuration through .env files
