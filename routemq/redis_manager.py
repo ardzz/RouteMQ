@@ -15,6 +15,8 @@ except ImportError:  # pragma: no cover - optional dependency fallback
 if TYPE_CHECKING:
     from redis.asyncio import ConnectionPool, Redis
 
+from .observability import start_span
+
 
 class RedisManager:
     """
@@ -93,7 +95,8 @@ class RedisManager:
             self._redis_client = redis_module.Redis(connection_pool=self._redis_pool)
 
             # Test connection
-            await cast(Any, self._redis_client).ping()
+            with _redis_span(self, 'PING'):
+                await cast(Any, self._redis_client).ping()
             self.logger.info('Successfully connected to Redis')
             return True
 
@@ -148,7 +151,8 @@ class RedisManager:
         client = cast(Any, self._redis_client)
 
         try:
-            return await client.get(key)
+            with _redis_span(self, 'GET', 1):
+                return await client.get(key)
         except Exception as e:
             self.logger.error(f"Redis GET error for key '{key}': {e}")
             # Audit Accept: cache reads return a miss sentinel after logging.
@@ -182,7 +186,8 @@ class RedisManager:
         client = cast(Any, self._redis_client)
 
         try:
-            result = await client.set(key, value, ex=ex, px=px, nx=nx, xx=xx)
+            with _redis_span(self, 'SET', 2):
+                result = await client.set(key, value, ex=ex, px=px, nx=nx, xx=xx)
             return bool(result)
         except Exception as e:
             self.logger.error(f"Redis SET error for key '{key}': {e}")
@@ -205,7 +210,8 @@ class RedisManager:
         client = cast(Any, self._redis_client)
 
         try:
-            return await client.incrby(key, amount)
+            with _redis_span(self, 'INCRBY', 2):
+                return await client.incrby(key, amount)
         except Exception as e:
             self.logger.error(f"Redis INCR error for key '{key}': {e}")
             # Audit Accept: counter operations return a sentinel after logging.
@@ -227,7 +233,8 @@ class RedisManager:
         client = cast(Any, self._redis_client)
 
         try:
-            result = await client.expire(key, time)
+            with _redis_span(self, 'EXPIRE', 2):
+                result = await client.expire(key, time)
             return bool(result)
         except Exception as e:
             self.logger.error(f"Redis EXPIRE error for key '{key}': {e}")
@@ -249,7 +256,8 @@ class RedisManager:
         client = cast(Any, self._redis_client)
 
         try:
-            return await client.delete(*keys)
+            with _redis_span(self, 'DEL', len(keys)):
+                return await client.delete(*keys)
         except Exception as e:
             self.logger.error(f'Redis DELETE error for keys {keys}: {e}')
             # Audit Accept: deletes are best-effort cleanup for optional Redis state.
@@ -270,7 +278,8 @@ class RedisManager:
         client = cast(Any, self._redis_client)
 
         try:
-            result = await client.exists(key)
+            with _redis_span(self, 'EXISTS', 1):
+                result = await client.exists(key)
             return bool(result)
         except Exception as e:
             self.logger.error(f"Redis EXISTS error for key '{key}': {e}")
@@ -292,7 +301,8 @@ class RedisManager:
         client = cast(Any, self._redis_client)
 
         try:
-            return await client.ttl(key)
+            with _redis_span(self, 'TTL', 1):
+                return await client.ttl(key)
         except Exception as e:
             self.logger.error(f"Redis TTL error for key '{key}': {e}")
             # Audit Accept: TTL uses the same missing-key sentinel on backend errors.
@@ -314,7 +324,8 @@ class RedisManager:
         client = cast(Any, self._redis_client)
 
         try:
-            return await client.hget(name, key)
+            with _redis_span(self, 'HGET', 2):
+                return await client.hget(name, key)
         except Exception as e:
             self.logger.error(f"Redis HGET error for hash '{name}', key '{key}': {e}")
             # Audit Accept: hash reads return a miss sentinel after logging.
@@ -345,9 +356,11 @@ class RedisManager:
 
         try:
             if mapping:
-                return await client.hset(name, mapping=mapping)
+                with _redis_span(self, 'HSET', 2):
+                    return await client.hset(name, mapping=mapping)
             elif key and value is not None:
-                return await client.hset(name, key, value)
+                with _redis_span(self, 'HSET', 3):
+                    return await client.hset(name, key, value)
             else:
                 return 0
         except Exception as e:
@@ -410,3 +423,32 @@ class RedisManager:
 
 # Global Redis manager instance
 redis_manager = RedisManager()
+
+
+def _redis_span(manager: Any, operation: str, arg_count: int = 0):
+    return start_span(
+        f'redis.{operation.lower()}',
+        _redis_span_attributes(manager, operation, _redis_command_text(operation, arg_count)),
+        kind='client',
+    )
+
+
+def _redis_span_attributes(manager: Any, operation: str, query_text: str) -> dict[str, Any]:
+    attrs: dict[str, Any] = {
+        'db.system': 'redis',
+        'db.operation': operation,
+        'db.query.text': query_text,
+    }
+    host = getattr(manager, 'host', None)
+    port = getattr(manager, 'port', None)
+    if isinstance(host, str) and host:
+        attrs['server.address'] = host
+    if isinstance(port, int):
+        attrs['server.port'] = port
+    return attrs
+
+
+def _redis_command_text(operation: str, arg_count: int = 0) -> str:
+    if arg_count <= 0:
+        return operation
+    return f'{operation} {" ".join("?" for _ in range(arg_count))}'

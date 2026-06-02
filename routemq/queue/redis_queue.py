@@ -5,7 +5,7 @@ from typing import Any, Optional, Union, cast
 from datetime import UTC, datetime
 
 from routemq.queue.queue_driver import QueueDriver
-from routemq.redis_manager import RedisManager
+from routemq.redis_manager import RedisManager, _redis_span
 from routemq.model import Model
 from routemq.queue.models import QueueFailedJob
 
@@ -67,11 +67,13 @@ class RedisQueue(QueueDriver):
             if delay > 0:
                 # Use sorted set for delayed jobs (score = available timestamp)
                 available_at = time.time() + delay
-                await client.zadd(self._get_delayed_key(queue), {job_json: available_at})
+                with _redis_span(self.redis, 'ZADD', 2):
+                    await client.zadd(self._get_delayed_key(queue), {job_json: available_at})
                 logger.debug(f"Job pushed to delayed queue '{queue}' with {delay}s delay")
             else:
                 # Use list for immediate jobs (FIFO)
-                await client.rpush(self._get_queue_key(queue), job_json)
+                with _redis_span(self.redis, 'RPUSH', 2):
+                    await client.rpush(self._get_queue_key(queue), job_json)
                 logger.debug(f"Job pushed to queue '{queue}'")
 
         except Exception as e:
@@ -89,7 +91,8 @@ class RedisQueue(QueueDriver):
             current_time = time.time()
 
             # Get all jobs that are now available (score <= current_time)
-            available_jobs = await client.zrangebyscore(delayed_key, '-inf', current_time)
+            with _redis_span(self.redis, 'ZRANGEBYSCORE', 3):
+                available_jobs = await client.zrangebyscore(delayed_key, '-inf', current_time)
 
             if available_jobs:
                 # Move jobs to main queue
@@ -97,7 +100,8 @@ class RedisQueue(QueueDriver):
                 for job_json in available_jobs:
                     pipeline.rpush(self._get_queue_key(queue), job_json)
                     pipeline.zrem(delayed_key, job_json)
-                await pipeline.execute()
+                with _redis_span(self.redis, 'PIPELINE', len(available_jobs) * 2):
+                    await pipeline.execute()
 
                 logger.debug(f"Migrated {len(available_jobs)} delayed jobs to queue '{queue}'")
 
@@ -117,7 +121,8 @@ class RedisQueue(QueueDriver):
             await self._migrate_delayed_jobs(queue)
 
             # Pop from main queue (FIFO) and move to reserved
-            job_json = await client.rpoplpush(self._get_queue_key(queue), self._get_reserved_key(queue))
+            with _redis_span(self.redis, 'RPOPLPUSH', 2):
+                job_json = await client.rpoplpush(self._get_queue_key(queue), self._get_reserved_key(queue))
 
             if not job_json:
                 return None
@@ -128,8 +133,10 @@ class RedisQueue(QueueDriver):
 
             # Update the reserved job with new attempt count
             updated_job_json = json.dumps(job_data)
-            await client.lrem(self._get_reserved_key(queue), 1, job_json)
-            await client.rpush(self._get_reserved_key(queue), updated_job_json)
+            with _redis_span(self.redis, 'LREM', 3):
+                await client.lrem(self._get_reserved_key(queue), 1, job_json)
+            with _redis_span(self.redis, 'RPUSH', 2):
+                await client.rpush(self._get_reserved_key(queue), updated_job_json)
 
             logger.debug(f"Job {job_data['id']} popped from queue '{queue}' (attempt {job_data['attempts']})")
 
@@ -160,7 +167,8 @@ class RedisQueue(QueueDriver):
             reserved_key = self._get_reserved_key(queue)
 
             # Find the job in reserved list
-            reserved_jobs = await client.lrange(reserved_key, 0, -1)
+            with _redis_span(self.redis, 'LRANGE', 3):
+                reserved_jobs = await client.lrange(reserved_key, 0, -1)
             job_json = None
             job_data: dict[str, Any] | None = None
 
@@ -176,16 +184,19 @@ class RedisQueue(QueueDriver):
                 return
 
             # Remove from reserved
-            await client.lrem(reserved_key, 1, job_json)
+            with _redis_span(self.redis, 'LREM', 3):
+                await client.lrem(reserved_key, 1, job_json)
             job_data.pop('reserved_at', None)
             job_json = json.dumps(job_data)
 
             # Add back to queue (with delay if specified)
             if delay > 0:
                 available_at = time.time() + delay
-                await client.zadd(self._get_delayed_key(queue), {job_json: available_at})
+                with _redis_span(self.redis, 'ZADD', 2):
+                    await client.zadd(self._get_delayed_key(queue), {job_json: available_at})
             else:
-                await client.rpush(self._get_queue_key(queue), job_json)
+                with _redis_span(self.redis, 'RPUSH', 2):
+                    await client.rpush(self._get_queue_key(queue), job_json)
 
             logger.debug(f"Job {job_id} released back to queue '{queue}' with delay {delay}s")
 
@@ -203,13 +214,15 @@ class RedisQueue(QueueDriver):
         now = datetime.now(UTC)
         reaped = 0
         try:
-            reserved_jobs = await client.lrange(reserved_key, 0, -1)
+            with _redis_span(self.redis, 'LRANGE', 3):
+                reserved_jobs = await client.lrange(reserved_key, 0, -1)
             for job_json in reserved_jobs:
                 job_data = json.loads(job_json)
                 if not _reserved_job_expired(job_data, now, visibility_timeout):
                     continue
 
-                await client.lrem(reserved_key, 1, job_json)
+                with _redis_span(self.redis, 'LREM', 3):
+                    await client.lrem(reserved_key, 1, job_json)
                 payload = job_data.get('payload', '')
                 max_tries = _payload_max_tries(payload)
                 attempts = int(job_data.get('attempts', 0) or 0)
@@ -222,7 +235,8 @@ class RedisQueue(QueueDriver):
                     )
                 else:
                     job_data.pop('reserved_at', None)
-                    await client.rpush(self._get_queue_key(queue), json.dumps(job_data))
+                    with _redis_span(self.redis, 'RPUSH', 2):
+                        await client.rpush(self._get_queue_key(queue), json.dumps(job_data))
                 reaped += 1
             return reaped
         except Exception as e:
@@ -240,12 +254,14 @@ class RedisQueue(QueueDriver):
             reserved_key = self._get_reserved_key(queue)
 
             # Find and remove the job from reserved list
-            reserved_jobs = await client.lrange(reserved_key, 0, -1)
+            with _redis_span(self.redis, 'LRANGE', 3):
+                reserved_jobs = await client.lrange(reserved_key, 0, -1)
 
             for job_json in reserved_jobs:
                 job_data = json.loads(job_json)
                 if job_data['id'] == job_id:
-                    await client.lrem(reserved_key, 1, job_json)
+                    with _redis_span(self.redis, 'LREM', 3):
+                        await client.lrem(reserved_key, 1, job_json)
                     logger.debug(f"Job {job_id} deleted from queue '{queue}'")
                     return
 
@@ -262,14 +278,17 @@ class RedisQueue(QueueDriver):
 
         client = cast(Any, self.redis.get_client())
         reserved_key = self._get_reserved_key(queue)
-        reserved_jobs = await client.lrange(reserved_key, 0, -1)
+        with _redis_span(self.redis, 'LRANGE', 3):
+            reserved_jobs = await client.lrange(reserved_key, 0, -1)
         for job_json in reserved_jobs:
             job_data = json.loads(job_json)
             if job_data.get('id') != job_id:
                 continue
             job_data['reserved_at'] = datetime.now(UTC).isoformat()
-            await client.lrem(reserved_key, 1, job_json)
-            await client.rpush(reserved_key, json.dumps(job_data))
+            with _redis_span(self.redis, 'LREM', 3):
+                await client.lrem(reserved_key, 1, job_json)
+            with _redis_span(self.redis, 'RPUSH', 2):
+                await client.rpush(reserved_key, json.dumps(job_data))
             return True
         return False
 
@@ -280,15 +299,18 @@ class RedisQueue(QueueDriver):
         worker_id = str(heartbeat['worker_id'])
         key = self._get_worker_key(worker_id)
         client = cast(Any, self.redis.get_client())
-        await client.hset(key, mapping={key: str(value) for key, value in heartbeat.items()})
-        await client.expire(key, ttl)
+        with _redis_span(self.redis, 'HSET', 2):
+            await client.hset(key, mapping={key: str(value) for key, value in heartbeat.items()})
+        with _redis_span(self.redis, 'EXPIRE', 2):
+            await client.expire(key, ttl)
 
     async def mark_worker_dead(self, worker_id: str) -> None:
         """Mark a worker heartbeat as dead."""
         if not self.redis.is_enabled():
             return
         client = cast(Any, self.redis.get_client())
-        await client.hset(self._get_worker_key(worker_id), mapping={'state': 'dead'})
+        with _redis_span(self.redis, 'HSET', 2):
+            await client.hset(self._get_worker_key(worker_id), mapping={'state': 'dead'})
 
     async def failed(
         self,
@@ -330,7 +352,8 @@ class RedisQueue(QueueDriver):
                     'exception': exception,
                     'failed_at': datetime.now(UTC).isoformat(),
                 }
-                await client.rpush(failed_key, json.dumps(failed_data))
+                with _redis_span(self.redis, 'RPUSH', 2):
+                    await client.rpush(failed_key, json.dumps(failed_data))
                 logger.info(f"Failed job stored in Redis for queue '{queue}'")
             else:
                 logger.error('Cannot store failed job - both MySQL and Redis are disabled')
@@ -343,7 +366,8 @@ class RedisQueue(QueueDriver):
         if not self.redis.is_enabled() or queue is None:
             return []
         client = cast(Any, self.redis.get_client())
-        failed_jobs = await client.lrange(self._get_failed_key(queue), 0, -1)
+        with _redis_span(self.redis, 'LRANGE', 3):
+            failed_jobs = await client.lrange(self._get_failed_key(queue), 0, -1)
         return [json.loads(job_json) for job_json in failed_jobs]
 
     async def get_failed_job(self, job_id: Union[int, str]) -> dict[str, Any] | None:
@@ -367,10 +391,13 @@ class RedisQueue(QueueDriver):
         if queue is None or not self.redis.is_enabled():
             return False
         client = cast(Any, self.redis.get_client())
-        for failed_job_json in await client.lrange(self._get_failed_key(queue), 0, -1):
+        with _redis_span(self.redis, 'LRANGE', 3):
+            failed_job_jsons = await client.lrange(self._get_failed_key(queue), 0, -1)
+        for failed_job_json in failed_job_jsons:
             failed_job = json.loads(failed_job_json)
             if str(failed_job.get('id')) == str(job_id):
-                removed = await client.lrem(self._get_failed_key(queue), 1, failed_job_json)
+                with _redis_span(self.redis, 'LREM', 3):
+                    removed = await client.lrem(self._get_failed_key(queue), 1, failed_job_json)
                 return bool(removed)
         return False
 
@@ -378,7 +405,8 @@ class RedisQueue(QueueDriver):
         if queue is None or not self.redis.is_enabled():
             return 0
         client = cast(Any, self.redis.get_client())
-        deleted = await client.delete(self._get_failed_key(queue))
+        with _redis_span(self.redis, 'DEL', 1):
+            deleted = await client.delete(self._get_failed_key(queue))
         return int(deleted or 0)
 
     async def size(self, queue: str = 'default') -> int:
@@ -390,10 +418,12 @@ class RedisQueue(QueueDriver):
         client = cast(Any, self.redis.get_client())
         try:
             # Count jobs in main queue
-            main_count = await client.llen(self._get_queue_key(queue))
+            with _redis_span(self.redis, 'LLEN', 1):
+                main_count = await client.llen(self._get_queue_key(queue))
 
             # Count delayed jobs
-            delayed_count = await client.zcard(self._get_delayed_key(queue))
+            with _redis_span(self.redis, 'ZCARD', 1):
+                delayed_count = await client.zcard(self._get_delayed_key(queue))
 
             return main_count + delayed_count
 
@@ -410,10 +440,14 @@ class RedisQueue(QueueDriver):
 
         client = cast(Any, self.redis.get_client())
         try:
-            ready_count = int(await client.llen(self._get_queue_key(queue)) or 0)
-            reserved_count = int(await client.llen(self._get_reserved_key(queue)) or 0)
-            delayed_count = int(await client.zcard(self._get_delayed_key(queue)) or 0)
-            failed_count = int(await client.llen(self._get_failed_key(queue)) or 0)
+            with _redis_span(self.redis, 'LLEN', 1):
+                ready_count = int(await client.llen(self._get_queue_key(queue)) or 0)
+            with _redis_span(self.redis, 'LLEN', 1):
+                reserved_count = int(await client.llen(self._get_reserved_key(queue)) or 0)
+            with _redis_span(self.redis, 'ZCARD', 1):
+                delayed_count = int(await client.zcard(self._get_delayed_key(queue)) or 0)
+            with _redis_span(self.redis, 'LLEN', 1):
+                failed_count = int(await client.llen(self._get_failed_key(queue)) or 0)
             oldest_ready_age = await self._oldest_ready_age_seconds(client, queue)
             return {
                 'queue': queue,
@@ -428,7 +462,8 @@ class RedisQueue(QueueDriver):
             return empty_stats
 
     async def _oldest_ready_age_seconds(self, client: Any, queue: str) -> float:
-        job_json = await client.lindex(self._get_queue_key(queue), 0)
+        with _redis_span(self.redis, 'LINDEX', 2):
+            job_json = await client.lindex(self._get_queue_key(queue), 0)
         if not job_json:
             return 0.0
         try:

@@ -14,6 +14,7 @@ from .mqtt_utils import (
     build_worker_client_id,
     connect_mqtt_client_with_retries,
     create_mqtt_client,
+    extract_trace_context,
     get_mqtt_group_name,
     is_network_startup_error,
     parse_mqtt_payload,
@@ -114,6 +115,10 @@ class WorkerProcess:
                 'actual_topic': actual_topic,
                 'group_name': self.group_name,
             }
+            context.update(extract_trace_context(msg))
+            message_id = getattr(msg, 'mid', None)
+            if message_id is not None:
+                context['messaging.message.id'] = str(message_id)
 
             self._schedule_dispatch(actual_topic, payload, client, context)
 
@@ -158,10 +163,14 @@ class WorkerProcess:
         try:
             span_attributes = {
                 'messaging.system': 'mqtt',
+                'messaging.operation.type': 'receive',
                 'messaging.destination': topic,
                 'routemq.process.role': 'worker',
                 'routemq.worker.id': self.worker_id,
             }
+            message_id = context.get('messaging.message.id')
+            if message_id is not None:
+                span_attributes['messaging.message.id'] = message_id
             with start_span('mqtt.receive', span_attributes, kind='consumer'):
                 lifecycle('mqtt.message.received', {'process': 'worker'})
                 await self.router.dispatch(topic, payload, client)

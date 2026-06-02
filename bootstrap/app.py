@@ -33,6 +33,7 @@ from routemq.telemetry import telemetry
 from routemq.mqtt_utils import (
     connect_mqtt_client_with_retries,
     create_mqtt_client,
+    extract_trace_context,
     get_main_client_id,
     get_mqtt_connection_config,
     get_mqtt_group_name,
@@ -334,6 +335,10 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
                 'mqtt_topic': msg.topic,
                 'process': 'main',
             }
+            context.update(extract_trace_context(msg))
+            message_id = getattr(msg, 'mid', None)
+            if message_id is not None:
+                context['messaging.message.id'] = str(message_id)
             coro = self._dispatch_mqtt_message(msg.topic, payload, client, context)
             try:
                 asyncio.run_coroutine_threadsafe(coro, self.loop)
@@ -359,9 +364,13 @@ Running on {system_info} | CPU: {cpu_count} cores | RAM: {memory_gb} GB
         try:
             span_attributes = {
                 'messaging.system': 'mqtt',
+                'messaging.operation.type': 'receive',
                 'messaging.destination': topic,
                 'routemq.process.role': 'main',
             }
+            message_id = context.get('messaging.message.id')
+            if message_id is not None:
+                span_attributes['messaging.message.id'] = message_id
             with observability.start_span('mqtt.receive', span_attributes, kind='consumer'):
                 observability.lifecycle('mqtt.message.received', {'process': 'main'})
                 await self.router.dispatch(topic, payload, client)
