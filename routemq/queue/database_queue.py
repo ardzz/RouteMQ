@@ -6,7 +6,8 @@ from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from routemq.queue.queue_driver import QueueDriver
-from routemq.model import Model
+from routemq.model import Model, _db_span_attributes, _db_span_name
+from routemq.observability import start_span
 from routemq.queue.models import QueueJob, QueueFailedJob
 
 logger = logging.getLogger('RouteMQ.DatabaseQueue')
@@ -47,8 +48,9 @@ class DatabaseQueue(QueueDriver):
                 created_at=datetime.now(UTC),
             )
 
-            session.add(job)
-            await session.commit()
+            with _database_span('insert', 'queue_jobs', _insert_queue_job_query()):
+                session.add(job)
+                await session.commit()
             logger.debug(f"Job pushed to queue '{queue}' with delay {delay}s")
 
         except Exception as e:
@@ -80,19 +82,20 @@ class DatabaseQueue(QueueDriver):
                 .with_for_update(skip_locked=True)
             )
 
-            result = await session.execute(stmt)
-            job = result.scalars().first()
+            with _database_span('select', 'queue_jobs', _pop_queue_job_query()):
+                result = await session.execute(stmt)
+                job = result.scalars().first()
 
-            if not job:
-                return None
+                if not job:
+                    return None
 
-            # Mark job as reserved
-            job_record = cast(Any, job)
-            job_record.reserved_at = datetime.now(UTC)
-            job_record.attempts += 1
+                # Mark job as reserved
+                job_record = cast(Any, job)
+                job_record.reserved_at = datetime.now(UTC)
+                job_record.attempts += 1
 
-            await session.commit()
-            await session.refresh(job)
+                await session.commit()
+                await session.refresh(job)
 
             logger.debug(f"Job {job.id} popped from queue '{queue}' (attempt {job.attempts})")
 
@@ -133,8 +136,9 @@ class DatabaseQueue(QueueDriver):
                 .values(reserved_at=None, available_at=available_at)
             )
 
-            await session.execute(stmt)
-            await session.commit()
+            with _database_span('update', 'queue_jobs', _release_queue_job_query()):
+                await session.execute(stmt)
+                await session.commit()
             logger.debug(f"Job {job_id} released back to queue '{queue}' with delay {delay}s")
 
         except Exception as e:
@@ -157,8 +161,9 @@ class DatabaseQueue(QueueDriver):
                 QueueJob.queue == queue,
             )
 
-            await session.execute(stmt)
-            await session.commit()
+            with _database_span('delete', 'queue_jobs', _delete_queue_job_query()):
+                await session.execute(stmt)
+                await session.commit()
             logger.debug(f"Job {job_id} deleted from queue '{queue}'")
 
         except Exception as e:
@@ -180,8 +185,9 @@ class DatabaseQueue(QueueDriver):
                 .where(QueueJob.id == job_id, QueueJob.queue == queue, QueueJob.reserved_at.is_not(None))
                 .values(reserved_at=datetime.now(UTC))
             )
-            result = await session.execute(stmt)
-            await session.commit()
+            with _database_span('update', 'queue_jobs', _heartbeat_queue_job_query()):
+                result = await session.execute(stmt)
+                await session.commit()
             return bool(getattr(result, 'rowcount', 0))
         except Exception as e:
             await session.rollback()
@@ -212,8 +218,9 @@ class DatabaseQueue(QueueDriver):
                 failed_at=datetime.now(UTC),
             )
 
-            session.add(failed_job)
-            await session.commit()
+            with _database_span('insert', 'queue_failed_jobs', _insert_failed_job_query()):
+                session.add(failed_job)
+                await session.commit()
             logger.info(f"Failed job stored for queue '{queue}'")
 
         except Exception as e:
@@ -231,8 +238,9 @@ class DatabaseQueue(QueueDriver):
             stmt = select(QueueFailedJob).order_by(QueueFailedJob.id)
             if queue is not None:
                 stmt = stmt.where(QueueFailedJob.queue == queue)
-            result = await session.execute(stmt)
-            return [_failed_job_to_dict(job) for job in result.scalars().all()]
+            with _database_span('select', 'queue_failed_jobs', _select_failed_jobs_query(queue is not None)):
+                result = await session.execute(stmt)
+                return [_failed_job_to_dict(job) for job in result.scalars().all()]
         finally:
             await session.close()
 
@@ -253,12 +261,13 @@ class DatabaseQueue(QueueDriver):
             return False
         session = cast(AsyncSession, await Model.get_session())
         try:
-            result = await session.execute(select(QueueFailedJob).where(QueueFailedJob.id == int(job_id)))
-            job = result.scalars().first()
-            if job is None:
-                return False
-            await session.delete(job)
-            await session.commit()
+            with _database_span('delete', 'queue_failed_jobs', _delete_failed_job_query()):
+                result = await session.execute(select(QueueFailedJob).where(QueueFailedJob.id == int(job_id)))
+                job = result.scalars().first()
+                if job is None:
+                    return False
+                await session.delete(job)
+                await session.commit()
             return True
         except Exception:
             await session.rollback()
@@ -274,8 +283,9 @@ class DatabaseQueue(QueueDriver):
             stmt = delete(QueueFailedJob)
             if queue is not None:
                 stmt = stmt.where(QueueFailedJob.queue == queue)
-            result = await session.execute(stmt)
-            await session.commit()
+            with _database_span('delete', 'queue_failed_jobs', _flush_failed_jobs_query(queue is not None)):
+                result = await session.execute(stmt)
+                await session.commit()
             rowcount = getattr(result, 'rowcount', 0)
             return int(rowcount or 0)
         except Exception:
@@ -289,8 +299,9 @@ class DatabaseQueue(QueueDriver):
             return None
         session = cast(AsyncSession, await Model.get_session())
         try:
-            result = await session.execute(select(QueueFailedJob).where(QueueFailedJob.id == int(job_id)))
-            return result.scalars().first()
+            with _database_span('select', 'queue_failed_jobs', _select_failed_job_query()):
+                result = await session.execute(select(QueueFailedJob).where(QueueFailedJob.id == int(job_id)))
+                return result.scalars().first()
         finally:
             await session.close()
 
@@ -313,27 +324,28 @@ class DatabaseQueue(QueueDriver):
                 )
                 .order_by(QueueJob.id)
             )
-            result = await session.execute(stmt)
-            jobs = result.scalars().all()
-            for job in jobs:
-                job_record = cast(Any, job)
-                max_tries = _payload_max_tries(str(job_record.payload))
-                attempts = int(getattr(job_record, 'attempts', 0) or 0)
-                if attempts >= max_tries:
-                    failed_job = QueueFailedJob(
-                        connection=self.connection_name,
-                        queue=queue,
-                        payload=str(job_record.payload),
-                        exception=f'Job reservation expired after {visibility_timeout}s visibility timeout',
-                        failed_at=now,
-                    )
-                    session.add(failed_job)
-                    await session.delete(job)
-                else:
-                    job_record.reserved_at = None
-                    job_record.available_at = now
+            with _database_span('select', 'queue_jobs', _reap_expired_jobs_query()):
+                result = await session.execute(stmt)
+                jobs = result.scalars().all()
+                for job in jobs:
+                    job_record = cast(Any, job)
+                    max_tries = _payload_max_tries(str(job_record.payload))
+                    attempts = int(getattr(job_record, 'attempts', 0) or 0)
+                    if attempts >= max_tries:
+                        failed_job = QueueFailedJob(
+                            connection=self.connection_name,
+                            queue=queue,
+                            payload=str(job_record.payload),
+                            exception=f'Job reservation expired after {visibility_timeout}s visibility timeout',
+                            failed_at=now,
+                        )
+                        session.add(failed_job)
+                        await session.delete(job)
+                    else:
+                        job_record.reserved_at = None
+                        job_record.available_at = now
 
-            await session.commit()
+                await session.commit()
             return len(jobs)
 
         except Exception as e:
@@ -356,8 +368,9 @@ class DatabaseQueue(QueueDriver):
                 QueueJob.reserved_at.is_(None),
             )
 
-            result = await session.execute(stmt)
-            jobs = result.scalars().all()
+            with _database_span('select', 'queue_jobs', _queue_size_query()):
+                result = await session.execute(stmt)
+                jobs = result.scalars().all()
             return len(jobs)
 
         except Exception as e:
@@ -377,10 +390,11 @@ class DatabaseQueue(QueueDriver):
         session = cast(AsyncSession, await Model.get_session())
         try:
             now = datetime.now(UTC)
-            jobs_result = await session.execute(select(QueueJob).where(QueueJob.queue == queue))
-            jobs = cast(list[Any], list(jobs_result.scalars().all()))
-            failed_result = await session.execute(select(QueueFailedJob).where(QueueFailedJob.queue == queue))
-            failed_jobs = cast(list[Any], list(failed_result.scalars().all()))
+            with _database_span('select', 'queue_jobs', _queue_stats_query()):
+                jobs_result = await session.execute(select(QueueJob).where(QueueJob.queue == queue))
+                jobs = cast(list[Any], list(jobs_result.scalars().all()))
+                failed_result = await session.execute(select(QueueFailedJob).where(QueueFailedJob.queue == queue))
+                failed_jobs = cast(list[Any], list(failed_result.scalars().all()))
 
             ready_jobs = [job for job in jobs if job.reserved_at is None and _as_utc(job.available_at) <= now]
             delayed_jobs = [job for job in jobs if job.reserved_at is None and _as_utc(job.available_at) > now]
@@ -418,6 +432,70 @@ def _failed_job_to_dict(job) -> dict[str, Any]:
         'exception': job.exception,
         'failed_at': job.failed_at.isoformat() if hasattr(job.failed_at, 'isoformat') else str(job.failed_at),
     }
+
+
+def _database_span(operation: str, collection: str, query_text: str):
+    return start_span(
+        _db_span_name(operation, collection),
+        _db_span_attributes(operation, collection, query_text),
+        kind='client',
+    )
+
+
+def _insert_queue_job_query() -> str:
+    return 'INSERT INTO queue_jobs (queue, payload, attempts, available_at, created_at) VALUES (:queue, :payload, :attempts, :available_at, :created_at)'
+
+
+def _pop_queue_job_query() -> str:
+    return 'SELECT * FROM queue_jobs WHERE queue = :queue AND reserved_at IS NULL AND available_at <= :now ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED'
+
+
+def _release_queue_job_query() -> str:
+    return 'UPDATE queue_jobs SET reserved_at = NULL, available_at = :available_at WHERE id = :id AND queue = :queue'
+
+
+def _delete_queue_job_query() -> str:
+    return 'DELETE FROM queue_jobs WHERE id = :id AND queue = :queue'
+
+
+def _heartbeat_queue_job_query() -> str:
+    return 'UPDATE queue_jobs SET reserved_at = :now WHERE id = :id AND queue = :queue AND reserved_at IS NOT NULL'
+
+
+def _insert_failed_job_query() -> str:
+    return 'INSERT INTO queue_failed_jobs (connection, queue, payload, exception, failed_at) VALUES (:connection, :queue, :payload, :exception, :failed_at)'
+
+
+def _select_failed_jobs_query(has_queue_filter: bool) -> str:
+    if has_queue_filter:
+        return 'SELECT * FROM queue_failed_jobs WHERE queue = :queue ORDER BY id'
+    return 'SELECT * FROM queue_failed_jobs ORDER BY id'
+
+
+def _select_failed_job_query() -> str:
+    return 'SELECT * FROM queue_failed_jobs WHERE id = :id'
+
+
+def _delete_failed_job_query() -> str:
+    return 'DELETE FROM queue_failed_jobs WHERE id = :id'
+
+
+def _flush_failed_jobs_query(has_queue_filter: bool) -> str:
+    if has_queue_filter:
+        return 'DELETE FROM queue_failed_jobs WHERE queue = :queue'
+    return 'DELETE FROM queue_failed_jobs'
+
+
+def _reap_expired_jobs_query() -> str:
+    return 'SELECT * FROM queue_jobs WHERE queue = :queue AND reserved_at IS NOT NULL AND reserved_at < :cutoff ORDER BY id'
+
+
+def _queue_size_query() -> str:
+    return 'SELECT * FROM queue_jobs WHERE queue = :queue AND reserved_at IS NULL'
+
+
+def _queue_stats_query() -> str:
+    return 'SELECT * FROM queue_jobs WHERE queue = :queue; SELECT * FROM queue_failed_jobs WHERE queue = :queue'
 
 
 def _as_utc(value: datetime) -> datetime:

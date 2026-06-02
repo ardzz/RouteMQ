@@ -132,6 +132,7 @@ class Router:
                 token = enrich_context(**route_attributes)
                 span_attributes = {
                     'messaging.system': 'mqtt',
+                    'messaging.operation.type': 'process',
                     'messaging.destination': topic,
                     'messaging.destination.template': route.topic,
                     'routemq.route.pattern': route.topic,
@@ -163,7 +164,7 @@ class Router:
                     handler = wrap_middleware(middleware, handler)
 
                 try:
-                    with start_span('router.dispatch', span_attributes, kind='internal'):
+                    with start_span('router.dispatch', span_attributes, kind='consumer'):
                         lifecycle('router.dispatch.started', route_attributes)
                         result = await handler(context)
                         lifecycle('router.dispatch.succeeded', route_attributes)

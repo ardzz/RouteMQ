@@ -166,6 +166,10 @@ def _strip_high_cardinality(attributes: Mapping[str, Any]) -> dict[str, Any]:
         job_name = attributes.get('routemq.job.name')
         if isinstance(job_name, str) and job_name:
             cleaned['job_class'] = job_name
+    if 'handler' not in cleaned:
+        handler_name = attributes.get('routemq.handler.name')
+        if isinstance(handler_name, str) and handler_name:
+            cleaned['handler'] = handler_name
     if 'measurement' not in cleaned:
         collection = attributes.get('db.collection.name')
         if isinstance(collection, str) and collection:
@@ -381,6 +385,11 @@ _SPAN_HISTOGRAMS: dict[str, _HistogramRecipe] = {
         metric='router_dispatch_duration_seconds',
         help='Wall-clock duration of router dispatch spans, in seconds.',
         label_names=('route',),
+    ),
+    'router.handler': _HistogramRecipe(
+        metric='router_handler_duration_seconds',
+        help='Wall-clock duration of route handler spans, in seconds.',
+        label_names=('route', 'handler'),
     ),
     'queue.job': _HistogramRecipe(
         metric='queue_job_duration_seconds',

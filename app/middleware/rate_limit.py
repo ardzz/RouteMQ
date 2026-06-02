@@ -1,7 +1,8 @@
 import time
-from typing import Dict, Optional, List
+from typing import Any, Callable, Dict, Optional, List
 
 from routemq.middleware import Middleware
+from routemq.observability import start_span
 from routemq.redis_manager import redis_manager
 
 
@@ -16,7 +17,7 @@ class RateLimitMiddleware(Middleware):
         max_requests: int = 100,
         window_seconds: int = 60,
         strategy: str = 'sliding_window',
-        key_generator: Optional[callable] = None,
+        key_generator: Optional[Callable[[Dict[str, Any]], str]] = None,
         burst_allowance: Optional[int] = None,
         redis_key_prefix: str = 'rate_limit',
         fallback_enabled: bool = True,
@@ -111,24 +112,48 @@ class RateLimitMiddleware(Middleware):
         Returns:
             Handler result or rate limit error
         """
-        # Generate rate limit key
-        rate_limit_key = self.key_generator(context)
+        with start_span('middleware.rate_limit', self._span_attributes(), kind='internal') as span:
+            # Generate rate limit key
+            rate_limit_key = self.key_generator(context)
 
-        # Check whitelist
-        if self._is_whitelisted(rate_limit_key):
-            self.logger.debug(f'Whitelisted key: {rate_limit_key}')
-            return await next_handler(context)
+            # Check whitelist
+            if self._is_whitelisted(rate_limit_key):
+                self._annotate_span(span, allowed=True, remaining=self.max_requests, reset_time=0)
+                self.logger.debug(f'Whitelisted key: {rate_limit_key}')
+                return await next_handler(context)
 
-        # Apply rate limiting
-        allowed, remaining, reset_time = await self._check_rate_limit(rate_limit_key)
+            # Apply rate limiting
+            allowed, remaining, reset_time = await self._check_rate_limit(rate_limit_key)
+            self._annotate_span(span, allowed=allowed, remaining=remaining, reset_time=reset_time)
 
-        if not allowed:
-            error_message = self.custom_error_message or f'Rate limit exceeded. Try again in {reset_time} seconds.'
-            self.logger.warning(f'Rate limit exceeded for key: {rate_limit_key}')
+            if not allowed:
+                error_message = self.custom_error_message or f'Rate limit exceeded. Try again in {reset_time} seconds.'
+                self.logger.warning(f'Rate limit exceeded for key: {rate_limit_key}')
 
-            # Add rate limit info to context for potential custom handling
+                # Add rate limit info to context for potential custom handling
+                context['rate_limit'] = {
+                    'exceeded': True,
+                    'key': rate_limit_key,
+                    'remaining': remaining,
+                    'reset_time': reset_time,
+                    'max_requests': self.max_requests,
+                    'window_seconds': self.window_seconds,
+                }
+
+                return {
+                    'error': 'rate_limit_exceeded',
+                    'message': error_message,
+                    'rate_limit': {
+                        'max_requests': self.max_requests,
+                        'window_seconds': self.window_seconds,
+                        'remaining': remaining,
+                        'reset_time': reset_time,
+                    },
+                }
+
+            # Add rate limit info to context
             context['rate_limit'] = {
-                'exceeded': True,
+                'exceeded': False,
                 'key': rate_limit_key,
                 'remaining': remaining,
                 'reset_time': reset_time,
@@ -136,31 +161,24 @@ class RateLimitMiddleware(Middleware):
                 'window_seconds': self.window_seconds,
             }
 
-            return {
-                'error': 'rate_limit_exceeded',
-                'message': error_message,
-                'rate_limit': {
-                    'max_requests': self.max_requests,
-                    'window_seconds': self.window_seconds,
-                    'remaining': remaining,
-                    'reset_time': reset_time,
-                },
-            }
+            self.logger.debug(f'Rate limit check passed for key: {rate_limit_key}, remaining: {remaining}')
 
-        # Add rate limit info to context
-        context['rate_limit'] = {
-            'exceeded': False,
-            'key': rate_limit_key,
-            'remaining': remaining,
-            'reset_time': reset_time,
-            'max_requests': self.max_requests,
-            'window_seconds': self.window_seconds,
+            # Continue to next handler
+            return await next_handler(context)
+
+    def _span_attributes(self) -> dict[str, Any]:
+        return {
+            'routemq.rate_limit.strategy': self.strategy,
+            'routemq.rate_limit.max_requests': self.max_requests,
+            'routemq.rate_limit.window_seconds': self.window_seconds,
         }
 
-        self.logger.debug(f'Rate limit check passed for key: {rate_limit_key}, remaining: {remaining}')
-
-        # Continue to next handler
-        return await next_handler(context)
+    def _annotate_span(self, span: Any, *, allowed: bool, remaining: int, reset_time: int) -> None:
+        if span is None:
+            return
+        span.set_attribute('routemq.rate_limit.allowed', allowed)
+        span.set_attribute('routemq.rate_limit.remaining', remaining)
+        span.set_attribute('routemq.rate_limit.reset_time', reset_time)
 
     async def _check_rate_limit(self, key: str) -> tuple[bool, int, int]:
         """
@@ -217,7 +235,8 @@ class RateLimitMiddleware(Middleware):
         Sliding window rate limiting using Redis sorted sets.
         """
         window_start = current_time - self.window_seconds
-        pipe = redis_manager.get_client().pipeline()
+        client = self._redis_client()
+        pipe = client.pipeline()
 
         # Remove old entries
         pipe.zremrangebyscore(redis_key, 0, window_start)
@@ -236,7 +255,7 @@ class RateLimitMiddleware(Middleware):
 
         if current_count >= self.max_requests:
             # Get the oldest entry to calculate reset time
-            oldest_entries = await redis_manager.get_client().zrange(redis_key, 0, 0, withscores=True)
+            oldest_entries = await client.zrange(redis_key, 0, 0, withscores=True)
             if oldest_entries:
                 oldest_time = int(oldest_entries[0][1])
                 reset_time = oldest_time + self.window_seconds - current_time
@@ -244,7 +263,7 @@ class RateLimitMiddleware(Middleware):
                 reset_time = self.window_seconds
 
             # Remove the request we just added since it's not allowed
-            await redis_manager.get_client().zrem(redis_key, str(current_time))
+            await client.zrem(redis_key, str(current_time))
 
             return False, 0, max(reset_time, 1)
 
@@ -258,11 +277,12 @@ class RateLimitMiddleware(Middleware):
         window_key = f'{redis_key}:{current_time // self.window_seconds}'
 
         # Increment counter
-        current_count = await redis_manager.get_client().incr(window_key)
+        client = self._redis_client()
+        current_count = await client.incr(window_key)
 
         if current_count == 1:
             # Set expiration on first request
-            await redis_manager.get_client().expire(window_key, self.window_seconds)
+            await client.expire(window_key, self.window_seconds)
 
         if current_count > self.max_requests:
             # Calculate reset time
@@ -284,7 +304,8 @@ class RateLimitMiddleware(Middleware):
         last_refill_key = f'{redis_key}:last_refill'
 
         # Get current bucket state
-        pipe = redis_manager.get_client().pipeline()
+        client = self._redis_client()
+        pipe = client.pipeline()
         pipe.get(bucket_key)
         pipe.get(last_refill_key)
         results = await pipe.execute()
@@ -309,7 +330,7 @@ class RateLimitMiddleware(Middleware):
         current_tokens -= 1
 
         # Update bucket state
-        pipe = redis_manager.get_client().pipeline()
+        pipe = client.pipeline()
         pipe.set(bucket_key, current_tokens, ex=self.window_seconds * 2)
         pipe.set(last_refill_key, current_time, ex=self.window_seconds * 2)
         await pipe.execute()
@@ -422,13 +443,24 @@ class RateLimitMiddleware(Middleware):
         if keys_to_remove:
             self.logger.debug(f'Cleaned up {len(keys_to_remove)} old rate limit entries from memory')
 
+    def _redis_client(self) -> Any:
+        client = redis_manager.get_client()
+        if client is None:
+            raise RuntimeError('Redis client is not available')
+        return client
+
 
 class TopicRateLimitMiddleware(RateLimitMiddleware):
     """
     Rate limiting middleware that limits by MQTT topic.
     """
 
-    def __init__(self, topic_limits: Dict[str, Dict] = None, default_limit: Dict = None, **kwargs):
+    def __init__(
+        self,
+        topic_limits: Optional[Dict[str, Dict[str, Any]]] = None,
+        default_limit: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
+    ):
         """
         Initialize topic-based rate limiting.
 

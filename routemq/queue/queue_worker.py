@@ -14,7 +14,7 @@ from routemq.job import Job
 from routemq.queue.queue_driver import QueueDriver
 from routemq.queue.queue_manager import QueueManager
 from routemq.settings import load_queue_reliability_settings, load_queue_retry_settings
-from ..observability import lifecycle, reset_context, set_context, start_span
+from ..observability import SpanLink, lifecycle, reset_context, set_context, start_span
 
 try:
     from routemq.metrics.prometheus import mark_worker_dead
@@ -186,14 +186,15 @@ class QueueWorker:
                 'attempts': attempts,
             }
             job_context = job.get_observability_context() if hasattr(job, 'get_observability_context') else {}
-            token = set_context(job_context, **attributes)
+            span_links = _span_links_from_job_context(job_context)
+            token = set_context(_consumer_context(job_context), **attributes)
             span_attributes = {
                 'messaging.system': 'routemq.queue',
                 'messaging.destination': self.queue_name,
                 'routemq.job.name': job.__class__.__name__,
                 'routemq.process.role': 'queue-worker',
             }
-            with start_span('queue.job', span_attributes, kind='consumer'):
+            with start_span('queue.job', span_attributes, kind='consumer', links=span_links):
                 # Check if we've exceeded max tries
                 max_tries = self.max_tries or job.max_tries
                 if attempts > max_tries:
@@ -246,7 +247,7 @@ class QueueWorker:
                         job_context = (
                             job.get_observability_context() if hasattr(job, 'get_observability_context') else {}
                         )
-                        token = set_context(job_context, **attributes)
+                        token = set_context(_consumer_context(job_context), **attributes)
             except Exception as unserialize_error:
                 logger.error(
                     f'Failed to unserialize job {job_id}: {unserialize_error}',
@@ -468,3 +469,34 @@ class QueueWorker:
         self.state = 'stopping'
         self._shutdown_event.set()
         logger.info('Worker stop requested')
+
+
+def _span_links_from_job_context(job_context: dict) -> tuple[SpanLink, ...]:
+    trace_id = job_context.get('trace_id')
+    span_id = job_context.get('span_id')
+    if not (_valid_hex_id(trace_id, 32) and _valid_hex_id(span_id, 16)):
+        return ()
+    return (
+        SpanLink(
+            trace_id=str(trace_id),
+            span_id=str(span_id),
+            attributes={'routemq.link.type': 'queue.enqueue'},
+        ),
+    )
+
+
+def _consumer_context(job_context: dict) -> dict:
+    context = dict(job_context)
+    for key in ('trace_id', 'span_id', 'trace_flags', 'parent_span_id'):
+        context.pop(key, None)
+    return context
+
+
+def _valid_hex_id(value: object, length: int) -> bool:
+    if not isinstance(value, str) or len(value) != length:
+        return False
+    try:
+        int(value, 16)
+    except ValueError:
+        return False
+    return value != '0' * length
