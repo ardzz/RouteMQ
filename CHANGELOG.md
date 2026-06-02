@@ -1,3 +1,25 @@
+## v0.24.0 (2026-06-02)
+
+### Feat
+
+- **app**: wire telemetry bootstrap lifecycle
+- **metrics**: publish telemetry lifecycle metrics
+- **tsdb**: add telemetry adapters
+- **tsdb**: map telemetry observations
+- **telemetry**: add runtime manager
+- **telemetry**: add adapter contract
+- **telemetry**: add measurement point types
+- **config**: add relational database selectors
+
+### Fix
+
+- **telemetry**: address review feedback on adapters and runtime
+- **telemetry**: validate timescale table identifier against allowlist
+
+### Refactor
+
+- **database**: use backend-neutral wording
+
 ## v0.23.0 (2026-05-29)
 
 ### Feat
