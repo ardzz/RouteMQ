@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from routemq import observability
 from routemq.queue.redis_queue import (
     RedisQueue,
     _created_at_from_redis_job_id,
@@ -19,6 +20,7 @@ class _RedisQueueBase(unittest.IsolatedAsyncioTestCase):
         original_level = logger.level
         logger.setLevel(logging.CRITICAL)
         self.addCleanup(logger.setLevel, original_level)
+        self.addCleanup(observability.clear_hooks)
 
     def _make_driver(self, enabled: bool = True, client: Any = None) -> RedisQueue:
         driver = RedisQueue()
@@ -43,6 +45,29 @@ class RedisQueuePushTests(_RedisQueueBase):
         await driver.push('p', 'q', 0)
         client.rpush.assert_awaited_once()
         client.zadd.assert_not_called()
+
+    async def test_immediate_push_emits_redis_client_span_with_redacted_args(self) -> None:
+        client = MagicMock()
+        client.rpush = AsyncMock()
+        client.zadd = AsyncMock()
+        driver = self._make_driver(client=client)
+        driver.redis.host = 'redis.local'
+        driver.redis.port = 6380
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
+
+        await driver.push('payload-with-secret', 'q', 0)
+
+        span = spans[-1]
+        self.assertEqual(span.name, 'redis.rpush')
+        self.assertEqual(span.kind, 'client')
+        self.assertEqual(span.attributes['db.system'], 'redis')
+        self.assertEqual(span.attributes['db.operation'], 'RPUSH')
+        self.assertEqual(span.attributes['db.query.text'], 'RPUSH ? ?')
+        self.assertEqual(span.attributes['server.address'], 'redis.local')
+        self.assertEqual(span.attributes['server.port'], 6380)
+        self.assertNotIn('payload-with-secret', span.attributes['db.query.text'])
+        self.assertNotIn('secret', span.attributes['db.query.text'])
 
     async def test_delayed_push_uses_zadd(self) -> None:
         client = MagicMock()

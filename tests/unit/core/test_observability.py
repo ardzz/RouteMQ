@@ -5,12 +5,17 @@ from importlib import import_module
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.middleware.rate_limit import RateLimitMiddleware
 from bootstrap.app import Application
 from routemq.job import Job
 from routemq.middleware import Middleware
+from routemq.model import Model
+from routemq.queue.database_queue import DatabaseQueue
 from routemq.queue.queue_driver import QueueDriver
 from routemq.queue.queue_manager import QueueManager
 from routemq.queue.queue_worker import QueueWorker
+from routemq.queue.redis_queue import RedisQueue
+from routemq.redis_manager import RedisManager
 from routemq.router import Router
 from routemq.worker_manager import WorkerProcess
 
@@ -289,6 +294,7 @@ class MqttObservabilityTests(ObservabilityTestCase):
         self.assertEqual(spans[0].name, 'mqtt.receive')
         self.assertEqual(spans[0].kind, 'consumer')
         self.assertEqual(spans[0].attributes['messaging.system'], 'mqtt')
+        self.assertEqual(spans[0].attributes['messaging.operation.type'], 'receive')
         self.assertEqual(spans[0].attributes['messaging.destination'], 'devices/1')
         self.assertEqual(spans[0].attributes['routemq.process.role'], 'main')
         self.assertIsNone(observability.get_correlation_id())
@@ -323,6 +329,7 @@ class MqttObservabilityTests(ObservabilityTestCase):
         self.assertEqual(seen['trace_id'], spans[0].trace_id)
         self.assertEqual(seen['span_id'], spans[0].span_id)
         self.assertEqual(spans[0].name, 'mqtt.receive')
+        self.assertEqual(spans[0].attributes['messaging.operation.type'], 'receive')
         self.assertEqual(spans[0].attributes['routemq.process.role'], 'worker')
         self.assertEqual(spans[0].attributes['routemq.worker.id'], 7)
         self.assertIsNone(observability.get_correlation_id())
@@ -410,13 +417,279 @@ class QueueObservabilityTests(ObservabilityTestCase):
 
         enqueue_span = next(span for span in spans if span.name == 'queue.enqueue')
         job_span = next(span for span in spans if span.name == 'queue.job')
-        self.assertEqual(job_span.trace_id, enqueue_span.trace_id)
-        self.assertEqual(job_span.parent_span_id, enqueue_span.span_id)
+        self.assertNotEqual(job_span.span_id, enqueue_span.span_id)
+        self.assertIsNone(job_span.parent_span_id)
+        self.assertEqual(len(job_span.links), 1)
+        self.assertEqual(job_span.links[0].trace_id, enqueue_span.trace_id)
+        self.assertEqual(job_span.links[0].span_id, enqueue_span.span_id)
+        self.assertEqual(job_span.links[0].attributes['routemq.link.type'], 'queue.enqueue')
         self.assertEqual(job_span.attributes['messaging.destination'], 'observed')
         self.assertEqual(job_span.attributes['routemq.job.name'], 'ObservableJob')
         self.assertEqual(ObservableJob.seen_contexts[-1]['trace_id'], job_span.trace_id)
         self.assertEqual(ObservableJob.seen_contexts[-1]['span_id'], job_span.span_id)
-        self.assertEqual(ObservableJob.seen_contexts[-1]['parent_span_id'], enqueue_span.span_id)
+        self.assertIsNone(ObservableJob.seen_contexts[-1]['parent_span_id'])
+
+
+class DbSpanTests(ObservabilityTestCase):
+    async def test_model_create_tables_emits_client_span(self) -> None:
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
+
+        original_enabled = Model._is_enabled
+        original_engine = Model._engine
+        Model._is_enabled = True
+        Model._db_system = 'postgresql'
+        Model._server_address = 'db.example.com'
+        Model._server_port = 5432
+
+        mock_engine = AsyncMock()
+        mock_conn = AsyncMock()
+        mock_cm = AsyncMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_cm.__aexit__ = AsyncMock(return_value=False)
+        mock_engine.begin = MagicMock(return_value=mock_cm)
+        Model._engine = mock_engine
+
+        try:
+            await Model.create_tables()
+
+            span = next(s for s in spans if s.name == 'postgresql')
+            self.assertEqual(span.kind, 'client')
+            self.assertEqual(span.attributes['db.system'], 'postgresql')
+            self.assertEqual(span.attributes['db.operation'], 'create')
+            self.assertEqual(span.attributes['db.query.text'], 'CREATE TABLE <metadata>')
+            self.assertEqual(span.attributes['server.address'], 'db.example.com')
+            self.assertEqual(span.attributes['server.port'], 5432)
+            self.assertNotIn('db.collection.name', span.attributes)
+        finally:
+            Model._is_enabled = original_enabled
+            Model._engine = original_engine
+
+    async def test_database_queue_push_emits_client_span(self) -> None:
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
+
+        original_enabled = Model._is_enabled
+        original_factory = Model._session_factory
+        Model._is_enabled = True
+        Model._db_system = 'mysql'
+        Model._server_address = 'localhost'
+        Model._server_port = 3306
+
+        mock_session = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+        Model._session_factory = MagicMock(return_value=mock_session)
+
+        queue = DatabaseQueue()
+
+        try:
+            await queue.push('{"class": "test", "data": {}}', queue='default')
+
+            span = next(s for s in spans if s.name == 'insert queue_jobs')
+            self.assertEqual(span.kind, 'client')
+            self.assertEqual(span.attributes['db.system'], 'mysql')
+            self.assertEqual(span.attributes['db.operation'], 'insert')
+            self.assertEqual(span.attributes['db.collection.name'], 'queue_jobs')
+            self.assertEqual(
+                span.attributes['db.query.text'],
+                'INSERT INTO queue_jobs (queue, payload, attempts, available_at, created_at) VALUES (:queue, :payload, :attempts, :available_at, :created_at)',
+            )
+            self.assertEqual(span.attributes['server.address'], 'localhost')
+            self.assertEqual(span.attributes['server.port'], 3306)
+        finally:
+            Model._is_enabled = original_enabled
+            Model._session_factory = original_factory
+
+    async def test_database_queue_pop_emits_client_span(self) -> None:
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
+
+        original_enabled = Model._is_enabled
+        original_factory = Model._session_factory
+        Model._is_enabled = True
+        Model._db_system = 'postgresql'
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.first.return_value = None
+        mock_session.execute.return_value = mock_result
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+        Model._session_factory = MagicMock(return_value=mock_session)
+
+        queue = DatabaseQueue()
+
+        try:
+            await queue.pop('default')
+
+            span = next(s for s in spans if s.name == 'select queue_jobs')
+            self.assertEqual(span.kind, 'client')
+            self.assertEqual(span.attributes['db.system'], 'postgresql')
+            self.assertEqual(span.attributes['db.operation'], 'select')
+            self.assertEqual(span.attributes['db.collection.name'], 'queue_jobs')
+            self.assertEqual(
+                span.attributes['db.query.text'],
+                'SELECT * FROM queue_jobs WHERE queue = :queue AND reserved_at IS NULL AND available_at <= :now ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED',
+            )
+        finally:
+            Model._is_enabled = original_enabled
+            Model._session_factory = original_factory
+
+    def test_db_span_helpers_produce_correct_attrs_and_name(self) -> None:
+        from routemq.model import _db_span_attributes, _db_span_name
+
+        Model._db_system = 'postgresql'
+        Model._server_address = 'db.example.com'
+        Model._server_port = 5432
+
+        attrs = _db_span_attributes('select', 'devices', 'SELECT * FROM devices WHERE id = :id')
+        self.assertEqual(attrs['db.system'], 'postgresql')
+        self.assertEqual(attrs['db.operation'], 'select')
+        self.assertEqual(attrs['db.collection.name'], 'devices')
+        self.assertEqual(attrs['db.query.text'], 'SELECT * FROM devices WHERE id = :id')
+        self.assertEqual(attrs['server.address'], 'db.example.com')
+        self.assertEqual(attrs['server.port'], 5432)
+
+        self.assertEqual(_db_span_name('select', 'devices'), 'select devices')
+        self.assertEqual(_db_span_name('create', None), 'postgresql')
+
+
+class RedisSpanTests(ObservabilityTestCase):
+    async def test_redis_manager_get_emits_client_span(self) -> None:
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
+
+        manager = RedisManager()
+        original_enabled = manager.enabled
+        original_host = manager.host
+        original_port = manager.port
+        original_client = manager._redis_client
+
+        manager.enabled = True
+        manager.host = 'redis.example.com'
+        manager.port = 6379
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = 'myvalue'
+        manager._redis_client = mock_client
+
+        try:
+            result = await manager.get('mykey')
+            self.assertEqual(result, 'myvalue')
+
+            span = next(s for s in spans if s.name == 'redis.get')
+            self.assertEqual(span.kind, 'client')
+            self.assertEqual(span.attributes['db.system'], 'redis')
+            self.assertEqual(span.attributes['db.operation'], 'GET')
+            self.assertEqual(span.attributes['db.query.text'], 'GET ?')
+            self.assertEqual(span.attributes['server.address'], 'redis.example.com')
+            self.assertEqual(span.attributes['server.port'], 6379)
+        finally:
+            manager.enabled = original_enabled
+            manager.host = original_host
+            manager.port = original_port
+            manager._redis_client = original_client
+
+    async def test_redis_queue_push_emits_client_span(self) -> None:
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
+
+        manager = RedisManager()
+        original_enabled = manager.enabled
+        original_host = manager.host
+        original_port = manager.port
+        original_client = manager._redis_client
+
+        manager.enabled = True
+        manager.host = 'redis.local'
+        manager.port = 6380
+
+        mock_client = AsyncMock()
+        mock_client.rpush.return_value = 1
+        manager._redis_client = mock_client
+
+        queue = RedisQueue()
+
+        try:
+            await queue.push('{"class": "test"}', queue='default')
+
+            span = next(s for s in spans if s.name == 'redis.rpush')
+            self.assertEqual(span.kind, 'client')
+            self.assertEqual(span.attributes['db.system'], 'redis')
+            self.assertEqual(span.attributes['db.operation'], 'RPUSH')
+            self.assertEqual(span.attributes['db.query.text'], 'RPUSH ? ?')
+            self.assertEqual(span.attributes['server.address'], 'redis.local')
+            self.assertEqual(span.attributes['server.port'], 6380)
+        finally:
+            manager.enabled = original_enabled
+            manager.host = original_host
+            manager.port = original_port
+            manager._redis_client = original_client
+
+    def test_redis_span_helpers_produce_correct_attrs_and_text(self) -> None:
+        from routemq.redis_manager import _redis_span_attributes, _redis_command_text
+
+        class FakeManager:
+            host = 'redis.local'
+            port = 6379
+
+        attrs = _redis_span_attributes(FakeManager(), 'GET', 'GET ?')
+        self.assertEqual(attrs['db.system'], 'redis')
+        self.assertEqual(attrs['db.operation'], 'GET')
+        self.assertEqual(attrs['db.query.text'], 'GET ?')
+        self.assertEqual(attrs['server.address'], 'redis.local')
+        self.assertEqual(attrs['server.port'], 6379)
+
+        self.assertEqual(_redis_command_text('SET', 2), 'SET ? ?')
+        self.assertEqual(_redis_command_text('PING'), 'PING')
+
+
+class RateLimitSpanTests(ObservabilityTestCase):
+    async def test_rate_limit_middleware_emits_span_with_all_attrs(self) -> None:
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
+
+        middleware = RateLimitMiddleware(max_requests=10, window_seconds=60, strategy='sliding_window')
+
+        async def next_handler(context: dict[str, Any]) -> dict[str, Any]:
+            return {'ok': True}
+
+        result = await middleware.handle({'topic': 'devices/1/status'}, next_handler)
+
+        self.assertEqual(result, {'ok': True})
+
+        span = next(s for s in spans if s.name == 'middleware.rate_limit')
+        self.assertEqual(span.kind, 'internal')
+        self.assertEqual(span.attributes['routemq.rate_limit.strategy'], 'sliding_window')
+        self.assertEqual(span.attributes['routemq.rate_limit.max_requests'], 10)
+        self.assertEqual(span.attributes['routemq.rate_limit.window_seconds'], 60)
+        self.assertEqual(span.attributes['routemq.rate_limit.allowed'], True)
+        self.assertIn('routemq.rate_limit.remaining', span.attributes)
+        self.assertIn('routemq.rate_limit.reset_time', span.attributes)
+
+    async def test_rate_limit_middleware_denied_request_records_allowed_false(self) -> None:
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
+
+        middleware = RateLimitMiddleware(max_requests=1, window_seconds=60, strategy='fixed_window')
+
+        async def next_handler(context: dict[str, Any]) -> dict[str, Any]:
+            return {'ok': True}
+
+        await middleware.handle({'topic': 'devices/1/status'}, next_handler)
+        result = await middleware.handle({'topic': 'devices/1/status'}, next_handler)
+
+        self.assertEqual(result['error'], 'rate_limit_exceeded')
+
+        denied_span = next(
+            s
+            for s in spans
+            if s.name == 'middleware.rate_limit' and s.attributes.get('routemq.rate_limit.allowed') is False
+        )
+        self.assertEqual(denied_span.kind, 'internal')
+        self.assertEqual(denied_span.attributes['routemq.rate_limit.allowed'], False)
+        self.assertEqual(denied_span.attributes['routemq.rate_limit.remaining'], 0)
 
 
 if __name__ == '__main__':

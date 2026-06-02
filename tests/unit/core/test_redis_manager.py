@@ -26,6 +26,9 @@ class TestRedisManager(unittest.IsolatedAsyncioTestCase):
         sys.modules['redis.asyncio'] = self.fake_redis_asyncio
 
     def tearDown(self) -> None:
+        observability_module = sys.modules.get('routemq.observability')
+        if observability_module is not None:
+            observability_module.clear_hooks()
         self._clear_modules()
         for name, module in self._saved_modules.items():
             sys.modules[name] = module
@@ -157,6 +160,28 @@ class TestRedisManager(unittest.IsolatedAsyncioTestCase):
         self.fake_client.delete.assert_awaited_once_with('a', 'b')
         self.fake_client.hset.assert_any_await('hash', 'field', 'value')
         self.fake_client.hset.assert_any_await('hash', mapping={'field': 'value'})
+
+    async def test_set_emits_redis_client_span_with_redacted_command_text(self) -> None:
+        module = self._import_manager({'ENABLE_REDIS': 'true', 'REDIS_HOST': 'redis-host', 'REDIS_PORT': '6380'})
+        observability = importlib.import_module('routemq.observability')
+        manager = module.redis_manager
+        manager._redis_client = self.fake_client
+        self.fake_client.set = AsyncMock(return_value=True)
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
+
+        self.assertTrue(await manager.set('secret-key', 'secret-value'))
+
+        span = spans[-1]
+        self.assertEqual(span.name, 'redis.set')
+        self.assertEqual(span.kind, 'client')
+        self.assertEqual(span.attributes['db.system'], 'redis')
+        self.assertEqual(span.attributes['db.operation'], 'SET')
+        self.assertEqual(span.attributes['db.query.text'], 'SET ? ?')
+        self.assertEqual(span.attributes['server.address'], 'redis-host')
+        self.assertEqual(span.attributes['server.port'], 6380)
+        self.assertNotIn('secret-key', span.attributes['db.query.text'])
+        self.assertNotIn('secret-value', span.attributes['db.query.text'])
 
     async def test_helper_errors_return_contract_sentinels(self) -> None:
         module = self._import_manager({'ENABLE_REDIS': 'true'})
