@@ -3,6 +3,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 from app.middleware.rate_limit import RateLimitMiddleware
+from routemq import observability
 
 
 class TestRateLimitMiddleware(unittest.IsolatedAsyncioTestCase):
@@ -10,6 +11,7 @@ class TestRateLimitMiddleware(unittest.IsolatedAsyncioTestCase):
         self.redis_enabled = patch('app.middleware.rate_limit.redis_manager.is_enabled', return_value=False)
         self.redis_enabled.start()
         self.addCleanup(self.redis_enabled.stop)
+        self.addCleanup(observability.clear_hooks)
 
     async def test_allows_request_when_under_limit(self) -> None:
         """First request under the configured limit reaches the next handler."""
@@ -20,6 +22,26 @@ class TestRateLimitMiddleware(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result, {'ok': True})
         next_handler.assert_awaited_once()
+
+    async def test_handle_emits_rate_limit_span_attributes(self) -> None:
+        middleware = RateLimitMiddleware(max_requests=5, window_seconds=30, strategy='fixed_window')
+        next_handler = AsyncMock(return_value={'ok': True})
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
+
+        with patch.object(middleware, '_check_rate_limit', AsyncMock(return_value=(True, 4, 29))):
+            result = await middleware.handle({'topic': 'devices/1'}, next_handler)
+
+        self.assertEqual(result, {'ok': True})
+        span = spans[-1]
+        self.assertEqual(span.name, 'middleware.rate_limit')
+        self.assertEqual(span.kind, 'internal')
+        self.assertEqual(span.attributes['routemq.rate_limit.strategy'], 'fixed_window')
+        self.assertTrue(span.attributes['routemq.rate_limit.allowed'])
+        self.assertEqual(span.attributes['routemq.rate_limit.remaining'], 4)
+        self.assertEqual(span.attributes['routemq.rate_limit.reset_time'], 29)
+        self.assertEqual(span.attributes['routemq.rate_limit.max_requests'], 5)
+        self.assertEqual(span.attributes['routemq.rate_limit.window_seconds'], 30)
 
     async def test_blocks_request_when_over_limit(self) -> None:
         """Requests beyond max_requests return the rate-limit sentinel."""

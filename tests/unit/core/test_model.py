@@ -7,6 +7,7 @@ from sqlalchemy import Column, Integer, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.pool import NullPool
 
+from routemq import observability
 from routemq.model import Base, Model
 
 
@@ -30,6 +31,7 @@ class TestModelLifecycle(unittest.IsolatedAsyncioTestCase):
         Model._is_enabled = False
 
     def tearDown(self) -> None:
+        observability.clear_hooks()
         Model._engine = self._original_engine
         Model._session_factory = self._original_session_factory
         Model._is_enabled = self._original_is_enabled
@@ -259,6 +261,43 @@ class TestModelLifecycle(unittest.IsolatedAsyncioTestCase):
 
         self.assertIs(found, record)
         session.execute.assert_awaited_once()
+
+    async def test_find_emits_db_client_span_attributes_without_values(self) -> None:
+        class TraceLookupModel(Model):
+            __tablename__ = 'trace_lookup_model'
+
+            id = Column(Integer, primary_key=True)
+
+        record = object()
+        result = MagicMock(name='result')
+        result.scalars.return_value.first.return_value = record
+        session = MagicMock(name='session')
+        session.__aenter__ = AsyncMock(return_value=session)
+        session.__aexit__ = AsyncMock(return_value=None)
+        session.execute = AsyncMock(return_value=result)
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
+        Model._is_enabled = True
+        Model._set_connection_observability('postgresql+asyncpg://user:secret@db.local:5432/app')
+
+        try:
+            with patch.object(Model, 'get_session', AsyncMock(return_value=session)):
+                found = await Model.find(TraceLookupModel, 'secret-id')
+        finally:
+            Base.metadata.remove(TraceLookupModel.__table__)
+
+        self.assertIs(found, record)
+        span = spans[-1]
+        self.assertEqual(span.name, 'select trace_lookup_model')
+        self.assertEqual(span.kind, 'client')
+        self.assertEqual(span.attributes['db.system'], 'postgresql')
+        self.assertEqual(span.attributes['db.operation'], 'select')
+        self.assertEqual(span.attributes['db.collection.name'], 'trace_lookup_model')
+        self.assertEqual(span.attributes['db.query.text'], 'SELECT * FROM trace_lookup_model WHERE id = :id')
+        self.assertEqual(span.attributes['server.address'], 'db.local')
+        self.assertEqual(span.attributes['server.port'], 5432)
+        self.assertNotIn('secret-id', span.attributes['db.query.text'])
+        self.assertNotIn('secret', span.attributes['db.query.text'])
 
     async def test_all_returns_records(self) -> None:
         class ListedModel(Model):

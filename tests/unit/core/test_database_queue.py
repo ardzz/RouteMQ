@@ -4,6 +4,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from routemq import observability
+from routemq.model import Model as BaseModel
 from routemq.queue.database_queue import DatabaseQueue
 
 
@@ -24,6 +26,7 @@ class DatabaseQueueBase(unittest.IsolatedAsyncioTestCase):
         original_level = logger.level
         logger.setLevel(logging.CRITICAL)
         self.addCleanup(logger.setLevel, original_level)
+        self.addCleanup(observability.clear_hooks)
 
 
 class DatabaseQueuePushTests(DatabaseQueueBase):
@@ -50,6 +53,34 @@ class DatabaseQueuePushTests(DatabaseQueueBase):
         session.add.assert_called_once()
         session.commit.assert_awaited_once()
         session.close.assert_awaited_once()
+
+    async def test_push_emits_database_client_span_with_redacted_query(self) -> None:
+        driver = DatabaseQueue()
+        session = _mock_session()
+        spans: list[Any] = []
+        observability.register_span_hook(spans.append)
+        BaseModel._set_connection_observability('mysql+aiomysql://user:secret@mysql.local:3306/app')
+
+        with (
+            patch('routemq.queue.database_queue.Model') as mock_model,
+            patch('routemq.queue.database_queue.QueueJob') as mock_job_cls,
+        ):
+            mock_model._is_enabled = True
+            mock_model.get_session = AsyncMock(return_value=session)
+            mock_job_cls.return_value = MagicMock()
+
+            await driver.push('payload-with-secret', 'q', 0)
+
+        span = spans[-1]
+        self.assertEqual(span.name, 'insert queue_jobs')
+        self.assertEqual(span.kind, 'client')
+        self.assertEqual(span.attributes['db.system'], 'mysql')
+        self.assertEqual(span.attributes['db.operation'], 'insert')
+        self.assertEqual(span.attributes['db.collection.name'], 'queue_jobs')
+        self.assertEqual(span.attributes['server.address'], 'mysql.local')
+        self.assertEqual(span.attributes['server.port'], 3306)
+        self.assertNotIn('payload-with-secret', span.attributes['db.query.text'])
+        self.assertNotIn('secret', span.attributes['db.query.text'])
 
     async def test_push_rolls_back_on_error(self) -> None:
         driver = DatabaseQueue()

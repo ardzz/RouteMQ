@@ -170,6 +170,22 @@ class SpanHistogramTests(DefaultHooksTestCase):
         )
         self.assertEqual(count, 1.0)
 
+    def test_router_handler_span_populates_route_and_handler_histogram(self) -> None:
+        with observability.start_span(
+            'router.handler',
+            {
+                'messaging.destination.template': 'devices/{id}/status',
+                'routemq.handler.name': 'DeviceController.handle_status',
+            },
+        ):
+            pass
+
+        count = self._histogram_count(
+            'routemq_router_handler_duration_seconds',
+            {'route': 'devices/{id}/status', 'handler': 'DeviceController.handle_status'},
+        )
+        self.assertEqual(count, 1.0)
+
     def test_unknown_span_is_ignored(self) -> None:
         with observability.start_span('custom.unrelated'):
             pass
