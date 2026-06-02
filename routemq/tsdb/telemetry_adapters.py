@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import Sequence
 from dataclasses import asdict
 from typing import Any
@@ -21,7 +22,23 @@ from routemq.telemetry.adapter import (
 )
 from routemq.telemetry.types import TelemetryPoint
 from routemq.tsdb.clickhouse_driver import CLICKHOUSE_AVAILABLE, clickhouse_connect
-from routemq.tsdb.telemetry_mapping import clickhouse_rows, influx_line_protocol, influx_lines, iotdb_records, timescale_rows
+from routemq.tsdb.telemetry_mapping import (
+    clickhouse_rows,
+    influx_line_protocol,
+    influx_lines,
+    iotdb_records,
+    timescale_rows,
+)
+
+
+_SAFE_TABLE_IDENTIFIER = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+
+
+def _ensure_safe_table_name(table: str) -> str:
+    # Table identifiers cannot be bound parameters, so restrict them to an allowlist.
+    if not _SAFE_TABLE_IDENTIFIER.match(table):
+        raise ValueError(f'Unsafe telemetry table identifier: {table!r}')
+    return table
 
 
 CLICKHOUSE_TELEMETRY_COLUMNS = (
@@ -73,7 +90,9 @@ class ClickHouseTelemetryAdapter(TelemetryAdapter):
         try:
             await self._client.insert(self.table, data, column_names=list(CLICKHOUSE_TELEMETRY_COLUMNS))
         except Exception as exc:
-            failures = tuple(WriteFailure(index=index, point=point, error=str(exc)) for index, point in enumerate(pending))
+            failures = tuple(
+                WriteFailure(index=index, point=point, error=str(exc)) for index, point in enumerate(pending)
+            )
             return WriteResult(accepted=len(pending), written=0, failures=failures)
         return WriteResult(accepted=len(pending), written=len(pending))
 
@@ -89,7 +108,11 @@ class ClickHouseTelemetryAdapter(TelemetryAdapter):
         if not exists:
             return SchemaValidationResult(
                 ok=False,
-                issues=(SchemaValidationIssue(backend='clickhouse', object_name=self.table, message='telemetry table is missing'),),
+                issues=(
+                    SchemaValidationIssue(
+                        backend='clickhouse', object_name=self.table, message='telemetry table is missing'
+                    ),
+                ),
             )
         result = await self._client.query(
             'SELECT name FROM system.columns WHERE database = {db:String} AND table = {table:String}',
@@ -117,7 +140,7 @@ class ClickHouseTelemetryAdapter(TelemetryAdapter):
 class TimescaleTelemetryAdapter(TelemetryAdapter):
     def __init__(self, url: str, *, table: str = 'telemetry_observations') -> None:
         self.url = url
-        self.table = table
+        self.table = _ensure_safe_table_name(table)
         self._engine: Any = None
 
     async def connect(self) -> None:
@@ -131,7 +154,7 @@ class TimescaleTelemetryAdapter(TelemetryAdapter):
             await self.connect()
         rows = timescale_rows(pending)
         statement = text(
-            f'INSERT INTO {self.table} (observed_at, ingested_at, device_id, measurement, value_double, value_text, '
+            f'INSERT INTO {self.table} (observed_at, ingested_at, device_id, measurement, value_double, value_text, '  # nosec B608 - table validated by _ensure_safe_table_name
             'value_bool, unit, quality, tags, attributes, metadata) VALUES (:observed_at, :ingested_at, :device_id, '
             ':measurement, :value_double, :value_text, :value_bool, :unit, :quality, :tags, :attributes, :metadata)'
         )
@@ -139,7 +162,9 @@ class TimescaleTelemetryAdapter(TelemetryAdapter):
             async with self._engine.begin() as connection:
                 await connection.execute(statement, rows)
         except Exception as exc:
-            failures = tuple(WriteFailure(index=index, point=point, error=str(exc)) for index, point in enumerate(pending))
+            failures = tuple(
+                WriteFailure(index=index, point=point, error=str(exc)) for index, point in enumerate(pending)
+            )
             return WriteResult(accepted=len(pending), written=0, failures=failures)
         return WriteResult(accepted=len(pending), written=len(pending))
 
@@ -167,7 +192,9 @@ class InfluxTelemetryAdapter(TelemetryAdapter):
         try:
             await asyncio.to_thread(_post_bytes, self.url, lines.encode())
         except Exception as exc:
-            failures = tuple(WriteFailure(index=index, point=point, error=str(exc)) for index, point in enumerate(pending))
+            failures = tuple(
+                WriteFailure(index=index, point=point, error=str(exc)) for index, point in enumerate(pending)
+            )
             return WriteResult(accepted=len(pending), written=0, failures=failures)
         return WriteResult(accepted=len(pending), written=len(pending))
 
@@ -193,7 +220,9 @@ class IoTDBTelemetryAdapter(TelemetryAdapter):
         try:
             await asyncio.to_thread(_post_bytes, self.url, json.dumps(payload, default=str).encode())
         except Exception as exc:
-            failures = tuple(WriteFailure(index=index, point=point, error=str(exc)) for index, point in enumerate(pending))
+            failures = tuple(
+                WriteFailure(index=index, point=point, error=str(exc)) for index, point in enumerate(pending)
+            )
             return WriteResult(accepted=len(pending), written=0, failures=failures)
         return WriteResult(accepted=len(pending), written=len(pending))
 
