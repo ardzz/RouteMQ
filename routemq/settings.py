@@ -341,10 +341,14 @@ def load_telemetry_settings(env: Mapping[str, str] | None = None) -> TelemetrySe
         enabled=enabled,
         connection=connection,
         url=url,
-        queue_max_size=_positive_int(values, 'TELEMETRY_QUEUE_MAX_SIZE', _parse_int_env(values, 'TSDB_BUFFER_MAXSIZE', 10000)),
+        queue_max_size=_positive_int(
+            values, 'TELEMETRY_QUEUE_MAX_SIZE', _parse_int_env(values, 'TSDB_BUFFER_MAXSIZE', 10000)
+        ),
         queue_full_strategy=queue_strategy,
         batch_size=_positive_int(values, 'TELEMETRY_BATCH_SIZE', _parse_int_env(values, 'TSDB_BATCH_SIZE', 1000)),
-        flush_interval=_positive_float(values, 'TELEMETRY_FLUSH_INTERVAL', env_float(values, 'TSDB_FLUSH_INTERVAL', 1.0, fallback_on_invalid=True)),
+        flush_interval=_positive_float(
+            values, 'TELEMETRY_FLUSH_INTERVAL', env_float(values, 'TSDB_FLUSH_INTERVAL', 1.0, fallback_on_invalid=True)
+        ),
         flush_timeout=_positive_float(values, 'TELEMETRY_FLUSH_TIMEOUT', 10.0),
         max_retries=_parse_int_env(values, 'TELEMETRY_MAX_RETRIES', 3),
         retry_backoff=retry_backoff,

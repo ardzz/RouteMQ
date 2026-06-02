@@ -58,7 +58,9 @@ def timescale_rows(points: list[TelemetryPoint]) -> list[dict[str, Any]]:
                     'ingested_at': point.ingested_at,
                     'device_id': point.device_id,
                     'measurement': name,
-                    'value_double': float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None,
+                    'value_double': float(value)
+                    if isinstance(value, (int, float)) and not isinstance(value, bool)
+                    else None,
                     'value_text': value if isinstance(value, str) else None,
                     'value_bool': value if isinstance(value, bool) else None,
                     'unit': measurement.unit,

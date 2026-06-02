@@ -11,7 +11,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from bootstrap.app import Application, _combine_metrics_payloads, _without_openmetrics_eof
 from routemq.health import HealthStatus
 from routemq.metrics import MetricsRegistry
-from routemq.settings import DatabaseConnectionSettings, DatabasePoolSettings, MetricsHttpSettings, load_metrics_http_settings
+from routemq.settings import (
+    DatabaseConnectionSettings,
+    DatabasePoolSettings,
+    MetricsHttpSettings,
+    load_metrics_http_settings,
+)
 
 
 class TestApplicationInitialization(unittest.TestCase):
@@ -512,7 +517,9 @@ class TestApplicationConnections(unittest.IsolatedAsyncioTestCase):
     async def test_initialize_telemetry_starts_runtime_from_settings(self) -> None:
         app = object.__new__(Application)
         app.telemetry_enabled = True
-        app.telemetry_settings = MagicMock(connection='clickhouse', url='http://clickhouse:8123/iot', async_insert=False)
+        app.telemetry_settings = MagicMock(
+            connection='clickhouse', url='http://clickhouse:8123/iot', async_insert=False
+        )
         app.logger = MagicMock()
         adapter = MagicMock(name='adapter')
 
