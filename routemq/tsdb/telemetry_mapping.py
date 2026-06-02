@@ -77,10 +77,14 @@ def influx_lines(points: list[TelemetryPoint], *, measurement_name: str = 'telem
     lines: list[InfluxLine] = []
     for point in points:
         tags = {'device_id': point.device_id} | dict(point.tags)
-        fields = {name: measurement.value for name, measurement in _measurement_items(point)}
+        fields: dict[str, Any] = {
+            name: measurement.value for name, measurement in _measurement_items(point) if measurement.value is not None
+        }
         for prefix, values in {'attribute': point.attributes, 'metadata': point.metadata}.items():
             for key, value in values.items():
-                fields[f'{prefix}.{key}'] = _field_value(value)
+                field_value = _field_value(value)
+                if field_value is not None:
+                    fields[f'{prefix}.{key}'] = field_value
         lines.append(
             InfluxLine(
                 measurement=measurement_name,

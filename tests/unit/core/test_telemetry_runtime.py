@@ -123,6 +123,16 @@ class TelemetryRuntimeTests(unittest.IsolatedAsyncioTestCase):
         await manager.close()
         self.assertIsNone(manager._flush_task)
 
+    async def test_start_disabled_cancels_existing_flush_task(self) -> None:
+        adapter = InMemoryTelemetryAdapter()
+        manager = TelemetryManager(adapter=adapter, settings=_settings(flush_interval=999))
+
+        self.assertTrue(await manager.start())
+        self.assertIsNotNone(manager._flush_task)
+        self.assertFalse(await manager.start(settings=TelemetrySettings(enabled=False)))
+        self.assertIsNone(manager._flush_task)
+        await manager.close()
+
     async def test_flush_loop_flushes_by_interval(self) -> None:
         adapter = InMemoryTelemetryAdapter()
         manager = TelemetryManager(adapter=adapter, settings=_settings(batch_size=99, flush_interval=0.01))
@@ -181,6 +191,18 @@ class TelemetryRuntimeTests(unittest.IsolatedAsyncioTestCase):
         await manager.flush()
 
         self.assertEqual(adapter.points[0].measurements['temperature'].value, 2)
+
+    async def test_drop_oldest_counts_incoming_point_as_accepted(self) -> None:
+        adapter = InMemoryTelemetryAdapter()
+        manager = TelemetryManager(
+            adapter=adapter, settings=_settings(queue_max_size=1, queue_full_strategy='drop_oldest', batch_size=99)
+        )
+        await manager.write(_point(1))
+
+        result = await manager.write(_point(2))
+
+        self.assertEqual(result.accepted, 1)
+        await manager.close()
 
     async def test_block_strategy_waits_for_space(self) -> None:
         manager = TelemetryManager(settings=_settings(queue_max_size=1, queue_full_strategy='block', batch_size=99))

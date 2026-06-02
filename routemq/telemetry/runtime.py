@@ -37,6 +37,13 @@ class TelemetryManager:
             self.adapter = adapter
         self._closed = False
         if not self.settings.enabled:
+            if self._flush_task is not None:
+                self._flush_task.cancel()
+                try:
+                    await self._flush_task
+                except asyncio.CancelledError:
+                    pass
+                self._flush_task = None
             return False
         if self._flush_task is None:
             self._flush_task = asyncio.create_task(self._flush_loop())
@@ -108,10 +115,11 @@ class TelemetryManager:
         if strategy == 'drop_oldest':
             try:
                 self._queue.get_nowait()
+                lifecycle('telemetry.points.dropped', {'count': 1, 'strategy': 'drop_oldest'})
             except asyncio.QueueEmpty:
                 pass
             await self._queue.put(point)
-            return 'dropped'
+            return 'accepted'
         return 'dropped'
 
     async def _flush_ready_batches(self) -> WriteResult:

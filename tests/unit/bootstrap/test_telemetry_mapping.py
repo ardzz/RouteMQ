@@ -61,6 +61,20 @@ class TelemetryMappingTests(unittest.TestCase):
         )
         self.assertIn('device_id=pump-7', influx_line_protocol(line))
 
+    def test_influx_lines_skip_none_field_values(self) -> None:
+        point = TelemetryPoint(
+            device_id='pump-7',
+            observed_at='2026-05-30T10:15:30Z',
+            measurements={'temperature': 31.2, 'broken': None},
+            attributes={'gateway_id': None},
+        )
+
+        line = influx_lines([point])[0]
+
+        self.assertIn('temperature', line.fields)
+        self.assertNotIn('broken', line.fields)
+        self.assertNotIn('attribute.gateway_id', line.fields)
+
     def test_iotdb_records_map_device_to_path(self) -> None:
         record = iotdb_records([_point()], root='root.factory')[0]
 
