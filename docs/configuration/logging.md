@@ -181,6 +181,360 @@ handler.
 - Prefer stdout/stderr collection in containers over writing log files inside the container filesystem.
 - Avoid logging sensitive payloads directly; enrich with IDs and routing metadata instead.
 
+## Log Shipping Recipes
+
+All recipes assume `LOG_FORMATTER=json`. File-based examples also assume:
+
+```env
+LOG_TO_FILE=true
+LOG_FILE=/app/logs/app.log
+```
+
+The default `otel` profile emits `timestamp`, `severity_text`, `severity_number`, `logger`, `message`,
+`service.name`, `deployment.environment.name`, `correlation_id`, `trace_id`, `span_id`, `routemq.*`,
+`attributes`, and `exception.*`. Use the backend profile called out in each recipe when it gives the
+collector native field names.
+
+### Vector
+
+Use the default `otel` profile; Vector reads RouteMQ NDJSON from a file and keeps `routemq.*` plus
+`attributes` as structured fields.
+
+```toml
+# vector.toml
+[sources.routemq]
+type = "file"
+include = ["/app/logs/app.log"]
+read_from = "beginning"
+
+[transforms.routemq_json]
+type = "remap"
+inputs = ["routemq"]
+source = '''
+. = parse_json!(.message)
+.timestamp = parse_timestamp!(.timestamp, format: "%Y-%m-%dT%H:%M:%S.%fZ")
+.level = .severity_text
+.service = ."service.name"
+.environment = ."deployment.environment.name"
+# message, severity_number, routemq.*, attributes, and exception.* stay on the event.
+'''
+
+[sinks.stdout]
+type = "console"
+inputs = ["routemq_json"]
+
+[sinks.stdout.encoding]
+codec = "json"
+```
+
+### OpenTelemetry Collector
+
+Use the default `otel` profile; the `filelog` receiver maps RouteMQ time, severity, message, service,
+environment, and RouteMQ fields into an OTel log record.
+
+```yaml
+# otelcol.yaml
+receivers:
+  filelog/routemq:
+    include: ["/app/logs/app.log"]
+    start_at: beginning
+    operators:
+      - type: json_parser
+        timestamp:
+          parse_from: attributes.timestamp
+          layout_type: gotime
+          layout: "2006-01-02T15:04:05.999999Z"
+        severity:
+          parse_from: attributes.severity_text
+      - type: move
+        from: attributes.message
+        to: body
+      - type: move
+        from: attributes["service.name"]
+        to: resource["service.name"]
+      - type: move
+        from: attributes["deployment.environment.name"]
+        to: resource["deployment.environment.name"]
+
+exporters:
+  debug: {}
+
+service:
+  pipelines:
+    logs:
+      receivers: [filelog/routemq]
+      exporters: [debug]
+```
+
+### Fluent Bit
+
+Use the default `otel` profile; Fluent Bit parses the JSON line and uses RouteMQ's timestamp as the
+event time.
+
+```ini
+# fluent-bit.conf
+[SERVICE]
+    Parsers_File parsers.conf
+
+[INPUT]
+    Name tail
+    Path /app/logs/app.log
+    Tag routemq
+    Parser routemq_json
+    Read_from_Head true
+
+[OUTPUT]
+    Name stdout
+    Match routemq
+```
+
+```ini
+# parsers.conf
+[PARSER]
+    Name routemq_json
+    Format json
+    Time_Key timestamp
+    Time_Format %Y-%m-%dT%H:%M:%S.%fZ
+    Time_Keep On
+```
+
+After parsing, `severity_text`, `severity_number`, `message`, `logger`, `service.name`,
+`deployment.environment.name`, `routemq.*`, and `attributes` remain record keys.
+
+### Logstash
+
+Use `LOG_FIELD_PROFILE=routemq` for nested RouteMQ fields that are easy to address in Logstash filters.
+
+```conf
+# logstash.conf
+input {
+  file {
+    path => "/app/logs/app.log"
+    start_position => "beginning"
+    sincedb_path => "/dev/null"
+    codec => json
+  }
+}
+
+filter {
+  date {
+    match => ["timestamp", "ISO8601"]
+    target => "@timestamp"
+  }
+  mutate {
+    rename => { "level" => "[log][level]" }
+  }
+}
+
+output {
+  stdout { codec => json_lines }
+}
+```
+
+The `routemq` profile keeps `message`, `logger`, `service.name`, `service.env`, `event.*`,
+`routemq.*`, `error.*`, and `attributes` in nested JSON objects.
+
+### Grafana Alloy and Loki
+
+Use `LOG_FIELD_PROFILE=loki`; Alloy reads the file, extracts low-cardinality labels, preserves high
+cardinality RouteMQ values as structured metadata, and writes to Loki.
+
+```hcl
+# config.alloy
+local.file_match "routemq" {
+  path_targets = [
+    { __path__ = "/app/logs/app.log", job = "routemq" },
+  ]
+}
+
+loki.source.file "routemq" {
+  targets    = local.file_match.routemq.targets
+  forward_to = [loki.process.routemq.receiver]
+}
+
+loki.process "routemq" {
+  stage.json {
+    expressions = {
+      ts             = "timestamp"
+      level          = "severity_text"
+      message        = "message"
+      service_name   = "labels.\"service.name\""
+      environment    = "labels.\"deployment.environment.name\""
+      component      = "labels.\"routemq.component\""
+      queue          = "labels.\"routemq.queue\""
+      correlation_id = "correlation_id"
+      route_pattern  = "\"routemq.route.pattern\""
+    }
+  }
+
+  stage.timestamp {
+    source = "ts"
+    format = "RFC3339Nano"
+  }
+
+  stage.labels {
+    values = {
+      service_name = ""
+      environment  = ""
+      level        = ""
+      component    = ""
+      queue        = ""
+    }
+  }
+
+  stage.structured_metadata {
+    values = {
+      correlation_id = ""
+      route_pattern  = ""
+    }
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+```
+
+### Elastic with Filebeat
+
+Use `LOG_FIELD_PROFILE=ecs`; Filebeat's `filestream` input decodes NDJSON into Elastic Common Schema
+fields.
+
+```yaml
+# filebeat.yml
+filebeat.inputs:
+  - type: filestream
+    id: routemq
+    paths:
+      - /app/logs/app.log
+    parsers:
+      - ndjson:
+          target: ""
+          add_error_key: true
+          overwrite_keys: true
+          expand_keys: true
+
+processors:
+  - timestamp:
+      field: "@timestamp"
+      layouts:
+        - "2006-01-02T15:04:05.999999Z"
+      test:
+        - "2026-05-28T03:15:00.000000Z"
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+```
+
+The ECS profile maps RouteMQ fields to `@timestamp`, `log.level`, `log.logger`, `message`,
+`service.name`, `service.environment`, `trace.id`, `span.id`, `labels.correlation_id`, `routemq`,
+`attributes`, and `error.*`.
+
+### Datadog
+
+Use `LOG_FIELD_PROFILE=datadog`; the Datadog Agent reads the file and sends RouteMQ's Datadog-shaped
+JSON attributes.
+
+```yaml
+# /etc/datadog-agent/conf.d/routemq.d/conf.yaml
+logs:
+  - type: file
+    path: /app/logs/app.log
+    service: routemq-app
+    source: python
+```
+
+```yaml
+# /etc/datadog-agent/datadog.yaml
+logs_enabled: true
+```
+
+The Datadog profile emits `timestamp`, `status`, `message`, `logger`, `service`, `env`, `version`,
+`dd.service`, `dd.env`, `dd.version`, `dd.trace_id`, `dd.span_id`, `event.*`, `routemq`, `attributes`,
+and `error.*`.
+
+### Sentry
+
+Use the default `otel` profile; an OpenTelemetry Collector can parse the file and forward logs to
+Sentry's OTLP logs endpoint.
+
+```yaml
+# otelcol-sentry.yaml
+receivers:
+  filelog/routemq:
+    include: ["/app/logs/app.log"]
+    operators:
+      - type: json_parser
+        timestamp:
+          parse_from: attributes.timestamp
+          layout_type: gotime
+          layout: "2006-01-02T15:04:05.999999Z"
+        severity:
+          parse_from: attributes.severity_text
+      - type: move
+        from: attributes.message
+        to: body
+      - type: move
+        from: attributes["service.name"]
+        to: resource["service.name"]
+      - type: move
+        from: attributes["deployment.environment.name"]
+        to: resource["deployment.environment.name"]
+
+processors:
+  batch: {}
+
+exporters:
+  otlphttp/sentry:
+    logs_endpoint: ${env:SENTRY_OTLP_LOGS_URL}
+    headers:
+      x-sentry-auth: "sentry sentry_key=${env:SENTRY_PUBLIC_KEY}"
+    compression: gzip
+    encoding: proto
+
+service:
+  pipelines:
+    logs:
+      receivers: [filelog/routemq]
+      processors: [batch]
+      exporters: [otlphttp/sentry]
+```
+
+This maps RouteMQ `timestamp` to the OTel log timestamp, `severity_text` to severity, `message` to the
+log body, `service.name` and `deployment.environment.name` to resource attributes, and keeps `routemq.*`,
+`correlation_id`, `trace_id`, `span_id`, `attributes`, and `exception.*` as log attributes.
+
+### Docker json-file Driver
+
+Use stdout JSON with Docker's default `json-file` driver; Docker wraps each RouteMQ NDJSON line in its
+own JSON object.
+
+```yaml
+# docker-compose.yml
+services:
+  routemq:
+    image: your-routemq-image
+    environment:
+      LOG_FORMATTER: json
+      LOG_FIELD_PROFILE: otel
+      LOG_TO_CONSOLE: "true"
+      LOG_STREAM: stdout
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+```
+
+Docker stores events like `{"log":"{...RouteMQ JSON...}\n","stream":"stdout","time":"..."}`.
+Downstream shippers should parse Docker's `log` value as JSON, then map the inner RouteMQ `timestamp`,
+`severity_text`, `severity_number`, `message`, `service.name`, `deployment.environment.name`,
+`routemq.*`, `attributes`, and `exception.*` fields.
+
 ## Troubleshooting
 
 ### Logs are plain text instead of JSON
