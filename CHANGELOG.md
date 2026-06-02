@@ -1,3 +1,9 @@
+## v0.25.0 (2026-06-02)
+
+### Feat
+
+- **observability**: trace database, redis, rate-limit, and propagate MQTT context
+
 ## v0.24.0 (2026-06-02)
 
 ### Feat
