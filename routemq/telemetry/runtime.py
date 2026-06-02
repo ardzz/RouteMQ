@@ -5,7 +5,13 @@ from collections.abc import Iterable, Sequence
 
 from routemq.observability import lifecycle, start_span
 from routemq.settings import TelemetrySettings
-from routemq.telemetry.adapter import NoopTelemetryAdapter, TelemetryAdapter, TelemetryHealthStatus, WriteFailure, WriteResult
+from routemq.telemetry.adapter import (
+    NoopTelemetryAdapter,
+    TelemetryAdapter,
+    TelemetryHealthStatus,
+    WriteFailure,
+    WriteResult,
+)
 from routemq.telemetry.types import TelemetryPoint
 
 
@@ -21,7 +27,9 @@ class TelemetryManager:
         self._flush_task: asyncio.Task[None] | None = None
         self._closed = False
 
-    async def start(self, *, adapter: TelemetryAdapter | None = None, settings: TelemetrySettings | None = None) -> bool:
+    async def start(
+        self, *, adapter: TelemetryAdapter | None = None, settings: TelemetrySettings | None = None
+    ) -> bool:
         if settings is not None:
             self.settings = settings
             self._queue = asyncio.Queue(maxsize=self.settings.queue_max_size)
@@ -131,7 +139,9 @@ class TelemetryManager:
         for attempt in range(self.settings.max_retries + 1):
             pending_points = [point for _, point in pending]
             try:
-                result = await asyncio.wait_for(self.adapter.write_many(pending_points), timeout=self.settings.flush_timeout)
+                result = await asyncio.wait_for(
+                    self.adapter.write_many(pending_points), timeout=self.settings.flush_timeout
+                )
             except Exception as exc:
                 if attempt >= self.settings.max_retries:
                     failures.extend(WriteFailure(index=index, point=point, error=str(exc)) for index, point in pending)
@@ -140,7 +150,9 @@ class TelemetryManager:
                 continue
 
             if not result.failures:
-                return WriteResult(accepted=len(points), written=written_total + result.written, failures=tuple(failures))
+                return WriteResult(
+                    accepted=len(points), written=written_total + result.written, failures=tuple(failures)
+                )
             written_total += result.written
             next_pending: list[tuple[int, TelemetryPoint]] = []
             for failure in result.failures:
@@ -164,7 +176,9 @@ class TelemetryManager:
         return WriteResult(accepted=len(points), written=written_total, failures=tuple(failures))
 
     @staticmethod
-    def _map_failure_to_original(pending: Sequence[tuple[int, TelemetryPoint]], failure: WriteFailure) -> tuple[int, TelemetryPoint]:
+    def _map_failure_to_original(
+        pending: Sequence[tuple[int, TelemetryPoint]], failure: WriteFailure
+    ) -> tuple[int, TelemetryPoint]:
         if 0 <= failure.index < len(pending):
             return pending[failure.index]
         return failure.index, failure.point

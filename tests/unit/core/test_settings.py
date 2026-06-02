@@ -137,7 +137,9 @@ class DatabaseConnectionSettingsTests(unittest.TestCase):
         self.assertFalse(settings.enabled)
 
     def test_database_url_wins_and_normalizes_driver(self) -> None:
-        settings = load_database_connection_settings({'ENABLE_MYSQL': 'false', 'DATABASE_URL': 'postgres://u:p@db:5432/app'})
+        settings = load_database_connection_settings(
+            {'ENABLE_MYSQL': 'false', 'DATABASE_URL': 'postgres://u:p@db:5432/app'}
+        )
 
         self.assertTrue(settings.enabled)
         self.assertEqual(settings.url, 'postgresql+asyncpg://u:p@db:5432/app')

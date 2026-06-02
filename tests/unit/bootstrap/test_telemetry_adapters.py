@@ -217,10 +217,16 @@ class OtherTelemetryAdapterTests(unittest.IsolatedAsyncioTestCase):
         await adapter.close()
 
     def test_factory_selects_adapter(self) -> None:
-        self.assertIsInstance(adapter_from_settings('timescaledb', 'postgresql+asyncpg://u:p@db/app'), TimescaleTelemetryAdapter)
-        self.assertIsInstance(adapter_from_settings('influxdb', 'http://influx:8086?bucket=iot'), InfluxTelemetryAdapter)
+        self.assertIsInstance(
+            adapter_from_settings('timescaledb', 'postgresql+asyncpg://u:p@db/app'), TimescaleTelemetryAdapter
+        )
+        self.assertIsInstance(
+            adapter_from_settings('influxdb', 'http://influx:8086?bucket=iot'), InfluxTelemetryAdapter
+        )
         self.assertIsInstance(adapter_from_settings('iotdb', 'http://iotdb/write'), IoTDBTelemetryAdapter)
-        self.assertIsInstance(adapter_from_settings('clickhouse', 'http://clickhouse:8123/iot'), ClickHouseTelemetryAdapter)
+        self.assertIsInstance(
+            adapter_from_settings('clickhouse', 'http://clickhouse:8123/iot'), ClickHouseTelemetryAdapter
+        )
 
     def test_factory_passes_async_insert_to_clickhouse_adapter(self) -> None:
         adapter = adapter_from_settings('clickhouse', 'http://clickhouse:8123/iot', async_insert=False)

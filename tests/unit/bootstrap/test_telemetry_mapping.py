@@ -2,7 +2,13 @@ from datetime import UTC, datetime
 import unittest
 
 from routemq.telemetry import Measurement, TelemetryPoint
-from routemq.tsdb.telemetry_mapping import clickhouse_rows, influx_line_protocol, influx_lines, iotdb_records, timescale_rows
+from routemq.tsdb.telemetry_mapping import (
+    clickhouse_rows,
+    influx_line_protocol,
+    influx_lines,
+    iotdb_records,
+    timescale_rows,
+)
 
 
 def _point() -> TelemetryPoint:
@@ -50,7 +56,9 @@ class TelemetryMappingTests(unittest.TestCase):
         self.assertEqual(line.tags['device_id'], 'pump-7')
         self.assertEqual(line.tags['site'], 'factory a')
         self.assertEqual(line.fields['temperature'], 31.2)
-        self.assertEqual(line.timestamp_ns, int(datetime(2026, 5, 30, 10, 15, 30, tzinfo=UTC).timestamp() * 1_000_000_000))
+        self.assertEqual(
+            line.timestamp_ns, int(datetime(2026, 5, 30, 10, 15, 30, tzinfo=UTC).timestamp() * 1_000_000_000)
+        )
         self.assertIn('device_id=pump-7', influx_line_protocol(line))
 
     def test_iotdb_records_map_device_to_path(self) -> None:

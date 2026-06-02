@@ -309,7 +309,9 @@ class RunCleanupTests(unittest.TestCase):
 
         with (
             patch('bootstrap.app.telemetry.close', new=MagicMock(return_value='telemetry-close')) as telemetry_close,
-            patch('bootstrap.app.tsdb_manager.disconnect', new=MagicMock(return_value='tsdb-disconnect')) as tsdb_disconnect,
+            patch(
+                'bootstrap.app.tsdb_manager.disconnect', new=MagicMock(return_value='tsdb-disconnect')
+            ) as tsdb_disconnect,
         ):
             app.run()
 

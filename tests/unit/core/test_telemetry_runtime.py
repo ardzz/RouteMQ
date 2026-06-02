@@ -3,7 +3,14 @@ import unittest
 from unittest.mock import patch
 
 from routemq.settings import TelemetrySettings
-from routemq.telemetry import InMemoryTelemetryAdapter, TelemetryAdapter, TelemetryManager, TelemetryPoint, WriteFailure, WriteResult
+from routemq.telemetry import (
+    InMemoryTelemetryAdapter,
+    TelemetryAdapter,
+    TelemetryManager,
+    TelemetryPoint,
+    WriteFailure,
+    WriteResult,
+)
 from routemq.telemetry.runtime import TelemetryQueueFull
 
 
@@ -155,7 +162,9 @@ class TelemetryRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_drop_newest_strategy_drops_new_point(self) -> None:
         adapter = InMemoryTelemetryAdapter()
-        manager = TelemetryManager(adapter=adapter, settings=_settings(queue_max_size=1, queue_full_strategy='drop_newest', batch_size=99))
+        manager = TelemetryManager(
+            adapter=adapter, settings=_settings(queue_max_size=1, queue_full_strategy='drop_newest', batch_size=99)
+        )
         await manager.write(_point(1))
         await manager.write(_point(2))
         await manager.flush()
@@ -164,7 +173,9 @@ class TelemetryRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_drop_oldest_strategy_keeps_new_point(self) -> None:
         adapter = InMemoryTelemetryAdapter()
-        manager = TelemetryManager(adapter=adapter, settings=_settings(queue_max_size=1, queue_full_strategy='drop_oldest', batch_size=99))
+        manager = TelemetryManager(
+            adapter=adapter, settings=_settings(queue_max_size=1, queue_full_strategy='drop_oldest', batch_size=99)
+        )
         await manager.write(_point(1))
         await manager.write(_point(2))
         await manager.flush()
@@ -198,7 +209,9 @@ class TelemetryRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_partial_failures_retry_pending_points(self) -> None:
         adapter = _PartialThenSuccessAdapter()
-        manager = TelemetryManager(adapter=adapter, settings=_settings(batch_size=2, max_retries=1, retry_backoff='constant'))
+        manager = TelemetryManager(
+            adapter=adapter, settings=_settings(batch_size=2, max_retries=1, retry_backoff='constant')
+        )
         with patch('routemq.telemetry.runtime.asyncio.sleep', return_value=None):
             result = await manager.write_many([_point(1), _point(2)])
 
@@ -214,7 +227,9 @@ class TelemetryRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_mixed_failures_preserve_non_retriable_failure_after_retry_success(self) -> None:
         adapter = _MixedFailureThenSuccessAdapter()
-        manager = TelemetryManager(adapter=adapter, settings=_settings(batch_size=2, max_retries=1, retry_backoff='constant'))
+        manager = TelemetryManager(
+            adapter=adapter, settings=_settings(batch_size=2, max_retries=1, retry_backoff='constant')
+        )
         with patch('routemq.telemetry.runtime.asyncio.sleep', return_value=None):
             result = await manager.write_many([_point(1), _point(2)])
 
