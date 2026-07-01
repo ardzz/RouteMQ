@@ -15,5 +15,5 @@ IPython==9.13.0
 nest-asyncio==1.6.0
 
 # Optional: For development and testing
-pytest==9.0.3
+pytest==9.1.1
 pytest-asyncio==1.4.0
