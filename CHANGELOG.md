@@ -1,12 +1,8 @@
-## Unreleased
+## v0.25.1 (2026-10-13)
 
 ### Fix
 
-- **security**: refresh vulnerable locked runtime and development dependencies without advisory suppressions
-- **ci**: enforce manifest/lockfile consistency and audit the locked no-dev runtime extras in addition to the installed environment
-- **dependencies**: configure native uv and Docker Dependabot updates, including the Docker scaffold template
-- **dependencies**: declare SQLAlchemy asyncio support so clean wheel installations include the required greenlet dependency
-- **docs**: remove the stale requirements.txt installation path and verify the replacement locked Docker recipe
+- **ci**: restore locked security and dependency management (#106)
 
 ## v0.25.0 (2026-06-02)
 
