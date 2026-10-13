@@ -1,3 +1,9 @@
+## Unreleased
+
+### Chore
+
+- **dependencies**: group Python and GitHub Actions patch/minor updates, separate security batches, and leave major, critical database-driver, and Docker migrations ungrouped for separate review
+
 ## v0.25.1 (2026-10-13)
 
 ### Fix

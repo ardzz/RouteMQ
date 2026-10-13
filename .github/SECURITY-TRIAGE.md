@@ -24,6 +24,86 @@
   - `github-actions` at `/` updates SHA-pinned workflow actions. Labels: `dependencies`, `github-actions`.
 - Dependabot security update PRs are `uv.lock` changes and go through the same CI gates as any other change.
 
+## Dependabot Grouping
+
+`.github/dependabot.yml` groups patch and minor updates to cut weekly PR volume. Dependabot reads the file from the
+default branch, so a group change takes effect from the first run after it lands there. Grouping changes only how
+updates are bundled into PRs: schedules, `open-pull-requests-limit`, commit prefixes, labels, directories, Dependabot
+alerts, and CI gates stay as configured.
+
+| Entry | Group | `applies-to` | `dependency-type` | `update-types` | `exclude-patterns` |
+|---|---|---|---|---|---|
+| `github-actions` | `actions-patch-minor` | `version-updates` | any | `patch`, `minor` | none |
+| `uv` | `python-dev-patch-minor` | `version-updates` | `development` | `patch`, `minor` | none |
+| `uv` | `python-runtime-patch-minor` | `version-updates` | `production` | `patch`, `minor` | `aiomysql`, `asyncpg` |
+| `uv` | `python-dev-security` | `security-updates` | `development` | `patch`, `minor` | none |
+| `uv` | `python-runtime-security` | `security-updates` | `production` | `patch`, `minor` | `aiomysql`, `asyncpg` |
+| `docker` | none | n/a | n/a | n/a | n/a |
+
+Every group matches `patterns: ["*"]`.
+
+- Version and security updates never share a PR. Each group sets `applies-to`, so a version-update group never picks
+  up a security fix and a security group never picks up a routine bump. Security update PRs are raised from
+  Dependabot alerts, not on the weekly schedule.
+- Updates that match no group open as individual PRs:
+  - Major updates in every ecosystem, including security fixes that need a major version bump. No declared group
+    rule includes them, and no `ignore` rule hides them. dependabot-core can still mark a group's dependencies as
+    handled for a run, so whether a major left out by `update-types` gets its own PR depends on existing or failed
+    group PRs and on the hosted experiment `individual_prs_for_semver_excluded_dependencies`
+    ([`dependency_snapshot.rb`][core-group-handled]). That individual PR is not guaranteed in every hosted run;
+    confirm it after this configuration is active on the default branch.
+  - `aiomysql` and `asyncpg`. They are pre-1.0, runtime-critical database drivers (MySQL and PostgreSQL), and
+    Dependabot assumes every `x.y.z` version is `major.minor.patch`, so a `0.x` to `0.y` release counts as a minor
+    update ([groups `update-types`][dependabot-update-types]). `exclude-patterns` only keeps them out of the runtime
+    groups; it is not an `ignore` rule, so their version updates and security updates still arrive, one PR per
+    driver.
+  - GitHub Actions security updates. The `github-actions` entry defines no `security-updates` group.
+  - Every Docker update. The `docker` entry has no groups, so base-image and interpreter changes, such as the
+    scaffold template moving off `python:3.12-slim`, stay standalone.
+- `uv` dependency types come from dependabot-core, not from this repository. GitHub's
+  [`groups.dependency-type` reference][dependabot-groups-dependency-type] lists `bundler`, `composer`, `mix`, `maven`,
+  `npm`, and `pip`, but not `uv`. In dependabot-core, group matching calls the generic `production?` check
+  ([`dependency_group.rb`][core-group-type]), which flattens each requirement's `groups`
+  ([`dependency.rb`][core-production]) and, for `uv`, treats a dependency as production only when that list is
+  empty or contains `default`, `install_requires`, or `dependencies` ([`uv.rb`][core-uv-check]). The `uv` parser
+  leaves `groups` empty for `[project].dependencies` and `[project.optional-dependencies]` entries and sets it to
+  the group name for `[dependency-groups]` entries ([`parser.py`][core-uv-parser],
+  [`pyproject_files_parser.rb`][core-uv-groups]). Duplicate names are merged by concatenating their requirements
+  ([`dependency_set.rb`][core-dependency-set]). Packages found only in `uv.lock` are added with no requirements,
+  and the subdependency check reports those as production ([`file_parser.rb`][core-uv-lock],
+  [`dependency.rb`][core-production]). Applied to this repository's `pyproject.toml`, that code yields:
+  - `production`: `[project].dependencies` (including `aiomysql`), packages listed only in
+    `[project.optional-dependencies]` (`redis`, `asyncpg`, `prometheus-client`, `clickhouse-connect`), and transitive
+    packages that appear only in `uv.lock`.
+  - `development`: everything in `[dependency-groups].dev`. That includes `questionary`, `rich`, `rich-pyfiglet`,
+    and `jinja2`, which are also runtime requirements of the `cli` extra, so their bumps would arrive in
+    `python-dev-patch-minor` or `python-dev-security`.
+  - This split is read from source, not observed from a Dependabot run. Check the first grouped `uv` PRs against it.
+- `open-pull-requests-limit: 5` is set on each `updates` entry and counts only that entry's open version-update PRs.
+  It is not a repository-wide cap: `github-actions`, `uv`, and `docker` can each hold five open PRs, and a grouped PR
+  counts as one. Security update PRs do not count toward it; GitHub caps them separately at 10 open PRs.
+- Grouping is not auto-merge. A grouped PR is reviewed and merged by hand after the CI gates pass, like an individual
+  PR.
+- Green PR CI is not evidence for the paths below. Collect that evidence separately before merging a grouped PR that
+  touches them:
+  - Release path: `release.yml`, `publish.yml`, `publish-test.yml`, and `github-release.yml` run on branch pushes,
+    `v*` tags, or manual dispatch, never on pull requests. Action bumps in those workflows are not exercised by PR CI.
+  - PostgreSQL: CI integration tests start Redis, MySQL, and MQTT containers only, so asyncpg never runs against a
+    live PostgreSQL server.
+  - Tinker: unit tests mock the Rich helpers and never start an interactive `routemq tinker` session, so IPython,
+    `nest-asyncio`, and Rich bumps need a manual REPL check.
+
+[dependabot-groups-dependency-type]: https://github.com/github/docs/blob/ae648a1d328cb15fb173e80984aac748cf4b5af2/content/code-security/reference/supply-chain-security/dependabot-options-reference.md?plain=1#L341-L343
+[dependabot-update-types]: https://github.com/github/docs/blob/ae648a1d328cb15fb173e80984aac748cf4b5af2/content/code-security/reference/supply-chain-security/dependabot-options-reference.md?plain=1#L380
+[core-group-type]: https://github.com/dependabot/dependabot-core/blob/95cd52ed9f6776b284441d60ddbd8d128b8648ef/common/lib/dependabot/dependency_group.rb#L125-L133
+[core-production]: https://github.com/dependabot/dependabot-core/blob/95cd52ed9f6776b284441d60ddbd8d128b8648ef/common/lib/dependabot/dependency.rb#L241-L259
+[core-uv-check]: https://github.com/dependabot/dependabot-core/blob/95cd52ed9f6776b284441d60ddbd8d128b8648ef/uv/lib/dependabot/uv.rb#L34-L43
+[core-uv-parser]: https://github.com/dependabot/dependabot-core/blob/95cd52ed9f6776b284441d60ddbd8d128b8648ef/uv/helpers/lib/parser.py#L106-L131
+[core-uv-groups]: https://github.com/dependabot/dependabot-core/blob/95cd52ed9f6776b284441d60ddbd8d128b8648ef/uv/lib/dependabot/uv/file_parser/pyproject_files_parser.rb#L114
+[core-dependency-set]: https://github.com/dependabot/dependabot-core/blob/95cd52ed9f6776b284441d60ddbd8d128b8648ef/common/lib/dependabot/file_parsers/base/dependency_set.rb#L146-L148
+[core-uv-lock]: https://github.com/dependabot/dependabot-core/blob/95cd52ed9f6776b284441d60ddbd8d128b8648ef/uv/lib/dependabot/uv/file_parser.rb#L198-L208
+[core-group-handled]: https://github.com/dependabot/dependabot-core/blob/95cd52ed9f6776b284441d60ddbd8d128b8648ef/updater/lib/dependabot/dependency_snapshot.rb#L215-L266
+
 ## Remediating a Vulnerable Dependency
 
 1. Upgrade only the affected package in the lock:
