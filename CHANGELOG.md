@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Fix
+
+- **ci**: propose push-to-master benchmark baselines through a baseline-only PR from benchmarks/master-baseline instead of pushing to protected master
+
 ### Chore
 
 - **dependencies**: group Python and GitHub Actions patch/minor updates, separate security batches, and leave major, critical database-driver, and Docker migrations ungrouped for separate review
