@@ -24,7 +24,10 @@ uv run pytest benchmarks/test_router.py --benchmark-only
 - `test_queue_serialization.py` covers job payload conversion and context capture.
 - `test_queue_worker.py` covers real pop/process cycles with an in-memory fake driver.
 - `test_observability.py` covers context snapshots and span hook fanout.
-- `baselines/master.json` is the only committed baseline.
+- `baselines/master.json` is the only committed baseline. CI proposes updates to it only through
+  baseline-only PRs from `benchmarks/master-baseline` (see `docs/monitoring/benchmarks.md`).
+  `make bench-save` output from a local machine cannot calibrate the hosted CI gate; adopt baseline
+  data only from a comparable environment with a recorded source commit and run.
 
 Benchmark files are excluded from coverage reports so measurement helpers do not affect the project
 coverage floor.
