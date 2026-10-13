@@ -12,14 +12,7 @@ Middleware in RouteMQ executes in a chain pattern where each middleware can:
 
 ### Chain Execution Flow
 
-```
-Request → Middleware 1 → Middleware 2 → Middleware 3 → Handler
-           ↓              ↓              ↓           ↓
-        Pre-process    Pre-process    Pre-process  Execute
-           ↑              ↑              ↑           ↑
-       Post-process   Post-process   Post-process  Return
-Response ← Middleware 1 ← Middleware 2 ← Middleware 3 ← Handler
-```
+<figure><img src="../.gitbook/assets/diagrams/middleware-chain.webp" alt="Middleware chain. The request passes through Middleware 1, 2 and 3, each pre-processing it, to the handler, which executes and returns; the response then passes back through Middleware 3, 2 and 1, each post-processing it."><figcaption></figcaption></figure>
 
 ## Basic Chain Example
 

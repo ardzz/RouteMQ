@@ -4,15 +4,7 @@ RouteMQ is built with a modular, scalable architecture that follows familiar web
 
 ## System Overview
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   MQTT Broker   │◄──►│   RouteMQ App   │◄──►│   External      │
-│                 │    │                 │    │   Services      │
-│ - Message Queue │    │ - Route Handler │    │ - Database      │
-│ - Pub/Sub       │    │ - Middleware    │    │ - Redis         │
-│ - Load Balance  │    │ - Workers       │    │ - APIs          │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-```
+<figure><img src="../.gitbook/assets/diagrams/architecture-overview.webp" alt="RouteMQ architecture. The MQTT broker (pub/sub topics, QoS 0/1/2, shared subscriptions) exchanges subscribe and publish traffic with the RouteMQ app (router and middleware, controllers, shared-subscription workers, queue workers), which reads from and writes to external services (MySQL or PostgreSQL, Redis, ClickHouse telemetry, HTTP APIs)."><figcaption></figcaption></figure>
 
 ## Core Components
 

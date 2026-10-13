@@ -261,25 +261,7 @@ class GenerateReportJob(Job):
 
 Understanding how jobs are processed:
 
-```
-1. Job Created
-   ↓
-2. Job Serialized
-   ↓
-3. Job Pushed to Queue
-   ↓
-4. Worker Pops Job
-   ↓
-5. Job Deserialized
-   ↓
-6. handle() Called
-   ↓
-   ├─ Success → Job Deleted
-   │
-   └─ Failure → attempts < max_tries?
-               ├─ Yes → Release Back to Queue (with delay)
-               └─ No  → failed() Called → Move to Failed Jobs
-```
+<figure><img src="../.gitbook/assets/diagrams/job-lifecycle.webp" alt="Job lifecycle. dispatch(job) serializes the job into a JSON envelope and enqueues it as ready or delayed. A worker reserves it, which increments attempts, unserializes it, and runs handle() with a timeout. On success the job is deleted. On an error or timeout, a job with attempts below max_tries is released back to the queue after retry_after or a backoff delay; otherwise the failed() hook runs and the job is stored with the failed jobs. If a worker crashes, the reaper re-queues its reserved jobs after the visibility timeout."><figcaption></figcaption></figure>
 
 ## Best Practices
 

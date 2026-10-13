@@ -16,13 +16,7 @@ The API Gateway implementation handles:
 
 ## Architecture
 
-```
-Client -> API Gateway (RouteMQ) -> Microservices
-                                -> User Service
-                                -> Order Service
-                                -> Payment Service
-                                -> Notification Service
-```
+<figure><img src="../.gitbook/assets/diagrams/api-gateway-example.webp" alt="API gateway example. Clients such as devices and apps publish over MQTT to the broker; the RouteMQ gateway applies auth, rate limiting, request transformation and a circuit breaker, then routes requests to the User, Order, Payment and Notification services."><figcaption></figcaption></figure>
 
 ## Gateway Router Setup
 

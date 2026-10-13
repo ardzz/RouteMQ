@@ -13,28 +13,7 @@ The queue system consists of several components:
 
 ### Architecture
 
-```
-┌─────────────┐
-│  Your Code  │
-└──────┬──────┘
-       │ dispatch(job)
-       ▼
-┌─────────────┐
-│Queue Manager│
-└──────┬──────┘
-       │ push
-       ▼
-┌─────────────────┐
-│  Queue Driver   │
-│Redis/DB/Custom  │
-└──────┬──────────┘
-       │ pop
-       ▼
-┌─────────────┐
-│Queue Worker │
-│ job.handle()│
-└─────────────┘
-```
+<figure><img src="../.gitbook/assets/diagrams/queue-architecture.webp" alt="Queue architecture. Your code calls dispatch(job); the Queue Manager serializes the job, selects a queue, and pushes it now or later to a queue driver (Redis, Database, or a custom driver); a Queue Worker started with routemq queue-work pops the job and runs job.handle()."><figcaption></figcaption></figure>
 
 ## Quick Start
 

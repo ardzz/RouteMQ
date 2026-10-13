@@ -40,31 +40,7 @@ router.on("telemetry/bulk",
 
 ### How Shared Subscriptions Work
 
-```
-┌─────────────────┐    ┌─────────────────┐
-│   MQTT Broker   │    │  Shared Group   │
-│                 │    │  "workers"      │
-│ Topic:          │    │                 │
-│ sensors/+/data  │───▶│  ┌──────────┐   │
-│                 │    │  │ Worker 1 │   │
-│ Messages:       │    │  └──────────┘   │
-│ [Msg1, Msg2,    │    │  ┌──────────┐   │
-│  Msg3, Msg4,    │    │  │ Worker 2 │   │
-│  Msg5, Msg6]    │    │  └──────────┘   │
-│                 │    │  ┌──────────┐   │
-│                 │    │  │ Worker 3 │   │
-│                 │    │  └──────────┘   │
-└─────────────────┘    └─────────────────┘
-        │                       │
-        │              Load Balancing:
-        │              Worker 1: Msg1, Msg4
-        │              Worker 2: Msg2, Msg5  
-        │              Worker 3: Msg3, Msg6
-        ▼
-  Messages distributed
-  across workers using
-  broker's algorithm
-```
+<figure><img src="../.gitbook/assets/diagrams/shared-subscription-workers.webp" alt="Shared subscription load balancing. The broker receives messages 1 to 6 on sensors/+/data and delivers each to exactly one member of the shared subscription $share/{group}/sensors/+/data: worker process 1 receives messages 1 and 4, worker process 2 receives 2 and 5, worker process 3 receives 3 and 6. Each worker process has its own MQTT client and event loop; the distribution strategy is broker-specific."><figcaption></figcaption></figure>
 
 ## Worker Management
 

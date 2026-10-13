@@ -14,15 +14,7 @@ Understand the fundamental concepts and architecture of RouteMQ.
 
 RouteMQ follows a modular architecture inspired by web frameworks:
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   MQTT Broker   │◄──►│   RouteMQ App   │◄──►│   External      │
-│                 │    │                 │    │   Services      │
-│ - Message Queue │    │ - Route Handler │    │ - Database      │
-│ - Pub/Sub       │    │ - Middleware    │    │ - Redis         │
-│ - Load Balance  │    │ - Workers       │    │ - APIs          │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-```
+<figure><img src="../.gitbook/assets/diagrams/architecture-overview.webp" alt="RouteMQ architecture. The MQTT broker (pub/sub topics, QoS 0/1/2, shared subscriptions) exchanges subscribe and publish traffic with the RouteMQ app (router and middleware, controllers, shared-subscription workers, queue workers), which reads from and writes to external services (MySQL or PostgreSQL, Redis, ClickHouse telemetry, HTTP APIs)."><figcaption></figcaption></figure>
 
 ## Key Components
 
@@ -50,8 +42,8 @@ RouteMQ follows a modular architecture inspired by web frameworks:
 
 1. **Message Arrives**: MQTT broker receives message
 2. **Route Matching**: Framework matches topic to registered routes
-3. **Middleware Chain**: Message passes through middleware pipeline
-4. **Parameter Extraction**: Route parameters extracted from topic
+3. **Parameter Extraction**: Route parameters extracted from topic
+4. **Middleware Chain**: Message passes through middleware pipeline
 5. **Handler Execution**: Controller method processes the message
 6. **Response**: Optional response published back to MQTT
 

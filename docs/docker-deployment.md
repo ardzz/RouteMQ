@@ -16,34 +16,19 @@ This guide explains how to deploy RouteMQ with queue workers using Docker and Do
 
 The Docker deployment includes:
 
-```
-┌─────────────────────────────────────────────────────┐
-│                  Docker Network                      │
-│                                                       │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐          │
-│  │  Redis   │  │  MySQL   │  │ RouteMQ  │          │
-│  │  :6379   │  │  :3306   │  │   App    │          │
-│  └────┬─────┘  └────┬─────┘  └──────────┘          │
-│       │             │                                │
-│       ├─────────────┼────────────────┐              │
-│       │             │                │              │
-│  ┌────▼────┐  ┌─────▼────┐  ┌───────▼──────┐      │
-│  │ Queue   │  │  Queue   │  │    Queue     │      │
-│  │ Worker  │  │  Worker  │  │   Worker     │      │
-│  │(default)│  │  (high)  │  │  (emails)    │      │
-│  └─────────┘  └──────────┘  └──────────────┘      │
-│                                                       │
-└─────────────────────────────────────────────────────┘
-```
+<figure><img src=".gitbook/assets/diagrams/docker-deployment-topology.webp" alt="Docker deployment topology. Inside the routemq-network, the routemq MQTT app connects to the data services redis on port 6379, mysql on 3306, and clickhouse on 8123 and 9000. The queue workers queue-worker-default (queue default), queue-worker-high (queue high-priority) and queue-worker-emails (queue emails) connect to redis and mysql. The MQTT broker runs outside the stack."><figcaption></figcaption></figure>
 
 ### Services
 
 1. **redis** - Fast, in-memory queue backend
 2. **mysql** - Persistent storage and database queue
-3. **routemq** - Main MQTT application
-4. **queue-worker-default** - Processes jobs from 'default' queue
-5. **queue-worker-high** - Processes jobs from 'high-priority' queue (faster polling)
-6. **queue-worker-emails** - Processes jobs from 'emails' queue
+3. **clickhouse** - Time-series telemetry store (used when `ENABLE_TSDB=true`)
+4. **routemq** - Main MQTT application
+5. **queue-worker-default** - Processes jobs from 'default' queue
+6. **queue-worker-high** - Processes jobs from 'high-priority' queue (faster polling)
+7. **queue-worker-emails** - Processes jobs from 'emails' queue
+
+The MQTT broker is not part of the stack. Point `MQTT_BROKER` at your own broker.
 
 ## Quick Start
 

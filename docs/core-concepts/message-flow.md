@@ -4,33 +4,7 @@ Understanding how messages flow through RouteMQ from MQTT broker to your applica
 
 ## Complete Message Flow
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   MQTT Broker   │───▶│  Route Matcher  │───▶│  Middleware     │───▶│   Controller    │
-│                 │    │                 │    │   Pipeline      │    │    Handler      │
-│ - Receives Msg  │    │ - Topic Match   │    │ - Auth Check    │    │ - Business      │
-│ - Delivers      │    │ - Extract Params│    │ - Rate Limit    │    │   Logic         │
-│ - Load Balance  │    │ - Find Route    │    │ - Logging       │    │ - Data Process  │
-└─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │                       │
-         │                       │                       │                       ▼
-         │                       │                       │              ┌─────────────────┐
-         │                       │                       │              │   Response      │
-         │                       │                       │              │                 │
-         │                       │                       │              │ - Publish Reply │
-         │                       │                       │              │ - Update State  │
-         │                       │                       │              │ - Log Result    │
-         │                       │                       │              └─────────────────┘
-         │                       │                       │
-         ▼                       ▼                       ▼
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Error Case    │    │   No Route      │    │   Middleware    │
-│                 │    │                 │    │    Blocked      │
-│ - Log Error     │    │ - Log Warning   │    │                 │
-│ - Continue      │    │ - Continue      │    │ - Auth Failed   │
-│   Operation     │    │   Operation     │    │ - Rate Limited  │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-```
+<figure><img src="../.gitbook/assets/diagrams/message-flow.webp" alt="MQTT message flow. The broker delivers a PUBLISH to the Paho network thread; on_message parses the payload as JSON or keeps raw bytes and hands it to the asyncio loop with run_coroutine_threadsafe. Router.dispatch picks the first matching route and extracts its params, the middleware chain runs handle(context, next), and the controller handler receives params, payload and client and may publish a reply, dispatch a job, or write to the database, Redis or telemetry. Failure paths: no matching route raises ValueError; a middleware that does not call next skips the handler; a handler error is not redelivered because QoS 1 and 2 messages are acknowledged on receipt, before the handler finishes."><figcaption></figcaption></figure>
 
 ## Step-by-Step Flow
 
@@ -61,27 +35,33 @@ The router finds a matching route using regex patterns:
 
 ```python
 async def dispatch(self, topic: str, payload: Any, client) -> None:
-    """Find matching route and dispatch message"""
-    
+    """Find a matching route and dispatch the request through middleware to handler."""
     for route in self.routes:
-        params = route.matches(topic)
-        if params:
-            # Route found - extract parameters
+        params = route.matches(topic)  # {} for a route without parameters
+        if params is not None:
             context = {
                 'topic': topic,
                 'payload': payload,
                 'params': params,
                 'client': client,
-                'route': route
+                'correlation_id': get_correlation_id(),
+                'route_pattern': route.topic,
             }
-            
-            # Process through middleware pipeline
-            await self._process_middleware_chain(context, route)
-            return
-    
-    # No route found
-    self.logger.warning(f"No route found for topic: {topic}")
+
+            async def execute_handler(ctx):
+                return await route.handler(**ctx['params'], payload=ctx['payload'], client=ctx['client'])
+
+            # Wrap from the inside out: the first middleware in the list runs first
+            handler = execute_handler
+            for middleware in reversed(route.middleware):
+                handler = wrap_middleware(middleware, handler)
+
+            return await handler(context)
+
+    raise ValueError(f'No route found for topic: {topic}')
 ```
+
+Simplified from `routemq/router.py`; tracing spans and lifecycle events are omitted.
 
 #### Route Matching Example
 
@@ -116,28 +96,14 @@ class Route:
 
 ### 4. Middleware Pipeline Processing
 
-Messages pass through middleware in order:
+Messages pass through middleware in the order listed on the route. `Router.dispatch` wraps the handler from the inside out, so the first middleware in the list is the outermost layer:
 
 ```python
-async def _process_middleware_chain(self, context: dict, route: Route):
-    """Process message through middleware pipeline"""
-    
-    middleware_chain = route.middleware
-    
-    async def create_next_handler(index: int):
-        """Create next handler for middleware chain"""
-        if index >= len(middleware_chain):
-            # End of chain - call actual handler
-            return await self._call_route_handler(context, route)
-        
-        middleware = middleware_chain[index]
-        
-        async def next_handler(ctx: dict):
-            return await create_next_handler(index + 1)
-        
-        return await middleware.handle(context, next_handler)
-    
-    await create_next_handler(0)
+def wrap_middleware(middleware: Middleware, next_handler: Callable) -> Callable:
+    async def middleware_handler(ctx):
+        return await middleware.handle(ctx, next_handler)
+
+    return middleware_handler
 ```
 
 #### Middleware Chain Example
@@ -157,33 +123,29 @@ router.on("api/{endpoint}",
 
 ### 5. Controller Handler Execution
 
-The final handler processes the business logic:
+The handler receives the extracted route parameters as keyword arguments, plus the decoded payload and the MQTT client:
 
 ```python
-async def _call_route_handler(self, context: dict, route: Route):
-    """Call the route handler with context"""
-    handler = route.handler
-    
-    if inspect.iscoroutinefunction(handler):
-        return await handler(context)
-    else:
-        # Handle sync functions
-        return handler(context)
+await route.handler(**context['params'], payload=context['payload'], client=context['client'])
+
+# Route "sensors/{device_id}/data" with topic "sensors/device123/data" calls:
+await SensorController.handle_data(device_id='device123', payload={'temperature': 25.6}, client=client)
 ```
 
 ## Context Object
 
-The context dictionary carries information through the pipeline:
+The context dictionary carries information through the middleware chain. Middleware can read and extend it; the handler itself receives only `params`, `payload`, and `client`:
 
 ```python
 context = {
-    'topic': 'sensors/device123/data',      # Original MQTT topic
-    'payload': {'temperature': 25.6},       # Decoded message payload
-    'params': {'device_id': 'device123'},   # Extracted route parameters
-    'client': mqtt_client,                  # MQTT client for publishing
-    'route': route_object,                  # Route that matched
-    'user': user_object,                    # Added by auth middleware
-    'request_id': 'req_abc123',            # Added by logging middleware
+    'topic': 'sensors/device123/data',           # Original MQTT topic
+    'payload': {'temperature': 25.6},            # Decoded JSON payload (raw bytes if not JSON)
+    'params': {'device_id': 'device123'},        # Extracted route parameters
+    'client': mqtt_client,                       # MQTT client for publishing
+    'route_pattern': 'sensors/{device_id}/data', # Pattern of the matched route
+    'correlation_id': 'b5e1...',                 # Correlation ID for logs and traces
+    'observability': {...},                      # Snapshot of the observability context
+    'user': user_object,                         # Example: added by an auth middleware
 }
 ```
 
@@ -191,35 +153,25 @@ context = {
 
 ### Route Not Found
 
-```python
-# No matching route
-if not route_found:
-    logger.warning(f"No route found for topic: {topic}")
-    # Continue processing other messages
-    return
-```
+`Router.dispatch` raises `ValueError` when no route matches the topic. RouteMQ records the `router.dispatch.missed` and `mqtt.message.failed` lifecycle events, and the message is dropped.
 
-### Middleware Errors
+### Middleware Stops the Chain
+
+A middleware that returns without calling `next_handler` ends processing for that message. Later middleware and the handler never run:
 
 ```python
-try:
-    await middleware.handle(context, next_handler)
-except Exception as e:
-    logger.error(f"Middleware error: {e}")
-    # Error logged, processing stops for this message
-    return
+class AuthMiddleware(Middleware):
+    async def handle(self, context, next_handler):
+        if not is_authorized(context['payload']):
+            return None  # The chain stops here; the handler is skipped
+        return await next_handler(context)
 ```
 
-### Handler Errors
+### Middleware and Handler Exceptions
 
-```python
-try:
-    await route.handler(context)
-except Exception as e:
-    logger.error(f"Handler error in {route.topic}: {e}")
-    # Continue processing other messages
-    return
-```
+Exceptions are not caught inside the chain. They propagate out of `Router.dispatch`, which records the `router.dispatch.failed` and `mqtt.message.failed` lifecycle events. The `RouteMQ.Lifecycle` logger writes these events while `LOG_LIFECYCLE_EVENTS=true` (the default); shared-subscription worker processes also log the exception with its traceback.
+
+Paho acknowledges QoS 1 and QoS 2 messages when `on_message` returns, before the handler finishes, so the broker does not redeliver a message whose handler failed. Move work that must survive failures into a [queue job](../queue/README.md) with retries.
 
 ## Async Processing
 
@@ -253,18 +205,9 @@ await asyncio.gather(
 
 ## Shared Subscription Flow
 
-For high-throughput routes with shared subscriptions:
+For high-throughput routes with shared subscriptions, the broker delivers each message to exactly one worker process in the group:
 
-```python
-# Multiple workers process messages from same topic
-┌─────────────────┐    ┌─────────────────┐
-│   MQTT Broker   │───▶│    Worker 1     │
-│                 │    │                 │
-│ $share/group/   │───▶│    Worker 2     │  
-│ sensors/+/data  │    │                 │
-│                 │───▶│    Worker 3     │
-└─────────────────┘    └─────────────────┘
-```
+<figure><img src="../.gitbook/assets/diagrams/shared-subscription-workers.webp" alt="Shared subscription load balancing. The broker receives messages 1 to 6 on sensors/+/data and delivers each to exactly one member of the shared subscription $share/{group}/sensors/+/data: worker process 1 receives messages 1 and 4, worker process 2 receives 2 and 5, worker process 3 receives 3 and 6. Each worker process has its own MQTT client and event loop; the distribution strategy is broker-specific."><figcaption></figcaption></figure>
 
 ### Worker Message Flow
 

@@ -4,39 +4,7 @@ Middleware in RouteMQ provides a powerful way to process messages before they re
 
 ## Middleware Concept
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Middleware Pipeline                      │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
-│  │    Auth     │  │ Rate Limit  │  │   Logging   │         │
-│  │ Middleware  │  │ Middleware  │  │ Middleware  │         │
-│  │     ┌───────┼──┼─────────────┼──┼─────────────┼───────┐ │
-│  │     │       │  │             │  │             │       │ │
-│  │     │       │  │             │  │             │       │ │
-│  │     │   ┌───┼──┼─────────────┼──┼─────────────┼────┐  │ │
-│  │     │   │   │  │             │  │             │    │  │ │
-│  │     │   │   │  │             │  │             │    │  │ │
-│  │     │   │   │  │             │  │             │    │  │ │
-│  │     │   │   │  │             │  │ ┌───────────┼────┼──┼─┤
-│  │     │   │   │  │             │  │ │           │    │  │ │
-│  │     │   │   │  │             │  │ │  Handler  │    │  │ │
-│  │     │   │   │  │             │  │ │           │    │  │ │
-│  │     │   │   │  │             │  │ └───────────┼────┼──┼─┤
-│  │     │   │   │  │             │  │             │    │  │ │
-│  │     │   │   │  │             │  │             │    │  │ │
-│  │     │   │   └──┼─────────────┼──┼─────────────┼────┘  │ │
-│  │     │   │      │             │  │             │       │ │
-│  │     │   └──────┼─────────────┼──┼─────────────┼───────┘ │
-│  │     │          │             │  │             │         │
-│  └─────┼──────────┼─────────────┼──┼─────────────┼─────────┘
-│        │          │             │  │             │
-│     Request    Request       Request          Request
-│     ────────▶  ────────▶     ────────▶        ────────▶
-│        │          │             │  │             │
-│     Response   Response      Response         Response
-│     ◀────────  ◀────────     ◀────────        ◀────────
-└─────────────────────────────────────────────────────────────┘
-```
+<figure><img src="../.gitbook/assets/diagrams/middleware-onion.webp" alt="Middleware onion. With middleware=[Auth(), RateLimit(), Logging()], the context passes inward through the Auth, Rate limit and Logging layers to the handler, and the result passes back out through the same layers in reverse order. The first middleware in the list is the outermost layer, and any layer may return without calling next."><figcaption></figcaption></figure>
 
 ## Creating Middleware
 
