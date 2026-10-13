@@ -80,13 +80,13 @@ jobs:
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
 
       - name: Install dependencies
-        run: uv sync --all-extras --dev
+        run: uv sync --locked --all-extras --dev
 
       - name: Build package
         run: uv build
 
       - name: Generate SBOM (CycloneDX)
-        run: uv run cyclonedx-py environment --output-file sbom.json --output-format JSON
+        run: uv run --locked cyclonedx-py environment --output-file sbom.json --output-format JSON
 
       - name: Sign SBOM with Sigstore
         uses: sigstore/gh-action-sigstore-python@04cffa1d795717b140764e8b640de88853c92acc # v3.3.0

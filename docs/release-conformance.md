@@ -77,7 +77,8 @@ BadgeApp auto-detects most GitHub-observable criteria from repository metadata a
 
 After submission returns a project ID, add the BadgeApp badge next to the existing README badges. Use the real ID in the badge URL; do not ship a placeholder.
 
-Hosted security-setting follow-ups:
+Hosted security settings:
 
 - Private vulnerability reporting was enabled on 2026-05-29 with `gh api`.
-- Dependabot security updates could not be enabled automatically because GitHub returned `422 Vulnerability alerts must be enabled to configure automated security fixes`; the operator should enable vulnerability alerts, then enable Dependabot security updates.
+- Vulnerability alerts and Dependabot security updates were enabled on 2026-10-13 and verified through the repository API.
+- CI and OpenSSF Scorecard were re-enabled on 2026-10-13 after GitHub disabled them for inactivity. The [Scorecard smoke run](https://github.com/ardzz/RouteMQ/actions/runs/38410224531) completed successfully.

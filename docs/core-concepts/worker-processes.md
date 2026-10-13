@@ -375,20 +375,24 @@ WORKER_MAX_COUNT=10
 
 ### Docker Deployment
 
+This example builds the RouteMQ repository source, which defines the `redis` extra and commits `uv.lock`; scaffolded projects that do not define a `redis` extra should drop `--extra redis`. Worker processes come from routes registered with `shared=True` and `worker_count`, not from container environment variables:
+
 ```dockerfile
 # Dockerfile
-FROM python:3.11-slim
+FROM python:3.12-slim
 
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-
-COPY . /app
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 WORKDIR /app
 
-# Default to 3 workers
-ENV WORKER_COUNT=3
+# Install locked runtime dependencies first for layer caching
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev --extra redis --no-install-project
 
-CMD ["routemq", "--workers"]
+COPY . /app
+RUN uv sync --locked --no-dev --extra redis
+ENV PATH="/app/.venv/bin:$PATH"
+
+CMD ["routemq", "run"]
 ```
 
 ### Kubernetes Scaling

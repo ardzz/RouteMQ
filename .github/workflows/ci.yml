@@ -11,6 +11,7 @@ on:
       - develop
   schedule:
     - cron: '0 2 * * 1'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -34,12 +35,12 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --all-extras --dev
+        run: uv sync --locked --all-extras --dev
 
       - name: Run tests
         env:
           RUN_INTEGRATION_TESTS: "1"
-        run: uv run python run_tests.py
+        run: uv run --locked python run_tests.py
 
   lint:
     name: lint
@@ -57,13 +58,13 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: uv sync --all-extras --dev
+        run: uv sync --locked --all-extras --dev
 
       - name: Ruff lint
-        run: uv run ruff check .
+        run: uv run --locked ruff check .
 
       - name: Ruff format check
-        run: uv run ruff format --check .
+        run: uv run --locked ruff format --check .
 
   type-check:
     name: type-check
@@ -81,10 +82,10 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: uv sync --all-extras --dev
+        run: uv sync --locked --all-extras --dev
 
       - name: Mypy type check
-        run: uv run mypy routemq app bootstrap
+        run: uv run --locked mypy routemq app bootstrap
 
   security:
     name: security
@@ -102,13 +103,20 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: uv sync --all-extras --dev
+        run: uv sync --locked --all-extras --dev
 
       - name: SAST scan (Bandit)
-        run: uv run bandit -c pyproject.toml -r routemq app bootstrap
+        run: uv run --locked bandit -c pyproject.toml -r routemq app bootstrap
 
       - name: Dependency audit (pip-audit)
-        run: uv run pip-audit
+        run: uv run --locked pip-audit
+
+      - name: Runtime dependency audit (pip-audit, locked no-dev extras)
+        run: |
+          uv export --locked --format requirements.txt --no-dev --all-extras --no-extra dev \
+            --no-emit-project --output-file "$RUNNER_TEMP/runtime-requirements.txt"
+          uv run --locked pip-audit --strict --disable-pip --require-hashes \
+            --requirement "$RUNNER_TEMP/runtime-requirements.txt"
 
   coverage:
     name: coverage
@@ -126,13 +134,13 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: uv sync --all-extras --dev
+        run: uv sync --locked --all-extras --dev
 
       - name: Run tests with coverage
-        run: uv run coverage run run_tests.py
+        run: uv run --locked coverage run run_tests.py
 
       - name: Coverage report
-        run: uv run coverage report -m
+        run: uv run --locked coverage report -m
 
   build:
     name: build
@@ -154,7 +162,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: uv sync --all-extras --dev
+        run: uv sync --locked --all-extras --dev
 
       - name: Build package
         run: uv build
@@ -180,6 +188,8 @@ jobs:
         with:
           python-version: '3.12'
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Check lockfile matches pyproject.toml
+        run: uv lock --check
       - name: Build wheel
         run: rm -rf dist && uv build --wheel
       - name: Install wheel in clean venv + scaffold + smoke

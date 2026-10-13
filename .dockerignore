@@ -48,6 +48,7 @@ cover/
 # Environments
 .env.local
 .env.*.local
+.venv/
 venv/
 env/
 ENV/
