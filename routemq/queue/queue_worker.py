@@ -8,7 +8,7 @@ import socket
 import traceback
 import uuid
 from datetime import UTC, datetime
-from typing import Optional
+from typing import Any, Optional
 
 from routemq.job import Job
 from routemq.queue.queue_driver import QueueDriver
@@ -25,6 +25,7 @@ except ImportError:
 
 
 logger = logging.getLogger('RouteMQ.QueueWorker')
+READINESS_TIMEOUT_SECONDS = 3.0
 
 
 class ShutdownGraceExpired(RuntimeError):
@@ -90,6 +91,7 @@ class QueueWorker:
 
         self.queue_manager = QueueManager()
         self.driver: Optional[QueueDriver] = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGTERM, self._handle_signal)
@@ -117,38 +119,42 @@ class QueueWorker:
         self.start_time = asyncio.get_running_loop().time()
         self.state = 'running'
         await self._write_worker_heartbeat()
+        self._loop = asyncio.get_running_loop()
 
-        while not self.should_quit:
-            # Check if we've reached max jobs or max time
-            if self._should_stop():
-                logger.info('Worker stopping due to limits')
-                break
+        try:
+            while not self.should_quit:
+                # Check if we've reached max jobs or max time
+                if self._should_stop():
+                    logger.info('Worker stopping due to limits')
+                    break
 
-            # Check if paused
-            if self.paused:
-                await self._interruptible_sleep(self.sleep)
-                continue
-
-            # Try to get a job from the queue
-            try:
-                await self._run_reaper_if_due()
-                job_data = await self.driver.pop(self.queue_name)
-
-                if job_data:
-                    await self._process_job(job_data)
-                    self.jobs_processed += 1
-                else:
-                    # No jobs available, sleep
-                    logger.debug(f'No jobs available, sleeping for {self.sleep}s')
+                # Check if paused
+                if self.paused:
                     await self._interruptible_sleep(self.sleep)
+                    continue
 
-            except Exception as e:
-                logger.error(
-                    f'Error in worker loop for queue {self.queue_name}: {str(e)}',
-                    exc_info=True,
-                    extra={'queue': self.queue_name, 'error': e.__class__.__name__},
-                )
-                await self._interruptible_sleep(self.sleep)
+                # Try to get a job from the queue
+                try:
+                    await self._run_reaper_if_due()
+                    job_data = await self.driver.pop(self.queue_name)
+
+                    if job_data:
+                        await self._process_job(job_data)
+                        self.jobs_processed += 1
+                    else:
+                        # No jobs available, sleep
+                        logger.debug(f'No jobs available, sleeping for {self.sleep}s')
+                        await self._interruptible_sleep(self.sleep)
+
+                except Exception as e:
+                    logger.error(
+                        f'Error in worker loop for queue {self.queue_name}: {str(e)}',
+                        exc_info=True,
+                        extra={'queue': self.queue_name, 'error': e.__class__.__name__},
+                    )
+                    await self._interruptible_sleep(self.sleep)
+        finally:
+            self._loop = None
 
         self.state = 'dead'
         await self._mark_worker_dead()
@@ -469,6 +475,57 @@ class QueueWorker:
         self.state = 'stopping'
         self._shutdown_event.set()
         logger.info('Worker stop requested')
+
+    def health_payload(self) -> tuple[int, dict[str, Any]]:
+        """Report worker liveness for HealthServer."""
+        alive = self.state != 'dead'
+        return (200 if alive else 503), {'status': 'ok' if alive else 'down', 'alive': alive}
+
+    def readiness_payload(self) -> tuple[int, dict[str, Any]]:
+        """Report readiness for HealthServer; blocks its HTTP thread until the worker loop answers or times out."""
+        loop = self._loop
+        connection: str | None = None
+        error: str | None = None
+        if loop is not None and self._accepting_jobs():
+            try:
+                connection = self._validate_backend_on_loop(loop)
+            except Exception as exc:
+                error = exc.__class__.__name__
+                logger.warning(
+                    f'Queue worker readiness check failed for queue {self.queue_name}: {exc!r}',
+                    extra={'queue': self.queue_name, 'error': error},
+                )
+
+        ready = connection is not None and self._loop is loop and self._accepting_jobs()
+        payload: dict[str, Any] = {
+            'status': 'ready' if ready else 'not_ready',
+            'role': 'queue-worker',
+            'queue': self.queue_name,
+            'state': self.state,
+            'initialized': self._loop is not None,
+            'paused': self.paused,
+        }
+        if connection is not None:
+            payload['connection'] = connection
+        if error is not None:
+            payload['error'] = error
+        return (200 if ready else 503), payload
+
+    def _accepting_jobs(self) -> bool:
+        return self.state == 'running' and not self.should_quit and not self.paused
+
+    def _validate_backend_on_loop(self, loop: asyncio.AbstractEventLoop) -> str:
+        """Run the selected backend probe on the worker loop; a blocked loop or slow backend times out."""
+        probe = self.queue_manager.validate_connection(self.connection)
+        try:
+            future = asyncio.run_coroutine_threadsafe(probe, loop)
+        except RuntimeError:
+            probe.close()
+            raise
+        try:
+            return future.result(timeout=READINESS_TIMEOUT_SECONDS)
+        finally:
+            future.cancel()
 
 
 def _span_links_from_job_context(job_context: dict) -> tuple[SpanLink, ...]:

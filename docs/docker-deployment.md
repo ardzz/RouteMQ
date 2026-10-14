@@ -45,6 +45,19 @@ The Docker deployment includes:
 5. **queue-worker-high** - Processes jobs from 'high-priority' queue (faster polling)
 6. **queue-worker-emails** - Processes jobs from 'emails' queue
 
+### Runtime Image
+
+The `routemq` app and the three queue workers run the image built from the repository root `Dockerfile`. The build
+uses images pinned by tag and digest and installs RouteMQ from `uv.lock` into `/opt/venv` with the `redis`,
+`clickhouse`, and `prometheus` extras and no development dependencies. The final image contains no `uv`, so nothing
+is installed or downloaded when a container starts, and the `./app` bind mount does not hide the environment.
+
+The app runs the image's default command, `/opt/venv/bin/routemq --run`. Each worker replaces it with
+`/opt/venv/bin/routemq --queue-work --queue <name> --sleep <seconds>`. Every RouteMQ container runs
+`/opt/venv/bin/python -m routemq.healthcheck` against its own `/ready` on `127.0.0.1:8080`; see
+[Health Checks](#health-checks) below. [Docker Deployment](deployment/docker.md#dockerfile-explanation) describes
+the build stages and the CI smoke test that runs this image.
+
 ## Quick Start
 
 ### Prerequisites
@@ -208,7 +221,7 @@ queue-worker-default-2:
   build:
     context: .
   container_name: routemq-queue-default-2
-  command: ["uv", "run", "routemq", "queue-work", "--queue", "default", "--sleep", "3"]
+  command: ["/opt/venv/bin/routemq", "queue-work", "--queue", "default", "--sleep", "3"]
   # ... same environment as queue-worker-default
 ```
 
@@ -228,7 +241,7 @@ queue-worker-reports:
   build:
     context: .
   container_name: routemq-queue-reports
-  command: ["uv", "run", "routemq", "queue-work", "--queue", "reports", "--sleep", "10"]
+  command: ["/opt/venv/bin/routemq", "queue-work", "--queue", "reports", "--sleep", "10"]
   environment:
     # ... same as other workers
   depends_on:
@@ -238,6 +251,9 @@ queue-worker-reports:
     - routemq-network
   restart: unless-stopped
 ```
+
+Workers built from this image inherit its `HEALTHCHECK`. Each worker container serves its own `/ready` on
+`127.0.0.1:8080`, so added workers need no health port changes.
 
 ### Resource Allocation
 
@@ -322,7 +338,12 @@ GROUP BY queue;
 
 ### Health Checks
 
-All services include health checks:
+Redis, MySQL, ClickHouse, the app, and each queue worker have health checks. The app and the workers run
+`/opt/venv/bin/python -m routemq.healthcheck`, which passes only when that container's own `/ready` reports ready:
+
+- App: startup is complete, MQTT is connected, and shutdown has not started. It does not check MySQL or Redis.
+- Queue worker: the worker loop is running and not paused or stopping, and a check of its queue backend passes on
+  each probe (Redis `PING`, or `SELECT 1` plus the `queue_jobs` and `queue_failed_jobs` tables).
 
 ```bash
 # View health status
@@ -332,7 +353,17 @@ docker compose ps
 docker inspect routemq-redis | grep -A 10 Health
 docker inspect routemq-mysql | grep -A 10 Health
 docker inspect routemq-app | grep -A 10 Health
+docker inspect routemq-queue-default | grep -A 10 Health
+
+# Run the readiness probe and read the payload inside one container
+docker compose exec queue-worker-default /opt/venv/bin/python -m routemq.healthcheck
+docker compose exec queue-worker-default curl -s http://127.0.0.1:8080/ready
 ```
+
+The image's `HEALTH_HTTP_*` values take precedence over the same keys in the mounted `.env`, so set overrides under
+a service's `environment:`. `restart: unless-stopped` restarts a container whose process exits; Docker does not
+restart a container that is only `unhealthy`. Watch `docker compose ps` or use an external monitor. See
+[Health Checks](monitoring/health-checks.md) for the full readiness rules.
 
 ## Service Management
 
@@ -452,7 +483,7 @@ docker compose up -d
 
 ```bash
 # Connect to RouteMQ container and create tables manually
-docker compose exec routemq python -c "
+docker compose exec routemq /opt/venv/bin/python -c "
 import asyncio
 from bootstrap.app import Application
 
@@ -519,12 +550,13 @@ routemq:
 
 ### 4. Monitoring and Alerts
 
-Use Docker health checks and monitoring tools:
+The image already defines this readiness `HEALTHCHECK`, and the root `docker-compose.yml` repeats it for the app
+and the workers. Set it per service to change the timing:
 
 ```yaml
 routemq:
   healthcheck:
-    test: ["CMD", "python", "-c", "import paho.mqtt.client; print('OK')"]
+    test: ["CMD", "/opt/venv/bin/python", "-m", "routemq.healthcheck"]
     interval: 30s
     timeout: 10s
     retries: 3
@@ -587,7 +619,7 @@ The Docker deployment provides:
 - ✅ Complete stack with Redis and MySQL
 - ✅ Multiple queue workers out of the box
 - ✅ Easy scaling and configuration
-- ✅ Health checks and auto-restart
+- ✅ Readiness health checks for the app and each worker, and restart on exit
 - ✅ Resource limits for stability
 - ✅ Development and production setups
 

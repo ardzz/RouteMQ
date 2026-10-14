@@ -1,12 +1,18 @@
+import asyncio
 import errno
 import io
 import os
+import signal
 import socket
 import sys
+import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+from routemq import healthcheck
 from routemq.mqtt_utils import is_network_startup_error
+from routemq.queue.queue_driver import QueueDriver
+from routemq.queue.queue_manager import QueueManager
 
 
 class TestCliSubcommands(unittest.TestCase):
@@ -261,6 +267,106 @@ class TestCliSubcommands(unittest.TestCase):
         self.assertTrue(is_network_startup_error(socket.gaierror(8, 'nodename nor servname provided')))
         self.assertTrue(is_network_startup_error(OSError(errno.ENETUNREACH, 'Network is unreachable')))
         self.assertFalse(is_network_startup_error(OSError(errno.ENOSPC, 'No space left on device')))
+
+
+class _CliQueueDriver(QueueDriver):
+    async def push(self, payload: str, queue: str = 'default', delay: int = 0) -> None:
+        return None
+
+    async def pop(self, queue: str = 'default') -> dict | None:
+        return None
+
+    async def release(self, job_id: int | str, queue: str, delay: int = 0) -> None:
+        return None
+
+    async def delete(self, job_id: int | str, queue: str) -> None:
+        return None
+
+    async def failed(self, connection: str, queue: str, payload: str, exception: str) -> None:
+        return None
+
+    async def size(self, queue: str = 'default') -> int:
+        return 0
+
+
+class TestQueueWorkHealthLifecycle(unittest.TestCase):
+    def setUp(self) -> None:
+        workdir = tempfile.TemporaryDirectory()
+        self.addCleanup(workdir.cleanup)
+        original_cwd = os.getcwd()
+        os.chdir(workdir.name)
+        self.addCleanup(os.chdir, original_cwd)
+        with socket.socket() as sock:
+            sock.bind(('127.0.0.1', 0))
+            self.port = sock.getsockname()[1]
+        self.env = {'HEALTH_HTTP_ENABLED': 'true', 'HEALTH_HTTP_HOST': '0.0.0.0', 'HEALTH_HTTP_PORT': str(self.port)}
+        self.app = MagicMock()
+        self.app._initialize_connections = AsyncMock()
+        self.app._cleanup_connections = AsyncMock()
+        self.signal_handlers: dict[int, object] = {}
+        self._manager_instance = QueueManager._instance
+        self._manager_driver = QueueManager._driver
+        QueueManager._instance = None
+        QueueManager._driver = None
+        self.addCleanup(setattr, QueueManager, '_instance', self._manager_instance)
+        self.addCleanup(setattr, QueueManager, '_driver', self._manager_driver)
+
+    def _run_queue_work(self, *, get_driver: MagicMock) -> None:
+        from routemq.cli import main
+
+        # Fresh singleton (reset in setUp); the CLI worker's QueueManager() returns this same instance.
+        queue_manager = QueueManager()
+        # --max-time bounds the worker if the scripted driver/signal path is never reached.
+        argv = ['routemq', 'queue-work', '--queue', 'emails', '--sleep', '1', '--max-time', '10']
+        with (
+            patch('routemq.cli.create_app', return_value=self.app),
+            patch('routemq.cli.create_env_file'),
+            patch('signal.signal', side_effect=self.signal_handlers.__setitem__),
+            patch('routemq.queue.queue_worker.mark_worker_dead'),
+            patch.object(queue_manager, 'get_driver', get_driver),
+            patch.object(queue_manager, 'validate_connection', AsyncMock(return_value='redis')),
+            patch.dict(os.environ, self.env),
+            patch.object(sys, 'argv', argv),
+        ):
+            main()
+
+    def _assert_port_closed(self) -> None:
+        with self.assertRaises(ConnectionRefusedError):
+            socket.create_connection(('127.0.0.1', self.port), timeout=1).close()
+
+    def test_queue_work_serves_worker_readiness_until_sigterm_shutdown(self) -> None:
+        probes: list[int] = []
+        handlers = self.signal_handlers
+
+        class ProbingDriver(_CliQueueDriver):
+            async def pop(self, queue: str = 'default') -> dict | None:
+                probes.append(await asyncio.to_thread(healthcheck.main))
+                handler = handlers.get(signal.SIGTERM)
+                if callable(handler):
+                    handler(signal.SIGTERM, None)
+                probes.append(await asyncio.to_thread(healthcheck.main))
+                return None
+
+        self._run_queue_work(get_driver=MagicMock(return_value=ProbingDriver()))
+
+        self.assertEqual(probes, [0, 1])
+        self.app._initialize_connections.assert_awaited_once()
+        self.app._cleanup_connections.assert_awaited_once()
+        self._assert_port_closed()
+
+    def test_queue_work_reports_not_ready_during_startup_and_stops_server_on_startup_failure(self) -> None:
+        probes: list[int] = []
+
+        def failing_get_driver(connection: str | None = None) -> QueueDriver:
+            probes.append(healthcheck.main())
+            raise RuntimeError('database disabled')
+
+        with self.assertRaisesRegex(RuntimeError, 'database disabled'):
+            self._run_queue_work(get_driver=MagicMock(side_effect=failing_get_driver))
+
+        self.assertEqual(probes, [1])
+        self.app._cleanup_connections.assert_awaited_once()
+        self._assert_port_closed()
 
 
 if __name__ == '__main__':

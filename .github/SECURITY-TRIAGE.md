@@ -14,13 +14,22 @@
   `uv.lock` into a temporary path and never committed.
 - Every repository-bound `uv sync`, `uv run`, and `uv export` in the workflows passes `--locked`. A manifest
   change without a matching `uv.lock` update fails CI instead of being re-resolved silently. `uv build` does not
-  read `uv.lock`, so jobs that build without a prior `uv sync --locked` run `uv lock --check` first.
+  read `uv.lock`, so jobs that build without a prior `uv sync --locked` run `uv lock --check` first. The root
+  `Dockerfile` copies `uv.lock` and runs `uv sync --locked`, so the image build fails the same way on a missing or
+  stale lock.
 - Dependabot (`.github/dependabot.yml`) runs weekly on Monday 09:00 Asia/Jakarta:
   - `uv` at `/` updates `pyproject.toml` and `uv.lock` together. Labels: `dependencies`, `python`.
   - `docker` at `/` and `/routemq/scaffold/templates/features/docker` updates literal image references in the root
-    `Dockerfile` and the scaffold Docker template. Label: `dependencies`. Dependabot does not update images selected
-    through `ARG` (the root `python:${PYTHON_VERSION}-slim` base) or floating tags such as
-    `ghcr.io/astral-sh/uv:latest`; bump those manually.
+    `Dockerfile` and the scaffold Docker template. Label: `dependencies`. The root `Dockerfile` names the Python
+    base, used by both the `builder` and `runtime` stages, and the `ghcr.io/astral-sh/uv` image as literal `FROM`
+    references with a version tag and `sha256` digest, so every build resolves the same reviewable images. Keep both
+    Python `FROM` lines on the same reference. These rules apply to the root `Dockerfile` only; the scaffold template
+    uses a tag without a digest. For a root image whose version tag changes, the digest must change with it and come
+    from `docker buildx imagetools inspect <image>:<tag>`. A digest-only refresh under the same tag, such as a
+    rebuilt or patched base, is allowed once that digest is verified the same way. In either case, the changed image
+    reference must be consistent everywhere it appears, and both Python stages must stay identical. The `docker`
+    entry has no groups, so expect Python and uv updates in separate PRs. PR CI's `build` job builds the root image
+    and runs `scripts/smoke_docker.py` against it; no CI job builds the scaffold template image.
   - `github-actions` at `/` updates SHA-pinned workflow actions. Labels: `dependencies`, `github-actions`.
 - Dependabot security update PRs are `uv.lock` changes and go through the same CI gates as any other change.
 
@@ -142,8 +151,9 @@ uv run --locked pip-audit --strict --disable-pip --require-hashes \
 - The first `pip-audit` run audits the full installed environment: base dependencies, every extra, and the `dev`
   dependency group, including the audit tooling itself.
 - The second run audits the runtime profile directly from `uv.lock`: base dependencies plus every extra except
-  `dev`, without the `dev` group and without RouteMQ itself. This covers the extras users can select and the
-  `uv sync --no-dev` set installed by the Docker image, at the versions pinned in `uv.lock`. Environment markers
+  `dev`, without the `dev` group and without RouteMQ itself. This covers the extras users can select, including the
+  Docker image's `uv sync --locked --no-dev --no-editable` install of the base dependencies plus the `redis`,
+  `clickhouse`, and `prometheus` extras, at the versions pinned in `uv.lock`. Environment markers
   are evaluated for the auditing interpreter (CI: Linux, Python 3.12). `--strict` fails the run if any exported
   package cannot be audited; `--require-hashes` requires every pinned requirement to carry its lock hash.
 - Do not pass `--ignore-vuln` or skip packages in CI to get a passing run; use the suppression process below.

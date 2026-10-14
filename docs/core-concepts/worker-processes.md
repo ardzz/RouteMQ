@@ -375,25 +375,13 @@ WORKER_MAX_COUNT=10
 
 ### Docker Deployment
 
-This example builds the RouteMQ repository source, which defines the `redis` extra and commits `uv.lock`; scaffolded projects that do not define a `redis` extra should drop `--extra redis`. Worker processes come from routes registered with `shared=True` and `worker_count`, not from container environment variables:
+The repository root `Dockerfile` builds the RouteMQ source into `/opt/venv` from `uv.lock`, with the `redis`, `clickhouse`, and `prometheus` extras; [Docker Deployment](../deployment/docker.md#dockerfile-explanation) describes its stages. Its default command, `/opt/venv/bin/routemq --run`, starts the application, and the application starts the worker processes. Worker processes come from routes registered with `shared=True` and `worker_count`, not from container environment variables. Projects generated with `routemq new --with-docker` use the scaffold's own Dockerfile instead.
 
-```dockerfile
-# Dockerfile
-FROM python:3.12-slim
-
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
-WORKDIR /app
-
-# Install locked runtime dependencies first for layer caching
-COPY pyproject.toml uv.lock ./
-RUN uv sync --locked --no-dev --extra redis --no-install-project
-
-COPY . /app
-RUN uv sync --locked --no-dev --extra redis
-ENV PATH="/app/.venv/bin:$PATH"
-
-CMD ["routemq", "run"]
+```bash
+docker build -t routemq:latest .
 ```
+
+The container's `/ready` reports the main application process: startup completion and its MQTT connection. It does not report the state of individual shared-subscription worker processes.
 
 ### Kubernetes Scaling
 

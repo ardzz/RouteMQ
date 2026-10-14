@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Optional, cast
 
+from sqlalchemy import inspect, text
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.future import select
@@ -82,6 +83,28 @@ class Model(Base):
         if cls._session_factory is None:
             raise RuntimeError('Database not configured. Call Model.configure() first.')
         return cast(AsyncSession, cls._session_factory())
+
+    @classmethod
+    async def validate_connection(cls, required_tables: tuple[str, ...] = ()) -> None:
+        """Validate database connectivity and optionally required tables."""
+        engine = cls._engine
+        if not cls._is_enabled or engine is None:
+            raise RuntimeError(f'{cls._db_system} database is not configured')
+
+        table_names: list[str] = []
+        try:
+            async with engine.connect() as conn:
+                await conn.execute(text('SELECT 1'))
+                if required_tables:
+                    table_names = await conn.run_sync(lambda sync_conn: inspect(sync_conn).get_table_names())
+        except Exception as exc:
+            raise RuntimeError(f'Unable to validate {cls._db_system} database connection') from exc
+
+        missing_tables = [table for table in required_tables if table not in table_names]
+        if missing_tables:
+            raise RuntimeError(
+                f'{cls._db_system} database schema is missing required tables: {", ".join(missing_tables)}'
+            )
 
     @classmethod
     async def create_tables(cls):

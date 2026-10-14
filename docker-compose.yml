@@ -1,3 +1,11 @@
+# Readiness probe shared by the app and queue workers; each process serves its own /ready on 127.0.0.1:8080.
+x-routemq-healthcheck: &routemq-healthcheck
+  test: ["CMD", "/opt/venv/bin/python", "-m", "routemq.healthcheck"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 40s
+
 services:
   # Redis - Fast queue backend
   redis:
@@ -129,12 +137,7 @@ services:
       - ./logs:/app/logs
       - ./.env:/app/.env:ro
 
-    healthcheck:
-      test: ["CMD", "python", "-c", "import paho.mqtt.client as mqtt; print('Health check passed')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    healthcheck: *routemq-healthcheck
 
   # Queue Worker - Default Queue
   queue-worker-default:
@@ -143,7 +146,7 @@ services:
       args:
         TIMEZONE: ${TIMEZONE:-Asia/Jakarta}
     container_name: routemq-queue-default
-    command: ["uv", "run", "routemq", "--queue-work", "--queue", "default", "--sleep", "3"]
+    command: ["/opt/venv/bin/routemq", "--queue-work", "--queue", "default", "--sleep", "3"]
     environment:
       ENABLE_MYSQL: ${ENABLE_MYSQL:-true}
       DB_HOST: ${DB_HOST:-mysql}
@@ -187,6 +190,8 @@ services:
       - ./app:/app/app:ro
       - ./logs:/app/logs
       - ./.env:/app/.env:ro
+
+    healthcheck: *routemq-healthcheck
 
   # Queue Worker - High Priority Queue
   queue-worker-high:
@@ -195,7 +200,7 @@ services:
       args:
         TIMEZONE: ${TIMEZONE:-Asia/Jakarta}
     container_name: routemq-queue-high
-    command: ["uv", "run", "routemq", "--queue-work", "--queue", "high-priority", "--sleep", "1"]
+    command: ["/opt/venv/bin/routemq", "--queue-work", "--queue", "high-priority", "--sleep", "1"]
     environment:
       ENABLE_MYSQL: ${ENABLE_MYSQL:-true}
       DB_HOST: ${DB_HOST:-mysql}
@@ -239,6 +244,8 @@ services:
       - ./app:/app/app:ro
       - ./logs:/app/logs
       - ./.env:/app/.env:ro
+
+    healthcheck: *routemq-healthcheck
 
   # Queue Worker - Emails Queue
   queue-worker-emails:
@@ -247,7 +254,7 @@ services:
       args:
         TIMEZONE: ${TIMEZONE:-Asia/Jakarta}
     container_name: routemq-queue-emails
-    command: ["uv", "run", "routemq", "--queue-work", "--queue", "emails", "--sleep", "5"]
+    command: ["/opt/venv/bin/routemq", "--queue-work", "--queue", "emails", "--sleep", "5"]
     environment:
       ENABLE_MYSQL: ${ENABLE_MYSQL:-true}
       DB_HOST: ${DB_HOST:-mysql}
@@ -291,6 +298,8 @@ services:
       - ./app:/app/app:ro
       - ./logs:/app/logs
       - ./.env:/app/.env:ro
+
+    healthcheck: *routemq-healthcheck
 
 volumes:
   redis-data:

@@ -1,6 +1,6 @@
 # Python
-__pycache__/
-*.py[cod]
+**/__pycache__/
+**/*.py[cod]
 *$py.class
 *.so
 .Python
@@ -46,8 +46,11 @@ coverage.xml
 cover/
 
 # Environments
-.env.local
-.env.*.local
+# Local secrets stay out of the build context; scaffold env templates are package data.
+**/.env
+**/.env.*
+!routemq/scaffold/templates/base/.env
+!routemq/scaffold/templates/features/*/.env.fragment
 .venv/
 venv/
 env/
@@ -82,6 +85,7 @@ Dockerfile
 *.md
 !README.md
 logo.png
+PRODUCTION_BACKLOG.md
 
 # Docker
 docker/
