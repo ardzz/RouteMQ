@@ -1,0 +1,593 @@
+# TEMPORARY one-off runtime proof for the action upgrades cherry-picked onto
+# verify/actions-contracts-6d5111e (PR 120 + 110 + 117 + 107). Non-publishing:
+# no PyPI/TestPyPI environments, no upload, no secrets, no tag/ref mutation.
+# This file must never land on master; delete it together with the branch.
+name: PR actions smoke (temporary)
+
+on:
+  # A new workflow_dispatch-only file cannot be registered while it is absent
+  # from the default branch, so the first run bootstraps from a push to this
+  # exact owned branch. workflow_dispatch re-runs work once registered.
+  push:
+    branches:
+      - verify/actions-contracts-6d5111e
+  workflow_dispatch:
+
+concurrency:
+  group: pr-actions-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  OWNED_REPOSITORY: ardzz/RouteMQ
+  OWNED_BRANCH: verify/actions-contracts-6d5111e
+  SMOKE_WORKFLOW_PATH: .github/workflows/pr-actions-smoke.yml
+  # Integration head under test: 6d5111e + PR 120/110/117/107 snapshots.
+  CANDIDATE_HEAD: bddc56a688ca50021f2868e84776c0e852213738
+  EXPECTED_VERSION: 0.25.2
+  PUBLISHER_REPOSITORY: pypa/gh-action-pypi-publish
+  PUBLISHER_SHA: dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+  # Digest of ghcr.io/pypa/gh-action-pypi-publish:<PUBLISHER_SHA>, the tag the
+  # SHA-pinned action resolves at runtime (create-docker-action.py). Observed in
+  # GHCR; equals the release-v1 tag pushed by upstream run 30473623443 at that SHA.
+  PUBLISHER_IMAGE_DIGEST: sha256:a68d05519f6d7e47372aeaddab80b851b69afa89be179ec41775c72c4e3ab2d5
+  SIGSTORE_ACTION_SHA: 790bc6befb9d733738f18d8f895854b453640ec9 # v3.5.0
+  EXPECTED_SIGSTORE_VERSION: 4.5.0
+  OIDC_ISSUER: https://token.actions.githubusercontent.com
+  # Every container run: no network, 1 GiB RAM with no swap, bounded CPU/PIDs,
+  # no capabilities, read-only rootfs.
+  DOCKER_RUN_LIMITS: >-
+    --network none --memory 1g --memory-swap 1g --cpus 2 --pids-limit 256
+    --cap-drop ALL --security-opt no-new-privileges --read-only
+    --tmpfs /tmp:rw,nosuid,nodev,size=64m
+  VERIFY_DISTS_PY: |
+    import email.parser
+    import os
+    import pathlib
+    import sys
+    import tarfile
+    import zipfile
+
+    version = os.environ["EXPECTED_VERSION"]
+    expected = {f"routemq-{version}-py3-none-any.whl", f"routemq-{version}.tar.gz"}
+    dist = pathlib.Path("dist")
+    visible = {p.name for p in dist.iterdir() if not p.name.startswith(".")}
+    if visible != expected:
+        sys.exit(f"::error::dist/ holds {sorted(visible)}, expected {sorted(expected)}")
+    for name in sorted(expected):
+        path = dist / name
+        if not path.is_file():
+            sys.exit(f"::error::{path} is not a regular file")
+        if name.endswith(".whl"):
+            with zipfile.ZipFile(path) as wheel:
+                raw = wheel.read(f"routemq-{version}.dist-info/METADATA")
+        else:
+            with tarfile.open(path, "r:gz") as sdist:
+                member = sdist.extractfile(f"routemq-{version}/PKG-INFO")
+                if member is None:
+                    sys.exit(f"::error::{name} has no regular PKG-INFO member")
+                raw = member.read()
+        headers = email.parser.BytesHeaderParser().parsebytes(raw)
+        found = (headers["Metadata-Version"], headers["Name"], headers["Version"])
+        print(f"{name}: Metadata-Version={found[0]} Name={found[1]} Version={found[2]}")
+        if found != ("2.5", "routemq", version):
+            sys.exit(f"::error::{name} core metadata {found} != ('2.5', 'routemq', '{version}')")
+
+jobs:
+  guard:
+    name: Assert trusted owned-branch context
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Assert event, repository, branch and workflow identity
+        run: |
+          set -u
+          fail() { echo "::error::$1"; exit 1; }
+          case "$GITHUB_EVENT_NAME" in
+            push | workflow_dispatch) ;;
+            *) fail "unexpected event ${GITHUB_EVENT_NAME}" ;;
+          esac
+          [ "$GITHUB_REPOSITORY" = "$OWNED_REPOSITORY" ] || fail "repository ${GITHUB_REPOSITORY} is not ${OWNED_REPOSITORY}"
+          [ "$GITHUB_REF" = "refs/heads/${OWNED_BRANCH}" ] || fail "ref ${GITHUB_REF} is not refs/heads/${OWNED_BRANCH}"
+          expected_workflow_ref="${OWNED_REPOSITORY}/${SMOKE_WORKFLOW_PATH}@refs/heads/${OWNED_BRANCH}"
+          [ "$GITHUB_WORKFLOW_REF" = "$expected_workflow_ref" ] || fail "workflow ref ${GITHUB_WORKFLOW_REF} is not ${expected_workflow_ref}"
+          echo "event=${GITHUB_EVENT_NAME} ref=${GITHUB_REF} sha=${GITHUB_SHA} workflow_ref=${GITHUB_WORKFLOW_REF}"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Assert tree is the candidate plus only this smoke workflow
+        run: |
+          set -u
+          fail() { echo "::error::$1"; exit 1; }
+          [ "$(git rev-parse HEAD)" = "$GITHUB_SHA" ] || fail "checked-out HEAD is not ${GITHUB_SHA}"
+          git merge-base --is-ancestor "$CANDIDATE_HEAD" HEAD || fail "${CANDIDATE_HEAD} is not an ancestor of HEAD"
+          changed="$(git diff --name-only "$CANDIDATE_HEAD" HEAD)"
+          echo "Changed since candidate: ${changed}"
+          [ "$changed" = "$SMOKE_WORKFLOW_PATH" ] || fail "tree differs from candidate beyond ${SMOKE_WORKFLOW_PATH}"
+
+      - name: Assert production workflows carry the pins exercised here
+        run: |
+          set -u
+          require() {
+            grep -Fq -- "$2" "$1" || { echo "::error::$1 lacks $2"; exit 1; }
+            echo "$1: $2"
+          }
+          for workflow in .github/workflows/publish.yml .github/workflows/publish-test.yml; do
+            require "$workflow" "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+            require "$workflow" "astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884"
+            require "$workflow" "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
+            require "$workflow" "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333"
+            require "$workflow" "${PUBLISHER_REPOSITORY}@${PUBLISHER_SHA}"
+          done
+          for workflow in .github/workflows/release.yml .github/workflows/github-release.yml; do
+            require "$workflow" "sigstore/gh-action-sigstore-python@${SIGSTORE_ACTION_SHA}"
+          done
+
+  build:
+    name: Build distributions (publish.yml contract)
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      hashes: ${{ steps.manifest.outputs.hashes }}
+      pypi-artifact-id: ${{ steps.upload-pypi.outputs.artifact-id }}
+      pypi-artifact-digest: ${{ steps.upload-pypi.outputs.artifact-digest }}
+      testpypi-artifact-id: ${{ steps.upload-testpypi.outputs.artifact-id }}
+      testpypi-artifact-digest: ${{ steps.upload-testpypi.outputs.artifact-digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        id: setup-uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+
+      - name: Record uv runtime selected by setup-uv defaults
+        env:
+          SETUP_UV_VERSION: ${{ steps.setup-uv.outputs.uv-version }}
+          SETUP_UV_CACHE_HIT: ${{ steps.setup-uv.outputs.cache-hit }}
+        run: |
+          echo "setup-uv uv-version output: ${SETUP_UV_VERSION}"
+          echo "setup-uv cache-hit output: ${SETUP_UV_CACHE_HIT}"
+          command -v uv
+          uv --version
+
+      - name: Check lockfile matches pyproject.toml
+        run: uv lock --check
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Verify built files and Metadata-Version 2.5
+        run: |
+          ls -la dist
+          python3 -c "$VERIFY_DISTS_PY"
+
+      - name: Record producer manifest
+        id: manifest
+        run: |
+          set -u
+          manifest="$RUNNER_TEMP/producer-manifest.sha256"
+          sha256sum dist/* | tee "$manifest"
+          [ "$(wc -l < "$manifest")" -eq 2 ] || { echo "::error::manifest must list exactly two distributions"; exit 1; }
+          echo "hashes=$(base64 -w0 < "$manifest")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload distributions (pypi-dist)
+        id: upload-pypi
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pypi-dist
+          path: dist/
+          retention-days: 1
+
+      - name: Upload distributions (testpypi-dist)
+        id: upload-testpypi
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: testpypi-dist
+          path: dist/
+          retention-days: 1
+
+      - name: Assert producer artifact identities
+        env:
+          PYPI_ID: ${{ steps.upload-pypi.outputs.artifact-id }}
+          PYPI_DIGEST: ${{ steps.upload-pypi.outputs.artifact-digest }}
+          TESTPYPI_ID: ${{ steps.upload-testpypi.outputs.artifact-id }}
+          TESTPYPI_DIGEST: ${{ steps.upload-testpypi.outputs.artifact-digest }}
+        run: |
+          set -u
+          echo "pypi-dist id=${PYPI_ID} digest=${PYPI_DIGEST}"
+          echo "testpypi-dist id=${TESTPYPI_ID} digest=${TESTPYPI_DIGEST}"
+          for value in "$PYPI_ID" "$PYPI_DIGEST" "$TESTPYPI_ID" "$TESTPYPI_DIGEST"; do
+            [ -n "$value" ] || { echo "::error::upload-artifact returned an empty id/digest"; exit 1; }
+          done
+
+  publisher-image:
+    name: Resolve candidate publisher image (gh-action-pypi-publish v1.14.2)
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      image: ${{ steps.resolve.outputs.image }}
+      twine-version: ${{ steps.correspond.outputs.twine-version }}
+    steps:
+      - name: Fetch exact candidate publisher source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ env.PUBLISHER_REPOSITORY }}
+          ref: ${{ env.PUBLISHER_SHA }}
+          path: publisher-src
+          persist-credentials: false
+
+      - name: Assert exact publisher commit
+        run: |
+          actual="$(git -C publisher-src rev-parse HEAD)"
+          echo "publisher-src HEAD=${actual}"
+          [ "$actual" = "$PUBLISHER_SHA" ] || { echo "::error::publisher source is ${actual}, expected ${PUBLISHER_SHA}"; exit 1; }
+
+      - name: Derive production image reference with candidate create-docker-action.py
+        id: derive
+        env:
+          # Production passes github.action_ref, which is the pinned commit SHA.
+          REF: ${{ env.PUBLISHER_SHA }}
+          REPO: ${{ env.PUBLISHER_REPOSITORY }}
+          REPO_ID: ${{ github.repository_id }}
+        run: |
+          set -u
+          work="$RUNNER_TEMP/publisher-derive"
+          mkdir -p "$work"
+          cd "$work" || exit 1
+          python3 "$GITHUB_WORKSPACE/publisher-src/create-docker-action.py"
+          image="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["runs"]["image"])' \
+            .github/.tmp/.generated-actions/run-pypi-publish-in-docker-container/action.yml)"
+          echo "generated docker action image: ${image}"
+          expected="docker://ghcr.io/${PUBLISHER_REPOSITORY}:${PUBLISHER_SHA}"
+          [ "$image" = "$expected" ] || { echo "::error::derived ${image}, expected ${expected}"; exit 1; }
+          echo "tag-ref=${image#docker://}" >> "$GITHUB_OUTPUT"
+
+      - name: Pull the production tag and pin its digest
+        id: resolve
+        env:
+          TAG_REF: ${{ steps.derive.outputs.tag-ref }}
+        run: |
+          set -u
+          docker pull "$TAG_REF"
+          docker image inspect --format 'id={{.Id}} created={{.Created}} platform={{.Os}}/{{.Architecture}}' "$TAG_REF"
+          digests="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$TAG_REF")"
+          echo "RepoDigests:"
+          echo "$digests"
+          expected="ghcr.io/${PUBLISHER_REPOSITORY}@${PUBLISHER_IMAGE_DIGEST}"
+          grep -Fxq -- "$expected" <<< "$digests" || { echo "::error::${TAG_REF} does not resolve to ${expected}"; exit 1; }
+          echo "image=${expected}" >> "$GITHUB_OUTPUT"
+
+      - name: Prove image corresponds to candidate source and lock
+        id: correspond
+        env:
+          IMAGE: ${{ steps.resolve.outputs.image }}
+        run: |
+          set -u
+          fail() { echo "::error::$1"; exit 1; }
+          read -r -a limits <<< "$DOCKER_RUN_LIMITS"
+
+          entrypoint="$(docker image inspect --format '{{json .Config.Entrypoint}}' "$IMAGE")"
+          echo "image entrypoint: ${entrypoint}"
+          [ "$entrypoint" = '["/app/twine-upload.sh"]' ] || fail "unexpected entrypoint ${entrypoint}"
+
+          cid="$(docker create "$IMAGE")"
+          trap 'docker rm "$cid" > /dev/null' EXIT
+          docker cp "$cid:/app" "$RUNNER_TEMP/image-app"
+          docker cp "$cid:/requirements" "$RUNNER_TEMP/image-requirements"
+          app_files=(LICENSE.md attestations.py oidc-exchange.py print-hash.py print-pkg-names.py twine-upload.sh)
+          image_app="$(find "$RUNNER_TEMP/image-app" -mindepth 1 -printf '%P\n' | LC_ALL=C sort | xargs)"
+          [ "$image_app" = "${app_files[*]}" ] || fail "image /app holds '${image_app}', expected '${app_files[*]}'"
+          for file in "${app_files[@]}"; do
+            cmp "publisher-src/${file}" "$RUNNER_TEMP/image-app/${file}" || fail "/app/${file} differs from ${PUBLISHER_SHA}"
+            echo "identical: /app/${file}"
+          done
+          diff -r publisher-src/requirements "$RUNNER_TEMP/image-requirements" || fail "image /requirements differs from ${PUBLISHER_SHA}"
+          echo "identical: /requirements"
+
+          version_line="$(docker run --rm "${limits[@]}" --entrypoint /root/.local/bin/twine "$IMAGE" --version)"
+          echo "$version_line"
+          pinned="$(sed -nE 's/^twine==([^ ]+).*/\1/p' publisher-src/requirements/runtime.txt)"
+          [ -n "$pinned" ] || fail "no twine pin in requirements/runtime.txt"
+          [ "${pinned%%.*}" -ge 7 ] || fail "locked twine ${pinned} is not Twine 7+"
+          case "$version_line" in
+            "twine version ${pinned} ("*) ;;
+            *) fail "bundled Twine is not the locked ${pinned}" ;;
+          esac
+
+          docker run --rm "${limits[@]}" -e PIP_DISABLE_PIP_VERSION_CHECK=1 --entrypoint python "$IMAGE" \
+            -m pip freeze --user > "$RUNNER_TEMP/image-freeze.txt"
+          python3 - "$RUNNER_TEMP/image-freeze.txt" publisher-src/requirements/runtime.txt <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          def norm(name):
+              return re.sub(r"[-_.]+", "-", name).lower()
+
+          def pins(path, strict):
+              found = {}
+              for line in pathlib.Path(path).read_text().splitlines():
+                  match = re.match(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==([^\s;\\]+)", line)
+                  if match:
+                      found[norm(match.group(1))] = match.group(2)
+                  elif strict and line.strip():
+                      sys.exit(f"::error::unexpected installed entry {line!r}")
+              found.pop("pip", None)
+              return found
+
+          installed = pins(sys.argv[1], strict=True)
+          locked = pins(sys.argv[2], strict=False)
+          if installed != locked:
+              drift = sorted(set(installed.items()) ^ set(locked.items()))
+              sys.exit(f"::error::image user-site packages differ from runtime.txt: {drift}")
+          print(f"{len(installed)} image packages equal runtime.txt pins; "
+                f"twine=={installed['twine']} packaging=={installed['packaging']}")
+          PY
+          echo "twine-version=${pinned}" >> "$GITHUB_OUTPUT"
+
+      - name: Remove pulled publisher image
+        if: always()
+        env:
+          TAG_REF: ${{ steps.derive.outputs.tag-ref }}
+        run: |
+          if [ -n "$TAG_REF" ] && docker image inspect "$TAG_REF" > /dev/null 2>&1; then
+            docker image rm "$TAG_REF"
+          fi
+
+  consume:
+    name: Consume ${{ matrix.artifact }} (download v8 + candidate Twine check)
+    needs: [build, publisher-image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        artifact: [pypi-dist, testpypi-dist]
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/
+
+      - name: Verify flat layout and hashes against producer manifest
+        env:
+          PRODUCER_HASHES: ${{ needs.build.outputs.hashes }}
+          ARTIFACT: ${{ matrix.artifact }}
+          PYPI_ID: ${{ needs.build.outputs.pypi-artifact-id }}
+          PYPI_DIGEST: ${{ needs.build.outputs.pypi-artifact-digest }}
+          TESTPYPI_ID: ${{ needs.build.outputs.testpypi-artifact-id }}
+          TESTPYPI_DIGEST: ${{ needs.build.outputs.testpypi-artifact-digest }}
+        run: |
+          set -u
+          if [ "$ARTIFACT" = pypi-dist ]; then
+            echo "producer ${ARTIFACT}: id=${PYPI_ID} digest=${PYPI_DIGEST}"
+          else
+            echo "producer ${ARTIFACT}: id=${TESTPYPI_ID} digest=${TESTPYPI_DIGEST}"
+          fi
+          manifest="$RUNNER_TEMP/producer-manifest.sha256"
+          printf '%s' "$PRODUCER_HASHES" | base64 -d > "$manifest"
+          cat "$manifest"
+          expected="$(printf 'f %s\n' "routemq-${EXPECTED_VERSION}-py3-none-any.whl" "routemq-${EXPECTED_VERSION}.tar.gz" | LC_ALL=C sort)"
+          actual="$(find dist -mindepth 1 -printf '%y %P\n' | LC_ALL=C sort)"
+          echo "downloaded entries:"
+          echo "$actual"
+          [ "$actual" = "$expected" ] || { echo "::error::dist/ is not exactly the two flat distributions"; exit 1; }
+          sha256sum --strict --check "$manifest"
+
+      - name: Verify downloaded Metadata-Version 2.5
+        run: python3 -c "$VERIFY_DISTS_PY"
+
+      - name: Pull candidate publisher image by digest
+        env:
+          IMAGE: ${{ needs.publisher-image.outputs.image }}
+        run: |
+          set -u
+          [ "$IMAGE" = "ghcr.io/${PUBLISHER_REPOSITORY}@${PUBLISHER_IMAGE_DIGEST}" ] || { echo "::error::unexpected image ${IMAGE}"; exit 1; }
+          docker pull "$IMAGE"
+
+      - name: Run candidate bundled Twine check only (no upload)
+        env:
+          IMAGE: ${{ needs.publisher-image.outputs.image }}
+          LOCKED_TWINE: ${{ needs.publisher-image.outputs.twine-version }}
+        run: |
+          set -u
+          read -r -a limits <<< "$DOCKER_RUN_LIMITS"
+          run_twine() {
+            docker run --rm "${limits[@]}" \
+              -v "$GITHUB_WORKSPACE:/github/workspace:ro" --workdir /github/workspace \
+              --entrypoint /root/.local/bin/twine "$IMAGE" "$@"
+          }
+          version_line="$(run_twine --version)"
+          echo "$version_line"
+          case "$version_line" in
+            "twine version ${LOCKED_TWINE} ("*) ;;
+            *) echo "::error::bundled Twine is not ${LOCKED_TWINE}"; exit 1 ;;
+          esac
+          # Same command twine-upload.sh runs for verify-metadata, minus the upload.
+          run_twine check dist/*
+
+      - name: Remove pulled publisher image
+        if: always()
+        env:
+          IMAGE: ${{ needs.publisher-image.outputs.image }}
+        run: |
+          if [ -n "$IMAGE" ] && docker image inspect "$IMAGE" > /dev/null 2>&1; then
+            docker image rm "$IMAGE"
+          fi
+
+  sbom-sign-verify:
+    name: Environment SBOM, Sigstore sign and verify (release.yml contract)
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write # Sigstore keyless signing via GitHub OIDC; nothing else.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+
+      - name: Record uv runtime
+        run: uv --version
+
+      - name: Install dependencies
+        run: uv sync --locked --all-extras --dev
+
+      - name: Generate SBOM (CycloneDX)
+        run: uv run --locked cyclonedx-py environment --output-file sbom.json --output-format JSON
+
+      - name: Assert SBOM describes the installed project environment
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          with open("sbom.json", encoding="utf-8") as handle:
+              bom = json.load(handle)
+          components = bom.get("components") or []
+          print(f"bomFormat={bom.get('bomFormat')} specVersion={bom.get('specVersion')} components={len(components)}")
+          if bom.get("bomFormat") != "CycloneDX":
+              sys.exit("::error::sbom.json is not a CycloneDX document")
+          version = os.environ["EXPECTED_VERSION"]
+          if not any(c.get("name") == "routemq" and c.get("version") == version for c in components):
+              sys.exit(f"::error::sbom.json has no routemq {version} component")
+          PY
+
+      - name: Sign SBOM with Sigstore
+        uses: sigstore/gh-action-sigstore-python@790bc6befb9d733738f18d8f895854b453640ec9 # v3.5.0
+        with:
+          inputs: sbom.json
+
+      - name: Verify sbom.json.sigstore.json with the action's installed sigstore
+        run: |
+          set -u
+          fail() { echo "::error::$1"; exit 1; }
+          action_dir="$(dirname "$RUNNER_WORKSPACE")/_actions/sigstore/gh-action-sigstore-python/${SIGSTORE_ACTION_SHA}"
+          sigstore_python="${action_dir}/.action-env/bin/python"
+          [ -x "$sigstore_python" ] || fail "action venv interpreter not found at ${sigstore_python}"
+          grep -Fxq -- "sigstore==${EXPECTED_SIGSTORE_VERSION} \\" "${action_dir}/requirements/main.txt" \
+            || fail "action requirements/main.txt does not pin sigstore==${EXPECTED_SIGSTORE_VERSION}"
+          installed="$("$sigstore_python" -m sigstore --version)"
+          echo "action venv: ${installed}"
+          [ "$installed" = "sigstore ${EXPECTED_SIGSTORE_VERSION}" ] || fail "action venv runs ${installed}"
+
+          [ -f sbom.json.sigstore.json ] || fail "sbom.json.sigstore.json missing"
+          for legacy in sbom.json.sigstore sbom.json.sig sbom.json.crt; do
+            [ ! -e "$legacy" ] || fail "unexpected legacy signing output ${legacy}"
+          done
+          python3 - <<'PY'
+          import json
+          import sys
+
+          with open("sbom.json.sigstore.json", encoding="utf-8") as handle:
+              bundle = json.load(handle)
+          media_type = bundle.get("mediaType")
+          entries = bundle.get("verificationMaterial", {}).get("tlogEntries", [])
+          print(f"bundle mediaType={media_type} tlogEntries={len(entries)}")
+          if media_type != "application/vnd.dev.sigstore.bundle.v0.3+json":
+              sys.exit("::error::unexpected bundle mediaType")
+          if "messageSignature" not in bundle or len(entries) != 1:
+              sys.exit("::error::bundle is not a single-entry message-signature bundle")
+          PY
+
+          identity="https://github.com/${OWNED_REPOSITORY}/${SMOKE_WORKFLOW_PATH}@refs/heads/${OWNED_BRANCH}"
+          echo "expected identity: ${identity}"
+          echo "expected issuer: ${OIDC_ISSUER}"
+
+          "$sigstore_python" -m sigstore verify identity \
+            --bundle sbom.json.sigstore.json \
+            --cert-identity "$identity" \
+            --cert-oidc-issuer "$OIDC_ISSUER" \
+            sbom.json
+
+          "$sigstore_python" -m sigstore verify github \
+            --bundle sbom.json.sigstore.json \
+            --cert-identity "$identity" \
+            --trigger "$GITHUB_EVENT_NAME" \
+            --sha "$GITHUB_SHA" \
+            --name "$GITHUB_WORKFLOW" \
+            --repository "$OWNED_REPOSITORY" \
+            --ref "refs/heads/${OWNED_BRANCH}" \
+            sbom.json
+
+          EXPECTED_IDENTITY="$identity" "$sigstore_python" - <<'PY'
+          import os
+          from pathlib import Path
+
+          from sigstore.models import Bundle
+          from sigstore.verify import Verifier, policy
+
+          env = os.environ
+          repo_uri = f"https://github.com/{env['OWNED_REPOSITORY']}"
+          identity = env["EXPECTED_IDENTITY"]
+          run_uri = f"{repo_uri}/actions/runs/{env['GITHUB_RUN_ID']}/attempts/{env['GITHUB_RUN_ATTEMPT']}"
+          checks = policy.AllOf([
+              policy.Identity(identity=identity, issuer=env["OIDC_ISSUER"]),
+              policy.OIDCIssuerV2(env["OIDC_ISSUER"]),
+              policy.OIDCBuildSignerURI(identity),
+              policy.OIDCBuildConfigURI(identity),
+              policy.OIDCSourceRepositoryURI(repo_uri),
+              policy.OIDCSourceRepositoryRef(f"refs/heads/{env['OWNED_BRANCH']}"),
+              policy.OIDCSourceRepositoryDigest(env["GITHUB_SHA"]),
+              policy.OIDCBuildTrigger(env["GITHUB_EVENT_NAME"]),
+              policy.OIDCRunInvocationURI(run_uri),
+          ])
+          bundle = Bundle.from_json(Path("sbom.json.sigstore.json").read_bytes())
+          Verifier.production().verify_artifact(Path("sbom.json").read_bytes(), bundle, checks)
+          print(f"API OK: sbom.json signed by {identity} in {run_uri}")
+          PY
+
+          expect_rejection() {
+            local label="$1"
+            local output
+            shift
+            if output="$("$sigstore_python" -m sigstore verify identity "$@" 2>&1)"; then
+              fail "negative control '${label}' unexpectedly verified"
+            fi
+            printf '%s\n' "$output"
+            grep -Fq "FAIL:" <<< "$output" || fail "negative control '${label}' failed for a non-verification reason"
+            echo "rejected as expected: ${label}"
+          }
+          expect_rejection wrong-workflow-identity \
+            --bundle sbom.json.sigstore.json \
+            --cert-identity "https://github.com/${OWNED_REPOSITORY}/.github/workflows/publish.yml@refs/heads/${OWNED_BRANCH}" \
+            --cert-oidc-issuer "$OIDC_ISSUER" \
+            sbom.json
+          expect_rejection wrong-issuer \
+            --bundle sbom.json.sigstore.json \
+            --cert-identity "$identity" \
+            --cert-oidc-issuer https://accounts.google.com \
+            sbom.json
+          tampered_dir="$RUNNER_TEMP/tampered-sbom"
+          mkdir -p "$tampered_dir"
+          cp sbom.json "$tampered_dir/sbom.json"
+          printf '\n' >> "$tampered_dir/sbom.json"
+          expect_rejection tampered-content \
+            --bundle sbom.json.sigstore.json \
+            --cert-identity "$identity" \
+            --cert-oidc-issuer "$OIDC_ISSUER" \
+            "$tampered_dir/sbom.json"
