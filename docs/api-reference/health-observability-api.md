@@ -24,10 +24,17 @@ server.start()
 server.stop()
 ```
 
-Use `health_server_from_env(status)` to construct the server from `HEALTH_HTTP_*` settings. Pass
-`metrics_renderer=callable` to add `GET /metrics`; the callable receives the request `Accept` header
-and returns `(content_type, body_bytes)`. When no renderer is configured, `/metrics` behaves like any
-unknown path and returns `404 {"status": "not_found"}`.
+`HealthServer(status, host="127.0.0.1", port=8080, metrics_renderer=None, metrics_path="/metrics")`
+accepts any `HealthPayloadSource`, a `typing.Protocol` in `routemq.health`: an object whose `health_payload()` and
+`readiness_payload()` methods each return `(status_code, payload_dict)`. RouteMQ ships two sources, the app's
+`HealthStatus` and `routemq.queue.queue_worker.QueueWorker`. The server calls the matching method on every
+`GET /health` or `GET /ready` from its HTTP thread and returns the payload as JSON, so a source must be safe to call
+from that thread.
+
+Use `health_server_from_env(status)` to construct the server from `HEALTH_HTTP_*` settings; it returns `None`
+when `HEALTH_HTTP_ENABLED` is false. Pass `metrics_renderer=callable` to add `GET /metrics`; the callable
+receives the request `Accept` header and returns `(content_type, body_bytes)`. When no renderer is configured,
+`/metrics` behaves like any unknown path and returns `404 {"status": "not_found"}`.
 
 ```python
 from routemq.health import health_server_from_env
@@ -37,6 +44,27 @@ def metrics_renderer(accept: str | None) -> tuple[str, bytes]:
 
 server = health_server_from_env(status, metrics_renderer=metrics_renderer)
 ```
+
+### Queue worker source
+
+`routemq queue-work` passes its `QueueWorker` to `health_server_from_env()` after connection setup, starts the
+server before `QueueWorker.work()`, and stops it in a `finally` block when the loop returns or raises. It passes no
+metrics renderer, so a worker's `/metrics` returns `404`.
+
+`QueueWorker.readiness_payload()` blocks the request thread while `QueueManager.validate_connection()` runs for
+the requested connection on the worker's own event loop, for at most 3 seconds. `validate_connection(connection=None)`
+returns `"redis"` after a `PING` on the existing Redis client, or `"database"` after `SELECT 1` and a check for the
+`queue_jobs` and `queue_failed_jobs` tables. It raises when the check fails, and raises `RuntimeError` for any
+connection that is not the built-in `redis` or `database` driver. It never applies the Redis-to-database fallback
+that `get_driver()` uses. [Health Checks](../monitoring/health-checks.md#queue-worker-readiness) lists the
+readiness conditions and payload fields.
+
+### Container probe
+
+`python -m routemq.healthcheck` exits `0` only when the local `/ready` endpoint configured by `HEALTH_HTTP_*`
+answers `200` with `"status": "ready"`, and `1` otherwise. `routemq.healthcheck.probe_ready()` returns the same
+result as a `bool`, and `main()` returns the exit code. See
+[Health Checks](../monitoring/health-checks.md#container-probe) for how it loads settings and picks the address.
 
 ## MetricsRegistry
 

@@ -40,7 +40,7 @@ routemq queue-work --queue cleanup --sleep 30
 services:
   queue-worker-telemetry:
     build: .
-    command: ["uv", "run", "routemq", "queue-work", "--queue", "telemetry", "--connection", "redis", "--sleep", "1"]
+    command: ["/opt/venv/bin/routemq", "queue-work", "--queue", "telemetry", "--connection", "redis", "--sleep", "1"]
     environment:
       ENABLE_REDIS: "true"
       REDIS_HOST: redis
@@ -54,6 +54,12 @@ services:
     ports:
       - "6379:6379"
 ```
+
+`build: .` uses the repository root `Dockerfile`, which installs RouteMQ into `/opt/venv` at build time. Start
+workers from `/opt/venv/bin/routemq`; the image has no `uv` and installs nothing at startup. The image
+`HEALTHCHECK` runs `/opt/venv/bin/python -m routemq.healthcheck`, and each worker container serves its own `/ready`
+on `127.0.0.1:8080`. Worker readiness checks the requested queue backend on every probe; see
+[Health Checks](../monitoring/health-checks.md#queue-worker-readiness).
 
 Scale workers when one queue needs more throughput:
 
@@ -93,6 +99,12 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 ```
+
+With `HEALTH_HTTP_ENABLED=true`, every worker process binds its own `HEALTH_HTTP_HOST:HEALTH_HTTP_PORT`, and two
+processes cannot share one port. When the app and several workers run on one host under Supervisor or systemd,
+give each process a different `HEALTH_HTTP_PORT` (Supervisor `environment=HEALTH_HTTP_PORT="8081"`, systemd
+`Environment=HEALTH_HTTP_PORT=8081`), and run any probe for that process with the same value. Containers do not
+need this, because each container has its own loopback interface.
 
 ## Shutdown
 

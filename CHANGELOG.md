@@ -3,6 +3,7 @@
 ### Fix
 
 - **ci**: propose push-to-master benchmark baselines through a baseline-only PR from benchmarks/master-baseline instead of pushing to protected master
+- **docker**: run the image from a locked /opt/venv with redis, clickhouse, and prometheus extras and no runtime uv, probe app and queue-worker /ready instead of an import check, and smoke-test the built image in CI
 
 ### Chore
 
