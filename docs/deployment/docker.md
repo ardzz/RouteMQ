@@ -14,14 +14,17 @@ cd RouteMQ
 # Build the Docker image
 docker build -t routemq:latest .
 
-# Run with default settings
+# Run the image's default command: /opt/venv/bin/routemq --run
 docker run -d \
   --name routemq \
   -e MQTT_BROKER=test.mosquitto.org \
   -e MQTT_PORT=1883 \
-  -p 8080:8080 \
   routemq:latest
 ```
+
+The image enables the health server on `127.0.0.1:8080` inside the container, and its `HEALTHCHECK` probes it
+there, so no port needs publishing. `docker ps` reports `healthy` only after the app's `/ready` passes, which
+requires a completed startup and a connected MQTT broker.
 
 ### Docker Compose
 
@@ -40,53 +43,65 @@ docker compose down
 
 ## Dockerfile Explanation
 
-The RouteMQ Dockerfile uses a multi-stage approach optimized for production:
+The repository root [`Dockerfile`](../../Dockerfile) is the source of truth. This section summarizes it instead of
+repeating it; read the file for exact commands.
 
-```dockerfile
-FROM python:3.12-slim
+| Stage | What it does |
+|---|---|
+| `uv` | Supplies the pinned `uv` binary to `builder`. Nothing from this stage reaches the final image. |
+| `builder` | Installs build packages and runs `uv sync --locked --no-dev --no-editable --extra redis --extra clickhouse --extra prometheus` into `/opt/venv`. |
+| `runtime` | The final stage. Copies `/opt/venv` to the same path, copies `app/`, and runs as the non-root `app` user. |
 
-WORKDIR /app
-
-# Environment variables for Python
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    default-libmysqlclient-dev \
-    pkg-config \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install UV for fast dependency management
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
-
-# Copy dependency files and install dependencies
-COPY pyproject.toml uv.lock* ./
-COPY . .
-RUN uv sync
-
-# Create non-root user for security
-RUN useradd --create-home --shell /bin/bash app && \
-    chown -R app:app /app
-
-USER app
-
-# Health check
-RUN uv run python -c "import sys; sys.exit(0)"
-
-CMD ["uv", "run", "routemq", "run"]
-```
+The root `Dockerfile` has no `development` or `production` target. `docker build .` produces the `runtime` stage.
 
 ### Key Features
 
-- **Python 3.12**: Latest stable Python version
-- **UV Package Manager**: Fast dependency resolution and installation
-- **Non-root User**: Security best practice
-- **Optimized Layers**: Minimal image size with dependency caching
-- **Health Checks**: Built-in application health verification
+- Both `FROM` images, the Python 3.12 slim Debian base and the uv image, are literal references pinned by version
+  tag and `sha256` digest. Neither is selected through `ARG` or a floating `latest` tag.
+- The install is locked. The build copies `uv.lock` and runs `uv sync --locked`, so a missing lockfile, or one that
+  no longer matches `pyproject.toml`, fails the build.
+- The image holds RouteMQ and its base dependencies, which include the MySQL driver, plus the `redis`,
+  `clickhouse`, and `prometheus` extras used by `docker-compose.yml`. RouteMQ is installed as a regular package, not
+  an editable one. Development dependencies and the `cli` and `postgres` extras are not installed.
+- The `runtime` stage contains no `uv`. Containers start `/opt/venv/bin/routemq` directly and download or install
+  nothing at startup. `PATH` starts with `/opt/venv/bin`.
+- `/opt/venv` sits outside `/app`, so bind mounts at `/app/app`, `/app/bootstrap`, or all of `/app` leave the
+  environment in place. `PYTHONPATH=/app` puts mounted source ahead of the installed packages.
+- The copied source and `/opt/venv` stay root-owned. The `app` user owns only the `/app` directory itself, where a
+  generated `.env` can be written, and `/app/logs`.
+- The default command is `/opt/venv/bin/routemq --run`. The queue workers in `docker-compose.yml` replace it with
+  `/opt/venv/bin/routemq --queue-work --queue <name> --sleep <seconds>`.
+- `HEALTHCHECK` runs `/opt/venv/bin/python -m routemq.healthcheck` every 30 seconds (10-second timeout, 40-second
+  start period, 3 retries). The image sets `HEALTH_HTTP_ENABLED=true`, `HEALTH_HTTP_HOST=127.0.0.1`, and
+  `HEALTH_HTTP_PORT=8080`, so the app and each worker container serve their own `/ready`. See
+  [Health Checks](../monitoring/health-checks.md).
+- The `TIMEZONE` build argument (default `Asia/Jakarta`) sets `TZ` in both stages.
+
+### CI smoke test
+
+The required CI `build` job builds this image and then runs:
+
+```bash
+python scripts/smoke_docker.py --image routemq:ci-smoke
+```
+
+The script never builds or pulls the RouteMQ image; it tests a tag that already exists locally. It runs the image's
+default command and a queue worker against Mosquitto, Redis, and MySQL containers on a private `--internal` Docker
+network, with no published ports, no host `.env`, and no internet route, so any install or download at startup
+fails. First in Redis queue mode and then in database queue mode, it publishes MQTT messages that a fixture route
+turns into queued jobs and checks the MySQL rows the worker writes. It also checks that both containers stay ready
+after idling past the 30-second Redis worker metadata expiry, that the worker turns unhealthy and recovers when
+Redis or MySQL stops and restarts, that the app does the same for Mosquitto, and that both exit `0` on `SIGTERM`.
+Before that, it inspects the image for a non-root user, a virtualenv with the three extras, no development
+packages, and no `uv`.
+
+A missing prerequisite, a failed assertion, or a timeout fails the job; nothing is skipped. The script removes only
+the containers and network it created. To run it locally, build once and pass the tag:
+
+```bash
+docker build -t routemq:local .
+python scripts/smoke_docker.py --image routemq:local
+```
 
 ## Docker Compose Configuration
 
@@ -151,8 +166,9 @@ services:
           cpus: '0.5'
           memory: 256M
 
+    # Same readiness probe as the image HEALTHCHECK; exits 0 only when /ready reports ready
     healthcheck:
-      test: ["CMD", "python", "-c", "import paho.mqtt.client as mqtt; print('Health check passed')"]
+      test: ["CMD", "/opt/venv/bin/python", "-m", "routemq.healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -390,25 +406,29 @@ loglevel notice
 
 ### Development Setup
 
-```yaml
-# docker-compose.dev.yml
-version: '3.8'
+The root `Dockerfile` has no `development` target and installs no development dependencies. Run Redis, MySQL,
+and ClickHouse from `docker-compose.dev.yml` and run the app on the host:
 
-services:
-  routemq:
-    build: 
-      context: .
-      target: development
-    environment:
-      - LOG_LEVEL=DEBUG
-      - ENABLE_MYSQL=false  # Use SQLite for development
-    volumes:
-      - .:/app  # Mount entire project for live reloading
-    ports:
-      - "8000:8000"  # Expose for debugging
+```bash
+docker compose -f docker-compose.dev.yml up -d
+uv run routemq run
+```
+
+To run the app in a container too, start the optional `full` profile. It builds the same `runtime` image and
+bind-mounts `./app` and `./bootstrap` into `/app`. `PYTHONPATH=/app` loads the mounted source ahead of the
+installed packages, and the environment in `/opt/venv` is unaffected.
+
+```bash
+docker compose -f docker-compose.dev.yml --profile full up -d
 ```
 
 ### Production Setup
+
+Production uses the same `runtime` image. Build and tag it, then reference the tag:
+
+```bash
+docker build -t routemq:production .
+```
 
 ```yaml
 # docker-compose.prod.yml
@@ -433,71 +453,17 @@ services:
 
 ## Multi-Stage Dockerfile
 
-For optimized production builds:
-
-```dockerfile
-# Dockerfile.multi-stage
-FROM python:3.12-slim as base
-
-WORKDIR /app
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    default-libmysqlclient-dev \
-    pkg-config \
-    && rm -rf /var/lib/apt/lists/*
-
-# Development stage
-FROM base as development
-
-# Install UV
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
-
-# Install dependencies including dev dependencies
-COPY pyproject.toml uv.lock* ./
-RUN uv sync --dev
-
-COPY . .
-
-CMD ["uv", "run", "routemq", "run"]
-
-# Production stage
-FROM base as production
-
-# Install UV
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
-
-# Install only production dependencies
-COPY pyproject.toml uv.lock* ./
-RUN uv sync --no-dev
-
-# Copy application code
-COPY . .
-
-# Create non-root user
-RUN useradd --create-home --shell /bin/bash app && \
-    chown -R app:app /app
-
-USER app
-
-CMD ["uv", "run", "routemq", "run"]
-```
+The root `Dockerfile` is already multi-stage: `uv` and `builder` produce `/opt/venv`, and `runtime` is the image you
+run. See [Dockerfile Explanation](#dockerfile-explanation). There are no separate development and production
+stages to select with `--target`.
 
 ## Container Commands
 
 ### Build Commands
 
 ```bash
-# Build development image
-docker build -t routemq:dev --target development .
-
-# Build production image
-docker build -t routemq:prod --target production .
+# Build the runtime image
+docker build -t routemq:latest .
 
 # Build with specific version
 docker build -t routemq:v1.0.0 .
@@ -506,21 +472,25 @@ docker build -t routemq:v1.0.0 .
 ### Run Commands
 
 ```bash
-# Run development container
+# Run with the local checkout mounted over /app; the environment stays in /opt/venv
 docker run -it --rm \
   -v $(pwd):/app \
   -e LOG_LEVEL=DEBUG \
-  routemq:dev
+  routemq:latest
 
 # Run production container
 docker run -d \
   --name routemq-prod \
   -e MQTT_BROKER=mqtt.example.com \
   --restart unless-stopped \
-  routemq:prod
+  routemq:v1.0.0
+
+# Run a queue worker instead of the default app command
+docker run -d --name routemq-worker routemq:v1.0.0 \
+  /opt/venv/bin/routemq queue-work --queue default --sleep 3
 
 # Run with custom command
-docker run -it --rm routemq:prod uv run python -c "print('Hello')"
+docker run -it --rm routemq:latest /opt/venv/bin/python -c "print('Hello')"
 ```
 
 ### Management Commands
@@ -551,8 +521,8 @@ docker logs routemq
 # Check configuration
 docker run --rm routemq:latest env
 
-# Verify dependencies
-docker run --rm routemq:latest uv run python -c "import paho.mqtt.client"
+# Verify the runtime dependencies and extras import
+docker run --rm routemq:latest /opt/venv/bin/python -c "import paho.mqtt.client, redis, clickhouse_connect, prometheus_client"
 ```
 
 **Database Connection Issues**
@@ -563,7 +533,7 @@ docker run --rm --network routemq_routemq-network mysql:8.0 \
 
 # Check network connectivity
 docker run --rm --network routemq_routemq-network routemq:latest \
-  ping mysql
+  /opt/venv/bin/python -c "import socket; socket.create_connection(('mysql', 3306), timeout=5); print('mysql:3306 reachable')"
 ```
 
 **Memory Issues**
@@ -578,42 +548,30 @@ docker run -m 1g routemq:latest
 ### Health Checks
 
 ```bash
-# Check application health
-docker exec routemq python -c "
-import paho.mqtt.client as mqtt
-client = mqtt.Client()
-try:
-    client.connect('mosquitto', 1883)
-    print('MQTT connection: OK')
-except:
-    print('MQTT connection: FAILED')
-"
+# Run the image's readiness probe; exit code 0 means /ready passed
+docker exec routemq /opt/venv/bin/python -m routemq.healthcheck; echo $?
 
-# Check database health
-docker exec routemq python -c "
-from routemq.model import Model
-import asyncio
+# Read the readiness payload on the default health port
+docker exec routemq curl -s http://127.0.0.1:8080/ready
 
-async def test_db():
-    try:
-        session = await Model.get_session()
-        print('Database connection: OK')
-    except:
-        print('Database connection: FAILED')
-
-asyncio.run(test_db())
-"
+# Show the results Docker recorded for the image HEALTHCHECK
+docker inspect --format '{{json .State.Health}}' routemq
 ```
+
+App readiness covers startup and the MQTT connection; it does not check MySQL or Redis. A queue worker
+container's `/ready` checks the worker loop and its queue backend instead: Redis `PING`, or `SELECT 1` plus the
+queue tables for the database queue. To test MySQL directly, use the MySQL client shown under Database Connection
+Issues. Docker marks a failing container `unhealthy` but does not restart it; see
+[Health Checks](../monitoring/health-checks.md).
 
 ## Security Considerations
 
 ### Container Security
 
-```dockerfile
-# Use non-root user
-RUN useradd --create-home --shell /bin/bash app
-USER app
+The root image already runs as the non-root `app` system user without a login shell, and its source and
+`/opt/venv` are root-owned. Further restrictions are run-time options:
 
+```bash
 # Read-only file system (where possible)
 # docker run --read-only routemq:latest
 

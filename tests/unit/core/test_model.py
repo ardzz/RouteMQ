@@ -1,14 +1,49 @@
 import os
+from contextlib import asynccontextmanager
 from typing import Any, cast
 import unittest
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, Integer, String, create_engine, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.pool import NullPool
 
 from routemq import observability
 from routemq.model import Base, Model
+
+
+class _SyncBackedConnection:
+    def __init__(self, sync_connection: Any) -> None:
+        self.sync_connection = sync_connection
+        self.statements: list[str] = []
+
+    async def execute(self, statement: Any) -> Any:
+        self.statements.append(str(statement))
+        return self.sync_connection.execute(statement)
+
+    async def run_sync(self, fn: Any) -> Any:
+        return fn(self.sync_connection)
+
+
+class _SyncBackedEngine:
+    """Async engine stand-in backed by a real in-memory SQLite schema."""
+
+    def __init__(self, table_names: tuple[str, ...] = (), error: Exception | None = None) -> None:
+        self.engine = create_engine('sqlite://')
+        self.error = error
+        self.connections: list[_SyncBackedConnection] = []
+        with self.engine.begin() as connection:
+            for table_name in table_names:
+                connection.execute(text(f'CREATE TABLE {table_name} (id INTEGER PRIMARY KEY)'))
+
+    @asynccontextmanager
+    async def connect(self):
+        if self.error is not None:
+            raise self.error
+        with self.engine.connect() as sync_connection:
+            connection = _SyncBackedConnection(sync_connection)
+            self.connections.append(connection)
+            yield connection
 
 
 DEFAULT_ENGINE_KWARGS = {
@@ -366,6 +401,45 @@ class TestModelLifecycle(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(await Model.find(MissingSessionModel, 1))
             self.assertEqual(await Model.all(MissingSessionModel), [])
             self.assertIsNone(await Model.create(MissingSessionModel))
+
+    async def test_validate_connection_fails_when_database_is_not_configured(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, 'not configured'):
+            await Model.validate_connection(required_tables=('queue_jobs',))
+
+    async def test_validate_connection_runs_select_one_and_accepts_present_required_tables(self) -> None:
+        engine = _SyncBackedEngine(('queue_jobs', 'queue_failed_jobs', 'users'))
+        self.addCleanup(engine.engine.dispose)
+        Model._engine = engine
+        Model._is_enabled = True
+
+        await Model.validate_connection(required_tables=('queue_jobs', 'queue_failed_jobs'))
+
+        self.assertEqual(len(engine.connections), 1)
+        self.assertEqual(engine.connections[0].statements, ['SELECT 1'])
+
+    async def test_validate_connection_reports_every_missing_required_table(self) -> None:
+        engine = _SyncBackedEngine(('users',))
+        self.addCleanup(engine.engine.dispose)
+        Model._engine = engine
+        Model._is_enabled = True
+
+        with self.assertRaises(RuntimeError) as raised:
+            await Model.validate_connection(required_tables=('queue_jobs', 'queue_failed_jobs'))
+
+        self.assertIn('queue_jobs', str(raised.exception))
+        self.assertIn('queue_failed_jobs', str(raised.exception))
+
+    async def test_validate_connection_wraps_connection_failure(self) -> None:
+        error = OSError('connection refused')
+        engine = _SyncBackedEngine(error=error)
+        self.addCleanup(engine.engine.dispose)
+        Model._engine = engine
+        Model._is_enabled = True
+
+        with self.assertRaisesRegex(RuntimeError, 'Unable to validate') as raised:
+            await Model.validate_connection()
+
+        self.assertIs(raised.exception.__cause__, error)
 
 
 if __name__ == '__main__':

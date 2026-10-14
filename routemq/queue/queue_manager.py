@@ -3,7 +3,7 @@ import os
 from collections.abc import Callable
 from importlib import import_module
 from importlib.metadata import entry_points
-from typing import Optional
+from typing import Any, Optional, cast
 
 from routemq.job import Job
 from routemq.queue.queue_driver import QueueDriver
@@ -78,6 +78,25 @@ class QueueManager:
             raise TypeError(f"Queue driver factory for '{connection}' did not return a QueueDriver instance")
 
         return driver
+
+    async def validate_connection(self, connection: Optional[str] = None) -> str:
+        """Validate the requested built-in queue backend without Redis-to-database fallback."""
+        self._ensure_driver_registry_loaded()
+        requested = connection or self._default_connection
+        factory = self._driver_factories.get(requested)
+
+        if requested == 'redis' and factory is RedisQueue:
+            client = RedisManager().get_client()
+            if client is None:
+                raise RuntimeError('Redis queue connection is not available')
+            await cast(Any, client).ping()
+            return 'redis'
+
+        if requested == 'database' and factory is DatabaseQueue:
+            await Model.validate_connection(required_tables=('queue_jobs', 'queue_failed_jobs'))
+            return 'database'
+
+        raise RuntimeError(f"Readiness validation is not supported for queue connection '{requested}'")
 
     @classmethod
     def register_driver(cls, name: str, factory: type[QueueDriver] | QueueDriverFactory) -> None:

@@ -245,6 +245,7 @@ def _cmd_queue_work(
 ) -> None:
     """Start the queue worker to process background jobs."""
     import asyncio
+    from routemq.health import health_server_from_env
     from routemq.queue.queue_worker import QueueWorker
 
     # Initialize the application to setup database/redis connections
@@ -255,6 +256,7 @@ def _cmd_queue_work(
         """Run the queue worker with proper initialization and cleanup."""
         # Initialize connections
         await app._initialize_connections()
+        health_server = None
 
         try:
             # Create and start the worker
@@ -267,6 +269,9 @@ def _cmd_queue_work(
                 max_tries=max_tries,
                 timeout=timeout,
             )
+            health_server = health_server_from_env(worker)
+            if health_server is not None:
+                health_server.start()
 
             logger.info(
                 'Starting queue worker',
@@ -276,6 +281,8 @@ def _cmd_queue_work(
             await worker.work()
 
         finally:
+            if health_server is not None:
+                health_server.stop()
             # Cleanup connections
             await app._cleanup_connections()
 

@@ -1,11 +1,20 @@
 # RELEASE_TOKEN Rotation Procedure
 
 ## Purpose
-`RELEASE_TOKEN` is a fine-grained GitHub PAT used by `.github/workflows/release.yml` 
-specifically for the `gh pr create`/`gh pr merge` step. This is necessary because 
-GitHub deliberately suppresses CI triggering on PRs created by `GITHUB_TOKEN`.
+`RELEASE_TOKEN` is a fine-grained GitHub PAT used by `.github/workflows/release.yml` for the
+release tag push, the bump PR `gh pr create`/`gh pr merge` step, and package publish dispatch.
+`.github/workflows/bench.yml` uses it to update the `benchmarks/master-baseline` branch and to
+create or edit the benchmark baseline PR.
 
-## Current Token (do not commit value here)
+Events created with a PAT trigger matching workflows automatically, including required CI on the
+bump and baseline PRs. With `GITHUB_TOKEN`, pushes do not trigger `push` workflows, and PRs it
+creates or updates start `pull_request` runs only after a user with write access approves them.
+
+## Historical Token Record (do not commit value here)
+Recorded when the token was created. The recorded expiry has passed, and this document does not
+reflect an inspection of the live secret; check the PAT settings for the current owner, expiry, and
+permissions.
+
 - Owner: ardzz (personal account)
 - Created: 2026-05-27 (approx)
 - Expires: 2026-08-25 (90 days from creation)

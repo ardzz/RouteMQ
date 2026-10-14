@@ -19,7 +19,7 @@ on:
 
 concurrency:
   group: bench-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   BENCH_REGRESSION_THRESHOLD_PCT: 20
@@ -29,11 +29,12 @@ jobs:
   bench:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
@@ -89,20 +90,52 @@ jobs:
               sys.exit(1)
           print(f'Benchmark mean regressions are within {threshold:.1f}% gate.')
           PY
-      - name: Update master baseline
+      - name: Propose master baseline PR
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         env:
-          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          BEFORE_SHA: ${{ github.event.before }}
         run: |
+          set -euo pipefail
+          BRANCH=benchmarks/master-baseline
+          BASELINE=benchmarks/baselines/master.json
+          RANGE_BASE=$BEFORE_SHA
+          if [[ $BEFORE_SHA =~ ^0+$ ]]; then
+            RANGE_BASE=$(git hash-object -t tree /dev/null)
+          fi
+          CHANGED=$(git diff --no-renames --name-only "$RANGE_BASE" "$GITHUB_SHA")
+          if [ "$CHANGED" = "$BASELINE" ]; then
+            echo "Push ${BEFORE_SHA}..${GITHUB_SHA} only changes ${BASELINE}; skipping baseline proposal."
+            exit 0
+          fi
+          gh auth setup-git
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH" "$GITHUB_SHA"
           mkdir -p benchmarks/baselines
-          cp output.json benchmarks/baselines/master.json
-          if git diff --quiet benchmarks/baselines/master.json; then
+          cp output.json "$BASELINE"
+          git add -- "$BASELINE"
+          if git diff --cached --quiet -- "$BASELINE"; then
             echo "Benchmark baseline is unchanged."
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add benchmarks/baselines/master.json
-          git commit -m "chore(benchmarks): update master baseline [skip ci]"
-          REPO_URL="https://x-access-token:${RELEASE_TOKEN}@github.com/${{ github.repository }}.git"
-          git push "${REPO_URL}" HEAD:master
+          git commit -m "chore(benchmarks): update master baseline"
+          git fetch --no-tags origin +refs/heads/master:refs/remotes/origin/master
+          MASTER_SHA=$(git rev-parse --verify refs/remotes/origin/master)
+          if [ "$MASTER_SHA" != "$GITHUB_SHA" ]; then
+            echo "master moved from ${GITHUB_SHA} to ${MASTER_SHA}; skipping superseded baseline proposal."
+            exit 0
+          fi
+          LEASE=$(git ls-remote origin "refs/heads/${BRANCH}" | cut -f1)
+          git push --force-with-lease="refs/heads/${BRANCH}:${LEASE}" origin "HEAD:refs/heads/${BRANCH}"
+          TITLE="chore(benchmarks): update master baseline"
+          BODY="Benchmark baseline measured on master commit ${GITHUB_SHA}.
+
+          Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          PR_NUMBER=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --base master --head "$BRANCH" \
+            --json number,isCrossRepository --jq '.[] | select(.isCrossRepository | not) | .number')
+          if [ -z "$PR_NUMBER" ]; then
+            gh pr create --repo "$GITHUB_REPOSITORY" --base master --head "$BRANCH" --title "$TITLE" --body "$BODY"
+          else
+            gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY"
+          fi

@@ -1,3 +1,9 @@
+## v0.25.2 (2026-10-14)
+
+### Fix
+
+- **docker**: run locked non-root images with live readiness (#126)
+
 ## v0.25.1 (2026-10-13)
 
 ### Fix

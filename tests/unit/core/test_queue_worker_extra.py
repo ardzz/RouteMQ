@@ -45,6 +45,11 @@ class _WorkerSignalGuard(unittest.IsolatedAsyncioTestCase):
         with patch('signal.signal'):
             return QueueWorker(**kwargs)
 
+    def _use_driver(self, worker: QueueWorker, driver: Any) -> None:
+        patcher = patch.object(worker.queue_manager, 'get_driver', MagicMock(return_value=driver))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
 
 class QueueWorkerControlsTests(_WorkerSignalGuard):
     def test_worker_reads_retry_backoff_settings(self) -> None:
@@ -458,7 +463,7 @@ class QueueWorkerWorkLoopTests(_WorkerSignalGuard):
         worker = self._make_worker(max_jobs=99, sleep=0)
         driver = MagicMock()
         driver.pop = AsyncMock()
-        worker.queue_manager.get_driver = MagicMock(return_value=driver)
+        self._use_driver(worker, driver)
         worker.should_quit = True
 
         await worker.work()
@@ -478,7 +483,7 @@ class QueueWorkerWorkLoopTests(_WorkerSignalGuard):
             return None
 
         worker.paused = True
-        worker.queue_manager.get_driver = MagicMock(return_value=driver)
+        self._use_driver(worker, driver)
         # After one sleep cycle, unpause and stop
         original_sleep = worker.sleep
         worker.sleep = 0
@@ -513,7 +518,7 @@ class QueueWorkerWorkLoopTests(_WorkerSignalGuard):
             return None
 
         driver.pop = AsyncMock(side_effect=pop_side_effect)
-        worker.queue_manager.get_driver = MagicMock(return_value=driver)
+        self._use_driver(worker, driver)
 
         await worker.work()
 
@@ -533,7 +538,7 @@ class QueueWorkerWorkLoopTests(_WorkerSignalGuard):
             return None
 
         driver.pop = AsyncMock(side_effect=pop_side_effect)
-        worker.queue_manager.get_driver = MagicMock(return_value=driver)
+        self._use_driver(worker, driver)
 
         with self.assertLogs('RouteMQ.QueueWorker', level='ERROR') as logs:
             await worker.work()

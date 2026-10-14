@@ -2,6 +2,8 @@ import os
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from routemq.model import Model
+from routemq.queue.database_queue import DatabaseQueue
 from routemq.queue.queue_driver import QueueDriver
 from routemq.queue.queue_manager import QueueManager
 
@@ -37,6 +39,26 @@ class FakeEntryPoint:
 
     def load(self):
         return self.loaded
+
+
+class PingClient:
+    def __init__(self, error: Exception | None = None) -> None:
+        self.error = error
+        self.pings = 0
+
+    async def ping(self) -> bool:
+        self.pings += 1
+        if self.error is not None:
+            raise self.error
+        return True
+
+
+def _redis_manager(client: PingClient | None) -> MagicMock:
+    redis_manager = MagicMock()
+    redis_manager.is_enabled.return_value = client is not None
+    redis_manager.get_client.return_value = client
+    redis_manager.initialize = AsyncMock(return_value=True)
+    return redis_manager
 
 
 class QueueManagerExtraTestCase(unittest.IsolatedAsyncioTestCase):
@@ -190,6 +212,64 @@ class QueueManagerExtraTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(await driver.retry_failed_job('failed:emails:1'))
         self.assertFalse(await driver.forget_failed_job('failed:emails:1'))
         self.assertEqual(await driver.flush_failed_jobs('emails'), 0)
+
+    async def test_validate_redis_pings_existing_client_without_reinitializing_pool(self) -> None:
+        manager = QueueManager()
+        client = PingClient()
+        redis_manager = _redis_manager(client)
+
+        with patch('routemq.queue.queue_manager.RedisManager', return_value=redis_manager):
+            results = [await manager.validate_connection('redis'), await manager.validate_connection('redis')]
+
+        self.assertEqual(results, ['redis', 'redis'])
+        self.assertEqual(client.pings, 2)
+        redis_manager.initialize.assert_not_awaited()
+
+    async def test_validate_requested_redis_fails_even_when_database_fallback_is_healthy(self) -> None:
+        manager = QueueManager()
+
+        with (
+            patch('routemq.queue.queue_manager.RedisManager', return_value=_redis_manager(None)),
+            patch.object(Model, '_is_enabled', True),
+            patch.object(Model, 'validate_connection', new_callable=AsyncMock) as database_validation,
+        ):
+            delivery_driver = manager.get_driver('redis')
+            with self.assertRaisesRegex(RuntimeError, 'Redis queue connection is not available'):
+                await manager.validate_connection('redis')
+
+        self.assertIsInstance(delivery_driver, DatabaseQueue)
+        database_validation.assert_not_awaited()
+
+    async def test_validate_redis_propagates_ping_failure(self) -> None:
+        manager = QueueManager()
+        error = ConnectionError('redis refused connection')
+
+        with patch('routemq.queue.queue_manager.RedisManager', return_value=_redis_manager(PingClient(error))):
+            with self.assertRaises(ConnectionError) as raised:
+                await manager.validate_connection('redis')
+
+        self.assertIs(raised.exception, error)
+
+    async def test_validate_fails_closed_for_custom_driver(self) -> None:
+        manager = QueueManager()
+        QueueManager.register_driver('fake', FakeQueueDriver)
+
+        with patch('routemq.queue.queue_manager.RedisManager') as redis_manager:
+            with self.assertRaisesRegex(RuntimeError, "not supported for queue connection 'fake'"):
+                await manager.validate_connection('fake')
+
+        redis_manager.assert_not_called()
+
+    async def test_validate_fails_closed_when_builtin_name_is_registered_to_custom_driver(self) -> None:
+        manager = QueueManager()
+        QueueManager.register_driver('redis', FakeQueueDriver)
+        client = PingClient()
+
+        with patch('routemq.queue.queue_manager.RedisManager', return_value=_redis_manager(client)):
+            with self.assertRaisesRegex(RuntimeError, "not supported for queue connection 'redis'"):
+                await manager.validate_connection('redis')
+
+        self.assertEqual(client.pings, 0)
 
 
 if __name__ == '__main__':

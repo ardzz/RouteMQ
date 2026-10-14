@@ -22,9 +22,14 @@ Add a dedicated `bench` CI job that runs on pull requests and on pushes to `mast
 results against the committed `benchmarks/baselines/master.json` baseline and fails on a 20% mean
 regression gate.
 
-On push-to-master, refresh the baseline through a `RELEASE_TOKEN` personal access token using the same
-downstream-workflow pattern as the release tag push. Keep `benchmarks/` excluded from coverage so
-performance probes do not dilute test coverage accounting.
+On push-to-master, propose the refreshed baseline instead of pushing to protected `master`. The workflow
+commits the fresh JSON on `benchmarks/master-baseline` with the measured `master` commit as its parent,
+then opens or updates a baseline-only pull request whose body names the measured SHA and workflow run.
+A `RELEASE_TOKEN` personal access token publishes the branch and pull request so required CI runs on
+them; the workflow adds no CI skip directive and never merges the pull request. It skips superseded
+measurements and does not propose again for push ranges that change only the baseline. Pull requests,
+including baseline pull requests, compare against the baseline committed on `origin/master`. Keep
+`benchmarks/` excluded from coverage so performance probes do not dilute test coverage accounting.
 
 Benchmark discovery remains explicit: `pytest benchmarks/ --benchmark-only` collects the benchmark suite,
 while the normal `python run_tests.py` path continues to use `unittest.discover` and does not collect
@@ -42,7 +47,8 @@ benchmark tests.
 ### Negative
 
 - CI now has a dedicated performance job with normal runtime variability.
-- Baseline refresh requires a token that can trigger downstream workflows after protected-branch merges.
+- Each baseline refresh needs a personal access token so its branch and pull request trigger required CI,
+  and waits for a maintainer to review and merge the baseline pull request.
 - A 20% mean gate catches large regressions but does not replace deeper profiling or long-term trend
   analysis.
 

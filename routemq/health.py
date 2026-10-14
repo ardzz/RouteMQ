@@ -7,7 +7,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any
+from typing import Any, Protocol
 
 from .settings import load_health_http_settings
 
@@ -40,6 +40,14 @@ class HealthStatus:
         return (200 if ready else 503), payload
 
 
+class HealthPayloadSource(Protocol):
+    """Status object served by HealthServer; payloads are computed per request on the HTTP thread."""
+
+    def health_payload(self) -> tuple[int, dict[str, Any]]: ...
+
+    def readiness_payload(self) -> tuple[int, dict[str, Any]]: ...
+
+
 MetricsRenderer = Callable[[str | None], tuple[str, bytes]]
 
 
@@ -48,7 +56,7 @@ class HealthServer:
 
     def __init__(
         self,
-        status: HealthStatus,
+        status: HealthPayloadSource,
         host: str = '127.0.0.1',
         port: int = 8080,
         metrics_renderer: MetricsRenderer | None = None,
@@ -122,7 +130,7 @@ class HealthServer:
 
 
 def health_server_from_env(
-    status: HealthStatus,
+    status: HealthPayloadSource,
     metrics_renderer: MetricsRenderer | None = None,
     metrics_path: str = '/metrics',
 ) -> HealthServer | None:
