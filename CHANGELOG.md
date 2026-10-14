@@ -1,13 +1,8 @@
-## Unreleased
+## v0.25.2 (2026-10-14)
 
 ### Fix
 
-- **ci**: propose push-to-master benchmark baselines through a baseline-only PR from benchmarks/master-baseline instead of pushing to protected master
-- **docker**: run the image from a locked /opt/venv with redis, clickhouse, and prometheus extras and no runtime uv, probe app and queue-worker /ready instead of an import check, and smoke-test the built image in CI
-
-### Chore
-
-- **dependencies**: group Python and GitHub Actions patch/minor updates, separate security batches, and leave major, critical database-driver, and Docker migrations ungrouped for separate review
+- **docker**: run locked non-root images with live readiness (#126)
 
 ## v0.25.1 (2026-10-13)
 
