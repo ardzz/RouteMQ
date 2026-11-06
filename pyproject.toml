@@ -179,6 +179,7 @@ quote-style = "single"
 indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
+exclude = ["*.md"]
 
 [tool.pytest.ini_options]
 python_functions = ["test_*", "bench_*"]

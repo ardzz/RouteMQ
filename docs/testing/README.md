@@ -24,6 +24,19 @@ Run Docker-backed integration tests explicitly:
 RUN_INTEGRATION_TESTS=1 uv run python -m unittest tests.integration.test_queue_backends tests.integration.test_mqtt_end_to_end
 ```
 
+## Linting and Formatting
+
+Run the same checks as CI:
+
+```bash
+uv run --locked ruff check .
+uv run --locked ruff format --check .
+```
+
+Formatting covers Python (`.py`), stub (`.pyi`), and notebook (`.ipynb`) files, including those in documentation directories.
+Ruff 0.16 introduced default formatting of Python code blocks in Markdown; RouteMQ intentionally does not adopt that scope here.
+The formatter-only setting `exclude = ["*.md"]` under `[tool.ruff.format]` leaves linting and CI commands unchanged and excludes no directories or Python files.
+
 ## Writing Tests
 
 Create your tests in the `tests/` directory:
