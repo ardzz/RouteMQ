@@ -6,9 +6,7 @@ from typing import Any
 
 from routemq.model import Model
 from routemq.queue.database_queue import DatabaseQueue
-from routemq.queue.redis_queue import RedisQueue
-from routemq.redis_manager import RedisManager
-from tests.integration.helpers import DockerIntegrationTestCase
+from tests.integration.helpers import DockerIntegrationTestCase, require_integration_dependency
 
 
 class RedisQueueIntegrationTests(DockerIntegrationTestCase, unittest.IsolatedAsyncioTestCase):
@@ -17,16 +15,25 @@ class RedisQueueIntegrationTests(DockerIntegrationTestCase, unittest.IsolatedAsy
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()
-        redis_container = import_module('testcontainers.redis').RedisContainer
-        cls.redis_container = redis_container('redis:7')
+        require_integration_dependency(cls.__name__, 'redis')
+        docker_container = require_integration_dependency(cls.__name__, 'testcontainers.core.container').DockerContainer
+        exec_wait_strategy = require_integration_dependency(
+            cls.__name__, 'testcontainers.core.wait_strategies'
+        ).ExecWaitStrategy
+        cls.redis_container = (
+            docker_container('redis:7')
+            .with_exposed_ports(6379)
+            .waiting_for(exec_wait_strategy(['redis-cli', 'ping']).with_startup_timeout(30))
+        )
         cls.redis_container.start()
         cls.addClassCleanup(cls.redis_container.stop)
 
     def setUp(self) -> None:
+        redis_manager = import_module('routemq.redis_manager').RedisManager
         self._env = dict(os.environ)
-        self._redis_instance = RedisManager._instance
-        self._redis_pool = RedisManager._redis_pool
-        self._redis_client = RedisManager._redis_client
+        self._redis_instance = redis_manager._instance
+        self._redis_pool = redis_manager._redis_pool
+        self._redis_client = redis_manager._redis_client
 
         os.environ['ENABLE_REDIS'] = 'true'
         os.environ['REDIS_HOST'] = self.redis_container.get_container_host_ip()
@@ -34,25 +41,26 @@ class RedisQueueIntegrationTests(DockerIntegrationTestCase, unittest.IsolatedAsy
         os.environ['REDIS_DB'] = '0'
         os.environ.pop('REDIS_PASSWORD', None)
         os.environ.pop('REDIS_USERNAME', None)
-        RedisManager._instance = None
-        RedisManager._redis_pool = None
-        RedisManager._redis_client = None
+        redis_manager._instance = None
+        redis_manager._redis_pool = None
+        redis_manager._redis_client = None
 
     async def asyncTearDown(self) -> None:
-        await RedisManager().disconnect()
+        await import_module('routemq.redis_manager').RedisManager().disconnect()
 
     def tearDown(self) -> None:
-        RedisManager._instance = self._redis_instance
-        RedisManager._redis_pool = self._redis_pool
-        RedisManager._redis_client = self._redis_client
+        redis_manager = import_module('routemq.redis_manager').RedisManager
+        redis_manager._instance = self._redis_instance
+        redis_manager._redis_pool = self._redis_pool
+        redis_manager._redis_client = self._redis_client
         os.environ.clear()
         os.environ.update(self._env)
 
     async def test_redis_queue_push_pop_delete_round_trip(self) -> None:
-        manager = RedisManager()
+        manager = import_module('routemq.redis_manager').RedisManager()
         self.assertTrue(await manager.initialize())
 
-        queue = RedisQueue()
+        queue = import_module('routemq.queue.redis_queue').RedisQueue()
         await queue.push('{"job": "redis"}', queue='integration')
 
         self.assertEqual(await queue.size('integration'), 1)
@@ -71,7 +79,7 @@ class DatabaseQueueIntegrationTests(DockerIntegrationTestCase, unittest.Isolated
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()
-        mysql_container = import_module('testcontainers.mysql').MySqlContainer
+        mysql_container = require_integration_dependency(cls.__name__, 'testcontainers.mysql').MySqlContainer
         cls.mysql_container = mysql_container('mysql:8.0', dialect='aiomysql')
         cls.mysql_container.start()
         cls.addClassCleanup(cls.mysql_container.stop)

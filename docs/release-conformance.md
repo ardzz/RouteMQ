@@ -13,6 +13,7 @@ result depends on GitHub or an external service.
 | OpenSSF Best Practices | Operator action pending | BadgeApp submission fields in this document | n/a |
 | PyPI trusted publishing | Active | [`publish.yml`](../.github/workflows/publish.yml), [`publish-test.yml`](../.github/workflows/publish-test.yml), and the `pypi` / `testpypi` GitHub environments | [PyPI project](https://pypi.org/project/routemq/) |
 | SemVer | Pre-1.0 contract | [`pyproject.toml`](../pyproject.toml) version metadata and this document's Versioning section | continuously |
+| Production-Proven v1 evidence | Required for 1.0.0, not yet achieved | [ADR-0011](adr/0011-production-proven-v1.md) requires the Evidence Ladder, three independent 24-hour qualification runs, and an external stable deployment | required before a production-proven v1 claim |
 
 ## Versioning
 
@@ -27,6 +28,12 @@ Path to 1.0.0:
 - Sprint 15 (OpenSSF Best Practices badge) submitted and passing
 - At least one external production deployment reported and stable
 - 90-day vulnerability response SLA published and met for any reported issue
+
+The required Production-Proven v1 evidence contract is recorded in
+[ADR-0011](adr/0011-production-proven-v1.md). It defines the stable boundary,
+qualification protocol, acceptance thresholds, evidence ladder, and RC API
+freeze rule. RouteMQ must produce that evidence before making a
+production-proven v1 claim.
 
 ## PyPI publishing
 

@@ -16,12 +16,18 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import statistics
 import time
 from importlib import import_module
 from typing import Any
 
 from routemq.model import Model
+from tests.integration.helpers import (
+    integration_tests_enabled,
+    require_docker_integration,
+    require_integration_dependency,
+)
 
 POOL_SIZES = (5, 10, 20)
 MAX_OVERFLOWS = (0, 10, 20)
@@ -105,12 +111,17 @@ def _select_default(cells: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _run_matrix() -> dict[str, Any]:
-    os = import_module('os')
-    if os.environ.get('RUN_INTEGRATION_TESTS', '').lower() not in {'1', 'true', 'yes', 'on'}:
-        raise SystemExit('Set RUN_INTEGRATION_TESTS=1 (and ensure Docker is running) to sweep the pool matrix.')
+    if not integration_tests_enabled():
+        raise SystemExit(
+            'Set RUN_INTEGRATION_TESTS=1 or required (and ensure Docker is running) to sweep the pool matrix.'
+        )
+
+    require_docker_integration('database queue pool matrix')
 
     os.environ['ENABLE_MYSQL'] = 'true'
-    mysql_container_cls = import_module('testcontainers.mysql').MySqlContainer
+    mysql_container_cls = require_integration_dependency(
+        'database queue pool matrix', 'testcontainers.mysql'
+    ).MySqlContainer
     container = mysql_container_cls('mysql:8.0', dialect='aiomysql')
     container.start()
     cells: list[dict[str, Any]] = []

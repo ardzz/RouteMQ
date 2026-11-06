@@ -207,18 +207,20 @@ class WorkerProcessOnMessageTests(unittest.TestCase):
             return None
 
         coro = noop()
+        client = MagicMock()
         fake_future = MagicMock()
         fake_future.result.side_effect = RuntimeError('dispatch failed')
         fake_future.add_done_callback.side_effect = lambda callback: callback(fake_future)
 
         with (
-            patch.object(worker, '_dispatch_mqtt_message', return_value=coro),
+            patch.object(worker, '_dispatch_mqtt_message', new=MagicMock(return_value=coro)) as dispatch,
             patch('routemq.worker_manager.asyncio.run_coroutine_threadsafe', return_value=fake_future),
             self.assertLogs('RouteMQ.Worker-0', level='ERROR') as logs,
         ):
-            worker._schedule_dispatch('plain/topic', {}, MagicMock(), {})
+            worker._schedule_dispatch('plain/topic', {}, client, {})
 
         coro.close()
+        dispatch.assert_called_once_with('plain/topic', {}, client, {})
         self.assertIn('dispatch failed', logs.output[0])
         self.assertIsNotNone(logs.records[0].exc_info)
 

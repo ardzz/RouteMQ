@@ -1,7 +1,7 @@
 import asyncio
 import unittest
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from routemq.observability import register_span_hook, register_trace_hook
 from routemq.tsdb.clickhouse_driver import ClickHouseDriver
@@ -307,7 +307,10 @@ class ClickHouseDriverUnitTests(unittest.IsolatedAsyncioTestCase):
         client = _FakeAsyncClient()
         get_async = AsyncMock(return_value=client)
         driver = ClickHouseDriver(host='h', port=8123, database='db', username='u', password='p', async_insert=True)
-        with patch('routemq.tsdb.clickhouse_driver.clickhouse_connect.get_async_client', new=get_async):
+        with (
+            patch('routemq.tsdb.clickhouse_driver.CLICKHOUSE_AVAILABLE', True),
+            patch('routemq.tsdb.clickhouse_driver.clickhouse_connect', MagicMock(get_async_client=get_async)),
+        ):
             await driver.connect()
         self.assertIs(driver._client, client)
         _args, kwargs = get_async.call_args
@@ -362,7 +365,10 @@ class TSDBManagerLifecycleTests(unittest.IsolatedAsyncioTestCase):
 
     def _make_manager(self, env: dict[str, str]) -> TSDBManager:
         TSDBManager._instance = None
-        with patch.dict('os.environ', env, clear=False):
+        with (
+            patch.dict('os.environ', env, clear=False),
+            patch('routemq.tsdb.tsdb_manager.CLICKHOUSE_AVAILABLE', True),
+        ):
             return TSDBManager()
 
     def test_init_reads_env_when_enabled(self) -> None:

@@ -89,9 +89,10 @@ class RedisQueuePushTests(_RedisQueueBase):
 
 
 class RedisQueuePopTests(_RedisQueueBase):
-    async def test_disabled_redis_returns_none(self) -> None:
+    async def test_disabled_redis_raises_on_pop(self) -> None:
         driver = self._make_driver(enabled=False)
-        self.assertIsNone(await driver.pop('q'))
+        with self.assertRaisesRegex(RuntimeError, 'Redis is disabled. Enable it to use RedisQueue.'):
+            await driver.pop('q')
 
     async def test_empty_queue_returns_none(self) -> None:
         client = MagicMock()
@@ -115,12 +116,17 @@ class RedisQueuePopTests(_RedisQueueBase):
         self.assertEqual(result['attempts'], 3)
         self.assertEqual(result['id'], 'q:1')
 
-    async def test_pop_swallows_exceptions_and_returns_none(self) -> None:
+    async def test_pop_raises_contextual_runtime_error_when_redis_is_unavailable(self) -> None:
+        original_error = ConnectionError('redis down')
         client = MagicMock()
-        client.zrangebyscore = AsyncMock(side_effect=RuntimeError('boom'))
-        client.rpoplpush = AsyncMock(side_effect=RuntimeError('boom'))
+        client.zrangebyscore = AsyncMock(return_value=[])
+        client.rpoplpush = AsyncMock(side_effect=original_error)
         driver = self._make_driver(client=client)
-        self.assertIsNone(await driver.pop('q'))
+
+        with self.assertRaisesRegex(RuntimeError, 'Failed to pop job from Redis queue: redis down') as raised:
+            await driver.pop('q')
+
+        self.assertIs(raised.exception.__cause__, original_error)
 
 
 class RedisQueueDelayedMigrationTests(_RedisQueueBase):

@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from sqlalchemy import Column, Integer, String, Text, DateTime, Index
+from sqlalchemy.orm import Mapped, mapped_column
 
 from routemq.model import Model
 
@@ -9,7 +10,7 @@ class QueueJob(Model):
 
     __tablename__ = 'queue_jobs'
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     queue = Column(String(255), nullable=False, index=True, default='default')
     payload = Column(Text, nullable=False)
     attempts = Column(Integer, nullable=False, default=0)

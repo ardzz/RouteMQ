@@ -1,4 +1,5 @@
 import asyncio
+import importlib
 import unittest
 from collections import namedtuple
 from datetime import datetime
@@ -334,6 +335,14 @@ class TestAsyncMagics(unittest.TestCase):
 
 
 class TestRichFallback(unittest.TestCase):
+    def test_module_import_does_not_patch_default_event_loop(self):
+        import routemq.tinker as tinker
+
+        with patch.object(tinker.nest_asyncio, 'apply') as apply:
+            importlib.reload(tinker)
+
+        apply.assert_not_called()
+
     def test_module_imports_when_rich_present_or_absent(self):
         import routemq.tinker
 

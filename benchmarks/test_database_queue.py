@@ -2,41 +2,37 @@ from __future__ import annotations
 
 import asyncio
 import os
+import unittest
 from importlib import import_module
 from typing import Any
 
 import pytest
 
 from routemq.model import Model
+from tests.integration.helpers import require_docker_integration, require_integration_dependency
 
 _DOCKER_GATE_REASON = 'Set RUN_INTEGRATION_TESTS=1 and ensure Docker is available to run database queue benchmarks.'
 
 
-def _integration_enabled() -> bool:
-    return os.environ.get('RUN_INTEGRATION_TESTS', '').lower() in {'1', 'true', 'yes', 'on'}
-
-
 def _docker_available() -> bool:
     try:
-        docker = import_module('docker')
-        client = docker.from_env(timeout=3)
-        client.ping()
-        client.close()
-        return True
-    except Exception:
-        # Audit Accept: any docker probe failure means benchmarks skip; not a test failure.
+        require_docker_integration('database queue benchmarks')
+    except unittest.SkipTest:
         return False
+    return True
 
 
 pytestmark = pytest.mark.skipif(
-    not (_integration_enabled() and _docker_available()),
+    not _docker_available(),
     reason=_DOCKER_GATE_REASON,
 )
 
 
 @pytest.fixture(scope='module')
 def mysql_url() -> Any:
-    mysql_container_cls = import_module('testcontainers.mysql').MySqlContainer
+    mysql_container_cls = require_integration_dependency(
+        'database queue benchmarks', 'testcontainers.mysql'
+    ).MySqlContainer
     container = mysql_container_cls('mysql:8.0', dialect='aiomysql')
     container.start()
     try:

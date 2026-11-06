@@ -10,6 +10,7 @@ from .retry import BackoffConfig, bounded_exponential_backoff
 logger = logging.getLogger('RouteMQ.Job')
 
 _DENY_SETATTR: Set[str] = {'_allowed_classes'}
+_JOB_SCHEMA_VERSION = 'routemq.job.v1'
 
 
 class Job(ABC):
@@ -88,6 +89,7 @@ class Job(ABC):
             JSON string representation of the job
         """
         job_data = {
+            'schema_version': _JOB_SCHEMA_VERSION,
             'class': f'{self.__class__.__module__}.{self.__class__.__name__}',
             'data': self.get_data(),
             'observability': self.get_observability_context(),
@@ -181,6 +183,9 @@ class Job(ABC):
                 ROUTEMQ_JOB_ALLOWLIST_DISABLED is not set to "1".
         """
         job_data = json.loads(payload)
+
+        if 'schema_version' in job_data and job_data['schema_version'] != _JOB_SCHEMA_VERSION:
+            raise ValueError(f'Unsupported RouteMQ job schema version: {job_data["schema_version"]}')
 
         if os.getenv('ROUTEMQ_JOB_ALLOWLIST_DISABLED') != '1':
             if job_data['class'] not in cls._allowed_classes:

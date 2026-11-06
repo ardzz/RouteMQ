@@ -1,14 +1,15 @@
 import asyncio
 import json
 import unittest
-from importlib import import_module
+from importlib.metadata import distribution
+from pathlib import Path
 from typing import Any
 
 import paho.mqtt.client as mqtt_client
 from paho.mqtt.enums import CallbackAPIVersion
 
 from routemq.router import Router
-from tests.integration.helpers import DockerIntegrationTestCase
+from tests.integration.helpers import DockerIntegrationTestCase, require_integration_dependency
 
 
 class MqttBrokerIntegrationTests(DockerIntegrationTestCase, unittest.IsolatedAsyncioTestCase):
@@ -19,12 +20,27 @@ class MqttBrokerIntegrationTests(DockerIntegrationTestCase, unittest.IsolatedAsy
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()
-        mosquitto_container = import_module('testcontainers.mqtt').MosquittoContainer
-        cls.container = mosquitto_container('eclipse-mosquitto:2.0.18')
+        docker_container = require_integration_dependency(cls.__name__, 'testcontainers.core.container').DockerContainer
+        log_message_wait_strategy = require_integration_dependency(
+            cls.__name__, 'testcontainers.core.wait_strategies'
+        ).LogMessageWaitStrategy
+        config_file = Path(
+            str(
+                distribution('testcontainers').locate_file(
+                    'testcontainers/mqtt/testcontainers-mosquitto-default-configuration.conf'
+                )
+            )
+        )
+        cls.container = (
+            docker_container('eclipse-mosquitto:2.0.18')
+            .with_exposed_ports(1883)
+            .with_volume_mapping(config_file, '/mosquitto/config/mosquitto.conf')
+            .waiting_for(log_message_wait_strategy(r'mosquitto version \d+\.\d+\.\d+ running').with_startup_timeout(30))
+        )
         cls.container.start()
         cls.addClassCleanup(cls.container.stop)
         cls.broker_host = cls.container.get_container_host_ip()
-        cls.broker_port = int(cls.container.get_exposed_port(cls.container.MQTT_PORT))
+        cls.broker_port = int(cls.container.get_exposed_port(1883))
 
     async def test_router_dispatches_topic_with_extracted_params(self) -> None:
         router = Router()

@@ -4,6 +4,9 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
+
 from routemq.metrics.registry import DEFAULT_HISTOGRAM_BUCKETS
 
 
@@ -251,18 +254,18 @@ def load_database_connection_settings(env: Mapping[str, str] | None = None) -> D
 
     values = _environment(env)
     explicit_url = env_optional_str(values, 'DATABASE_URL')
-    connection = _parse_database_connection(values.get('DB_CONNECTION'))
     if explicit_url:
-        connection = _connection_from_database_url(explicit_url) or connection
-    explicit_selector = bool(values.get('DB_CONNECTION'))
-    enabled = env_bool(values, 'ENABLE_MYSQL', True) or bool(explicit_url) or explicit_selector
-    if explicit_url:
+        normalized_url = _normalize_database_url(explicit_url)
         return DatabaseConnectionSettings(
-            enabled=enabled,
-            connection=connection,
-            url=_normalize_database_url(explicit_url),
+            enabled=True,
+            connection=_validate_database_url(normalized_url),
+            url=normalized_url,
             auto_create_tables=env_bool(values, 'DB_AUTO_CREATE_TABLES', False),
         )
+
+    connection = _parse_database_connection(values.get('DB_CONNECTION'))
+    explicit_selector = bool(values.get('DB_CONNECTION'))
+    enabled = env_bool(values, 'ENABLE_MYSQL', True) or explicit_selector
 
     host = env_str(values, 'DB_HOST', 'localhost')
     port = env_str(values, 'DB_PORT', '5432' if connection == 'postgres' else '3306')
@@ -285,7 +288,7 @@ def _parse_database_connection(value: str | None) -> str:
     if normalized == 'postgresql':
         return 'postgres'
     if normalized not in _DATABASE_CONNECTIONS:
-        return 'mysql'
+        raise ValueError(f'DB_CONNECTION has unsupported value {normalized!r}')
     return normalized
 
 
@@ -301,13 +304,18 @@ def _normalize_database_url(url: str) -> str:
     return url
 
 
-def _connection_from_database_url(url: str) -> str | None:
-    normalized = url.lower()
-    if normalized.startswith(('postgresql://', 'postgres://', 'postgresql+asyncpg://')):
-        return 'postgres'
-    if normalized.startswith(('mysql://', 'mysql+aiomysql://')):
+def _validate_database_url(url: str) -> str:
+    try:
+        parsed = make_url(url)
+    except ArgumentError as exc:
+        raise ValueError('DATABASE_URL must be a valid SQLAlchemy URL') from exc
+
+    backend = parsed.get_backend_name()
+    if backend == 'mysql' and parsed.drivername == 'mysql+aiomysql':
         return 'mysql'
-    return None
+    if backend == 'postgresql' and parsed.drivername == 'postgresql+asyncpg':
+        return 'postgres'
+    raise ValueError('DATABASE_URL must use mysql+aiomysql or postgresql+asyncpg')
 
 
 def _database_password(env: Mapping[str, str]) -> str:

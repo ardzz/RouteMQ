@@ -77,10 +77,6 @@ def _install_tracebacks():
         _rich_install_traceback(show_locals=True)
 
 
-# Enable nested event loops for IPython compatibility
-nest_asyncio.apply()
-
-
 def _make_repl_helpers(console):
     """Return REPL helper functions that use Rich for styled output."""
     import json as _json

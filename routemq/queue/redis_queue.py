@@ -109,11 +109,11 @@ class RedisQueue(QueueDriver):
             logger.error(f'Failed to migrate delayed jobs: {str(e)}')
             # Audit Accept: best-effort delayed migration; the next poll retries migration.
 
-    async def pop(self, queue: str = 'default') -> Optional[dict]:
+    async def pop(self, queue: str = 'default') -> dict[str, object] | None:
         """Pop the next available job from the queue."""
         if not self.redis.is_enabled():
             logger.error('Cannot pop job from Redis queue - Redis is disabled')
-            return None
+            raise RuntimeError('Redis is disabled. Enable it to use RedisQueue.')
 
         client = cast(Any, self.redis.get_client())
         try:
@@ -148,8 +148,7 @@ class RedisQueue(QueueDriver):
 
         except Exception as e:
             logger.error(f'Failed to pop job from Redis queue: {str(e)}')
-            # Audit Accept: polling treats backend errors as no job after logging.
-            return None
+            raise RuntimeError(f'Failed to pop job from Redis queue: {e}') from e
 
     async def release(
         self,

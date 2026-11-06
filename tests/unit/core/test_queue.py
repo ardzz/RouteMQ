@@ -1,7 +1,7 @@
 import json
 import os
 import unittest
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -46,6 +46,11 @@ Job.register(FailingQueueTestJob)
 
 
 class QueueTestCase(unittest.IsolatedAsyncioTestCase):
+    _env: dict[str, str] = {}
+    _manager_instance: QueueManager | None = None
+    _manager_driver: QueueDriver | None = None
+    _manager_default: str = QueueManager._default_connection
+
     def setUp(self) -> None:
         self._env = dict(os.environ)
         os.environ.pop('ENABLE_REDIS', None)
@@ -75,7 +80,7 @@ class TestQueueManager(QueueTestCase):
 
         self.assertIsInstance(driver, RedisQueue)
 
-    def test_get_driver_falls_back_to_database_when_redis_disabled(self) -> None:
+    def test_get_driver_keeps_redis_when_redis_disabled(self) -> None:
         manager = QueueManager()
         redis_manager = MagicMock()
         redis_manager.is_enabled.return_value = False
@@ -84,9 +89,9 @@ class TestQueueManager(QueueTestCase):
             with patch.object(Model, '_is_enabled', True):
                 driver = manager.get_driver('redis')
 
-        self.assertIsInstance(driver, DatabaseQueue)
+        self.assertIsInstance(driver, RedisQueue)
 
-    def test_resolve_connection_falls_back_to_database_when_redis_disabled(self) -> None:
+    def test_resolve_connection_keeps_redis_when_redis_disabled(self) -> None:
         manager = QueueManager()
         redis_manager = MagicMock()
         redis_manager.is_enabled.return_value = False
@@ -95,7 +100,7 @@ class TestQueueManager(QueueTestCase):
             with patch.object(Model, '_is_enabled', True):
                 connection = manager._resolve_connection('redis')
 
-        self.assertEqual(connection, 'database')
+        self.assertEqual(connection, 'redis')
 
     def test_get_driver_selects_database_when_configured(self) -> None:
         manager = QueueManager()
@@ -112,15 +117,16 @@ class TestQueueManager(QueueTestCase):
             with self.assertRaisesRegex(RuntimeError, 'database integration is disabled'):
                 manager.get_driver('database')
 
-    def test_resolve_connection_raises_when_redis_and_database_disabled(self) -> None:
+    def test_resolve_connection_keeps_redis_when_redis_and_database_disabled(self) -> None:
         manager = QueueManager()
         redis_manager = MagicMock()
         redis_manager.is_enabled.return_value = False
 
         with patch('routemq.queue.queue_manager.RedisManager', return_value=redis_manager):
             with patch.object(Model, '_is_enabled', False):
-                with self.assertRaisesRegex(RuntimeError, 'database integration is disabled'):
-                    manager._resolve_connection('redis')
+                connection = manager._resolve_connection('redis')
+
+        self.assertEqual(connection, 'redis')
 
     async def test_push_serializes_job_to_expected_backend(self) -> None:
         manager = QueueManager()
@@ -390,7 +396,7 @@ class TestDatabaseQueue(QueueTestCase):
     async def test_pop_reserves_and_returns_database_job(self) -> None:
         database_queue = DatabaseQueue()
         session = self.make_session()
-        job = QueueJob(queue='db', payload='payload', attempts=0, available_at=datetime.utcnow())
+        job = QueueJob(queue='db', payload='payload', attempts=0, available_at=datetime.now(UTC))
         job.id = 42
         result = MagicMock()
         result.scalars.return_value.first.return_value = job
@@ -402,6 +408,7 @@ class TestDatabaseQueue(QueueTestCase):
 
         self.assertEqual(job_data, {'id': 42, 'payload': 'payload', 'attempts': 1})
         self.assertIsNotNone(job.reserved_at)
+        self.assertIs(job.reserved_at.tzinfo, UTC)
         session.commit.assert_awaited_once()
         session.refresh.assert_awaited_once_with(job)
 
@@ -473,7 +480,7 @@ class TestQueueModels(unittest.TestCase):
         self.assertTrue(expected_fields.issubset(QueueFailedJob.__table__.columns.keys()))
 
     def test_queue_models_can_be_constructed_without_session(self) -> None:
-        available_at = datetime.utcnow()
+        available_at = datetime.now(UTC)
         queue_job = QueueJob(queue='default', payload='payload', attempts=0, available_at=available_at)
         failed_job = QueueFailedJob(
             connection='redis',
@@ -485,6 +492,7 @@ class TestQueueModels(unittest.TestCase):
 
         self.assertEqual(queue_job.queue, 'default')
         self.assertEqual(queue_job.payload, 'payload')
+        self.assertIs(queue_job.available_at.tzinfo, UTC)
         self.assertEqual(failed_job.connection, 'redis')
         self.assertEqual(failed_job.exception, 'RuntimeError: boom')
 

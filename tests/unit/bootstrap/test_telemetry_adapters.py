@@ -126,7 +126,10 @@ class ClickHouseTelemetryAdapterTests(unittest.IsolatedAsyncioTestCase):
         client = _FakeClickHouseClient()
         get_async = AsyncMock(return_value=client)
         adapter = ClickHouseTelemetryAdapter('http://user:pass@clickhouse:9000/iot')
-        with patch('routemq.tsdb.telemetry_adapters.clickhouse_connect.get_async_client', new=get_async):
+        with (
+            patch('routemq.tsdb.telemetry_adapters.CLICKHOUSE_AVAILABLE', True),
+            patch('routemq.tsdb.telemetry_adapters.clickhouse_connect', MagicMock(get_async_client=get_async)),
+        ):
             await adapter.connect()
 
         self.assertIs(adapter._client, client)

@@ -184,6 +184,31 @@ class TestJobSerialization(unittest.TestCase):
             (data['max_tries'], data['timeout'], data['retry_after'], data['queue']), (3, 60, 0, 'serialization')
         )
 
+    def test_serialize_emits_routemq_job_v1_envelope(self) -> None:
+        data: dict[str, Any] = json.loads(SerializableJob().serialize())
+
+        self.assertEqual(data['schema_version'], 'routemq.job.v1')
+        self.assertEqual(
+            set(data),
+            {
+                'schema_version',
+                'class',
+                'data',
+                'observability',
+                'max_tries',
+                'timeout',
+                'retry_after',
+                'retry_backoff_enabled',
+                'retry_backoff_max_delay',
+                'retry_backoff_jitter',
+                'queue',
+            },
+        )
+        self.assertNotIn('job_id', data)
+        self.assertNotIn('attempts', data)
+        self.assertNotIn('job_id', data['data'])
+        self.assertNotIn('attempts', data['data'])
+
     def test_get_retry_delay_uses_fixed_delay_without_backoff(self) -> None:
         job = SerializableJob()
         job.retry_after = 7

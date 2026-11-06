@@ -2,9 +2,11 @@ import logging
 import os
 import unittest
 import asyncio
+import json
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from routemq.job import Job
 from routemq.queue.queue_worker import QueueWorker
 
 
@@ -32,6 +34,11 @@ class _DummyJob:
 
     def get_retry_delay(self, attempts: int, **kwargs: Any) -> float:
         return self.retry_after
+
+
+class _RegisteredV2Job(Job):
+    async def handle(self) -> None:
+        pass
 
 
 class _WorkerSignalGuard(unittest.IsolatedAsyncioTestCase):
@@ -229,6 +236,45 @@ class QueueWorkerProcessJobTests(_WorkerSignalGuard):
             await worker._process_job({'id': 'j1', 'payload': 'p', 'attempts': 1})
 
         self.assertGreaterEqual(worker.driver.heartbeat.await_count, 1)
+
+    async def test_unknown_schema_version_is_terminal_corruption(self) -> None:
+        worker = self._make_worker()
+        worker.driver = MagicMock()
+        worker.driver.delete = AsyncMock()
+        worker.driver.release = AsyncMock()
+        worker.driver.failed = AsyncMock()
+        worker._run_job_with_shutdown_grace = AsyncMock()
+        worker._fail_job = AsyncMock()
+
+        payload_data = json.loads(_RegisteredV2Job().serialize())
+        payload_data['schema_version'] = 'routemq.job.v2'
+        unsupported_version_error = 'Unsupported RouteMQ job schema version: routemq.job.v2'
+        original_allowed_classes = Job._allowed_classes.copy()
+        Job.register(_RegisteredV2Job)
+        try:
+            with (
+                patch.object(Job, 'unserialize', wraps=Job.unserialize) as unserialize,
+                patch('routemq.queue.queue_worker.logger') as logger,
+            ):
+                await worker._process_job({'id': 'j1', 'payload': json.dumps(payload_data), 'attempts': 1})
+        finally:
+            Job._allowed_classes.clear()
+            Job._allowed_classes.update(original_allowed_classes)
+
+        worker._run_job_with_shutdown_grace.assert_not_awaited()
+        worker._fail_job.assert_not_awaited()
+        worker.driver.delete.assert_awaited_once_with('j1', 'default')
+        worker.driver.release.assert_not_awaited()
+        worker.driver.failed.assert_not_awaited()
+        self.assertEqual(unserialize.call_count, 2)
+        self.assertEqual(
+            [call.args[0] for call in logger.error.call_args_list],
+            [
+                f'Job j1 failed: {unsupported_version_error}',
+                f'Failed to unserialize job j1: {unsupported_version_error}',
+            ],
+        )
+        self.assertIsNone(worker.current_job_id)
 
 
 class QueueWorkerHeartbeatTests(_WorkerSignalGuard):

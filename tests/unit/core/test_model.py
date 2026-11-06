@@ -1,5 +1,5 @@
 import os
-from typing import Any, cast
+from typing import Any, TypedDict, cast
 import unittest
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -21,7 +21,21 @@ DEFAULT_ENGINE_KWARGS = {
 }
 
 
+class ConfigureOverrides(TypedDict, total=False):
+    pool_size: int
+    max_overflow: int
+    pool_timeout: int
+    pool_recycle: int
+    pool_pre_ping: bool
+    pool_use_lifo: bool
+    pool_class: str
+
+
 class TestModelLifecycle(unittest.IsolatedAsyncioTestCase):
+    _original_engine: object = None
+    _original_session_factory: object = None
+    _original_is_enabled = False
+
     def setUp(self) -> None:
         self._original_engine = Model._engine
         self._original_session_factory = Model._session_factory
@@ -53,7 +67,7 @@ class TestModelLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(Model._is_enabled)
 
     def test_configure_passes_pool_kwargs_to_engine(self) -> None:
-        cases = {
+        cases: dict[str, ConfigureOverrides] = {
             'pool_size': {'pool_size': 8},
             'max_overflow': {'max_overflow': 4},
             'pool_timeout': {'pool_timeout': 12},
@@ -149,6 +163,73 @@ class TestModelLifecycle(unittest.IsolatedAsyncioTestCase):
         await Model.create_tables()
 
         engine.begin.assert_not_called()
+
+    async def test_validate_connection_executes_health_check_and_inspects_required_tables(self) -> None:
+        connection = MagicMock(name='connection')
+        connection.execute = AsyncMock()
+        connection.run_sync = AsyncMock(return_value=['queue_jobs', 'queue_failed_jobs'])
+        connect_context = MagicMock(name='connect_context')
+        connect_context.__aenter__ = AsyncMock(return_value=connection)
+        connect_context.__aexit__ = AsyncMock(return_value=None)
+        engine = MagicMock(name='engine')
+        engine.connect.return_value = connect_context
+        Model._engine = engine
+        Model._is_enabled = True
+
+        with patch.object(Base.metadata, 'create_all') as create_all:
+            await Model.validate_connection(required_tables=('queue_jobs', 'queue_failed_jobs'))
+
+        engine.connect.assert_called_once_with()
+        connection.execute.assert_awaited_once()
+        self.assertEqual(str(connection.execute.await_args.args[0]), 'SELECT 1')
+        connection.run_sync.assert_awaited_once()
+        engine.begin.assert_not_called()
+        create_all.assert_not_called()
+
+    async def test_validate_connection_wraps_context_entry_failure_with_database_name(self) -> None:
+        connection_error = OSError('connection refused')
+        connect_context = MagicMock(name='connect_context')
+        connect_context.__aenter__ = AsyncMock(side_effect=connection_error)
+        connect_context.__aexit__ = AsyncMock(return_value=None)
+        engine = MagicMock(name='engine')
+        engine.connect.return_value = connect_context
+        Model._engine = engine
+        Model._is_enabled = True
+
+        with (
+            patch.object(Model, '_db_system', 'postgresql'),
+            patch.object(Base.metadata, 'create_all') as create_all,
+            self.assertRaises(RuntimeError) as raised,
+        ):
+            await Model.validate_connection()
+
+        self.assertIn('postgresql', str(raised.exception).lower())
+        self.assertIs(raised.exception.__cause__, connection_error)
+        engine.begin.assert_not_called()
+        create_all.assert_not_called()
+
+    async def test_validate_connection_lists_all_missing_required_tables(self) -> None:
+        connection = MagicMock(name='connection')
+        connection.execute = AsyncMock()
+        connection.run_sync = AsyncMock(return_value=[])
+        connect_context = MagicMock(name='connect_context')
+        connect_context.__aenter__ = AsyncMock(return_value=connection)
+        connect_context.__aexit__ = AsyncMock(return_value=None)
+        engine = MagicMock(name='engine')
+        engine.connect.return_value = connect_context
+        Model._engine = engine
+        Model._is_enabled = True
+
+        with (
+            patch.object(Base.metadata, 'create_all') as create_all,
+            self.assertRaises(RuntimeError) as raised,
+        ):
+            await Model.validate_connection(required_tables=('queue_jobs', 'queue_failed_jobs'))
+
+        self.assertIn('queue_jobs', str(raised.exception))
+        self.assertIn('queue_failed_jobs', str(raised.exception))
+        engine.begin.assert_not_called()
+        create_all.assert_not_called()
 
     async def test_cleanup_disposes_engine_and_resets_state(self) -> None:
         engine = MagicMock(name='engine')

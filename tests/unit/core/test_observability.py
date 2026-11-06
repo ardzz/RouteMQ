@@ -307,6 +307,7 @@ class MqttObservabilityTests(ObservabilityTestCase):
             broker_config={'broker': 'localhost', 'port': 1883},
             group_name='workers',
         )
+        self.addCleanup(worker._stop_dispatch_loop)
         seen: dict[str, Any] = {}
         spans: list[Any] = []
         observability.register_span_hook(spans.append)
@@ -477,6 +478,7 @@ class DbSpanTests(ObservabilityTestCase):
         Model._server_port = 3306
 
         mock_session = AsyncMock()
+        mock_session.add = MagicMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=False)
         Model._session_factory = MagicMock(return_value=mock_session)
@@ -485,6 +487,7 @@ class DbSpanTests(ObservabilityTestCase):
 
         try:
             await queue.push('{"class": "test", "data": {}}', queue='default')
+            mock_session.add.assert_called_once()
 
             span = next(s for s in spans if s.name == 'insert queue_jobs')
             self.assertEqual(span.kind, 'client')

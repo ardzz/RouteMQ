@@ -26,6 +26,21 @@ RUN_INTEGRATION_TESTS=1 uv run python run_tests.py
 
 If `RUN_INTEGRATION_TESTS` is not set, integration classes skip. If Docker is unavailable, they also skip instead of failing.
 
+## Required Integration Release Gate
+
+Normal Docker-backed tests remain opt-in with `RUN_INTEGRATION_TESTS=1`. The
+Production-Proven v1 evidence contract requires a future strict gate:
+
+```bash
+RUN_INTEGRATION_TESTS=required uv run python run_tests.py
+```
+
+When that selector is implemented, it must fail the required-integration run if
+Docker is unavailable, a required extra is missing, Docker-backed tests are
+disabled, or any required integration test skips. This is required release-gate
+behavior, not current behavior. Today, unavailable Docker and an unset
+`RUN_INTEGRATION_TESTS` selector still skip integration classes.
+
 ## Requirements
 
 - Docker daemon available to the current user

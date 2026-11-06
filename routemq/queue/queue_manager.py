@@ -1,6 +1,6 @@
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from importlib import import_module
 from importlib.metadata import entry_points
 from typing import Optional
@@ -18,12 +18,12 @@ QueueDriverFactory = Callable[[], QueueDriver]
 QUEUE_DRIVER_ENTRY_POINT_GROUP = 'routemq.queue_drivers'
 
 
-def _lifecycle(event: str, attributes: dict) -> None:
+def _lifecycle(event: str, attributes: Mapping[str, object]) -> None:
     """Emit an observability lifecycle event."""
     import_module('routemq.observability').lifecycle(event, attributes)
 
 
-def _start_span(name: str, attributes: dict, *, kind: str):
+def _start_span(name: str, attributes: Mapping[str, object], *, kind: str):
     """Start an observability span without importing at module load time."""
 
     return import_module('routemq.observability').start_span(name, attributes, kind=kind)
@@ -78,6 +78,21 @@ class QueueManager:
             raise TypeError(f"Queue driver factory for '{connection}' did not return a QueueDriver instance")
 
         return driver
+
+    async def validate_connection(self, connection: Optional[str] = None) -> str:
+        """Validate the selected queue connection."""
+        resolved = self._resolve_connection(connection)
+        if resolved == 'database':
+            await Model.validate_connection(required_tables=('queue_jobs', 'queue_failed_jobs'))
+            return 'database'
+
+        if resolved != 'redis':
+            return resolved
+
+        if await RedisManager().initialize():
+            return 'redis'
+
+        raise RuntimeError('Redis queue connection is not available')
 
     @classmethod
     def register_driver(cls, name: str, factory: type[QueueDriver] | QueueDriverFactory) -> None:
@@ -139,17 +154,12 @@ class QueueManager:
         cls._driver_factories.setdefault('database', DatabaseQueue)
 
     def _resolve_connection(self, connection: Optional[str] = None) -> str:
-        """Resolve the requested queue connection, including Redis-to-database fallback."""
+        """Resolve the requested queue connection."""
         self._ensure_driver_registry_loaded()
         resolved = connection or self._default_connection
 
         if resolved == 'redis':
-            redis_manager = RedisManager()
-            if redis_manager.is_enabled():
-                return 'redis'
-
-            logger.warning('Redis is not available, falling back to database queue')
-            resolved = 'database'
+            return 'redis'
 
         if resolved == 'database':
             if not Model._is_enabled:
@@ -310,18 +320,20 @@ class QueueManager:
         driver = self.get_driver(connection)
         return await driver.size(queue)
 
-    async def stats(self, queue: str = 'default', connection: Optional[str] = None) -> dict:
+    async def stats(self, queue: str = 'default', connection: Optional[str] = None) -> dict[str, object]:
         """Get queue-depth statistics and publish them to observability hooks."""
         driver = self.get_driver(connection)
         stats = await driver.stats(queue)
         _lifecycle('queue.stats', stats)
         return stats
 
-    async def list_failed_jobs(self, queue: str | None = None, connection: Optional[str] = None) -> list[dict]:
+    async def list_failed_jobs(
+        self, queue: str | None = None, connection: Optional[str] = None
+    ) -> list[dict[str, object]]:
         driver = self.get_driver(connection)
         return await driver.list_failed_jobs(queue)
 
-    async def get_failed_job(self, job_id: int | str, connection: Optional[str] = None) -> dict | None:
+    async def get_failed_job(self, job_id: int | str, connection: Optional[str] = None) -> dict[str, object] | None:
         driver = self.get_driver(connection)
         return await driver.get_failed_job(job_id)
 

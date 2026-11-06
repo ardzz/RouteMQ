@@ -2,15 +2,16 @@ import os
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from routemq.model import Model
 from routemq.queue.queue_driver import QueueDriver
-from routemq.queue.queue_manager import QueueManager
+from routemq.queue.queue_manager import QueueDriverFactory, QueueManager
 
 
 class FakeQueueDriver(QueueDriver):
     async def push(self, payload: str, queue: str = 'default', delay: int = 0) -> None:
         pass
 
-    async def pop(self, queue: str = 'default') -> dict | None:
+    async def pop(self, queue: str = 'default') -> dict[str, object] | None:
         return None
 
     async def release(self, job_id: int | str, queue: str, delay: int = 0) -> None:
@@ -40,6 +41,13 @@ class FakeEntryPoint:
 
 
 class QueueManagerExtraTestCase(unittest.IsolatedAsyncioTestCase):
+    _env: dict[str, str] = {}
+    _manager_instance: QueueManager | None = None
+    _manager_driver: QueueDriver | None = None
+    _manager_default: str = QueueManager._default_connection
+    _manager_factories: dict[str, QueueDriverFactory] = {}
+    _manager_entry_points_loaded: bool = False
+
     def setUp(self) -> None:
         self._env = dict(os.environ)
         os.environ.pop('ENABLE_REDIS', None)
@@ -74,6 +82,91 @@ class QueueManagerExtraTestCase(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaisesRegex(RuntimeError, 'Unknown queue connection: nonexistent'):
             manager._resolve_connection('nonexistent')
+
+    async def test_validate_connection_raises_when_selected_redis_cannot_initialize(self) -> None:
+        manager = QueueManager()
+        redis_manager = MagicMock()
+        redis_manager.initialize = AsyncMock(return_value=False)
+        database_factory = MagicMock(return_value=FakeQueueDriver())
+        model = MagicMock(spec=())
+        QueueManager._driver_factories = {'database': database_factory}
+
+        with (
+            patch('routemq.queue.queue_manager.RedisManager', return_value=redis_manager),
+            patch('routemq.queue.queue_manager.Model', model),
+        ):
+            with self.assertRaisesRegex(RuntimeError, 'Redis'):
+                await manager.validate_connection('redis')
+
+        redis_manager.initialize.assert_awaited_once()
+        database_factory.assert_not_called()
+        self.assertEqual(model.mock_calls, [])
+
+    async def test_validate_connection_returns_redis_when_initialization_succeeds(self) -> None:
+        manager = QueueManager()
+        redis_manager = MagicMock()
+        redis_manager.initialize = AsyncMock(return_value=True)
+
+        with patch('routemq.queue.queue_manager.RedisManager', return_value=redis_manager):
+            connection = await manager.validate_connection('redis')
+
+        self.assertEqual(connection, 'redis')
+        redis_manager.initialize.assert_awaited_once()
+
+    async def test_validate_connection_returns_database_without_touching_redis(self) -> None:
+        manager = QueueManager()
+
+        with (
+            patch.object(Model, '_is_enabled', True),
+            patch.object(Model, 'validate_connection', new_callable=AsyncMock) as validate_connection,
+            patch('routemq.queue.queue_manager.RedisManager') as redis_manager,
+        ):
+            connection = await manager.validate_connection('database')
+
+        self.assertEqual(connection, 'database')
+        validate_connection.assert_awaited_once_with(
+            required_tables=('queue_jobs', 'queue_failed_jobs')
+        )
+        redis_manager.assert_not_called()
+
+    async def test_validate_connection_awaits_database_model_validation(self) -> None:
+        manager = QueueManager()
+
+        with (
+            patch.object(Model, '_is_enabled', True),
+            patch.object(Model, 'validate_connection', new_callable=AsyncMock) as validate_connection,
+        ):
+            connection = await manager.validate_connection('database')
+
+        self.assertEqual(connection, 'database')
+        validate_connection.assert_awaited_once_with(
+            required_tables=('queue_jobs', 'queue_failed_jobs')
+        )
+
+    async def test_validate_connection_propagates_database_model_validation_error(self) -> None:
+        manager = QueueManager()
+
+        with (
+            patch.object(Model, '_is_enabled', True),
+            patch.object(
+                Model,
+                'validate_connection',
+                new_callable=AsyncMock,
+                side_effect=RuntimeError('database validation failed'),
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, 'database validation failed'):
+                await manager.validate_connection('database')
+
+    async def test_validate_connection_returns_custom_connection_without_redis_validation(self) -> None:
+        manager = QueueManager()
+        QueueManager.register_driver('fake', FakeQueueDriver)
+
+        with patch('routemq.queue.queue_manager.RedisManager') as redis_manager:
+            connection = await manager.validate_connection('fake')
+
+        self.assertEqual(connection, 'fake')
+        redis_manager.assert_not_called()
 
     async def test_size_delegates_to_driver(self) -> None:
         manager = QueueManager()

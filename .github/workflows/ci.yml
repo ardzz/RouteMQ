@@ -17,11 +17,14 @@ permissions:
 
 jobs:
   test:
-    name: test
+    name: test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    env:
+      PYTHONWARNINGS: error
+      RUN_INTEGRATION_TESTS: required
     strategy:
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -37,8 +40,6 @@ jobs:
         run: uv sync --all-extras --dev
 
       - name: Run tests
-        env:
-          RUN_INTEGRATION_TESTS: "1"
         run: uv run python run_tests.py
 
   lint:
@@ -198,3 +199,33 @@ jobs:
           grep -q 'ENABLE_REDIS=true' demo/.env
           deactivate
           echo "install-test PASSED"
+
+  install-profile:
+    name: install-profile ${{ matrix.profile }} (Python ${{ matrix.python-version }})
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - python-version: '3.12'
+            profile: base
+          - python-version: '3.12'
+            profile: redis
+          - python-version: '3.12'
+            profile: postgres
+          - python-version: '3.12'
+            profile: clickhouse
+          - python-version: '3.12'
+            profile: all
+          - python-version: '3.13'
+            profile: all
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Build wheel
+        run: rm -rf dist && uv build --wheel
+      - name: Check isolated install profile
+        run: uv run python scripts/check_install_profile.py --profile ${{ matrix.profile }} --python python${{ matrix.python-version }}

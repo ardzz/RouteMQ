@@ -163,10 +163,32 @@ class DatabaseConnectionSettingsTests(unittest.TestCase):
 
         self.assertEqual(settings.url, 'mysql+aiomysql://root:legacy@localhost:3306/mqtt_framework')
 
-    def test_invalid_selector_falls_back_to_mysql(self) -> None:
-        settings = load_database_connection_settings({'DB_CONNECTION': 'sqlite'})
+    def test_invalid_selector_raises_with_config_key_and_value(self) -> None:
+        with self.assertRaisesRegex(ValueError, r'DB_CONNECTION.*sqlite'):
+            _ = load_database_connection_settings({'DB_CONNECTION': 'sqlite'})
 
-        self.assertEqual(settings.connection, 'mysql')
+    def test_invalid_database_urls_raise_with_config_key(self) -> None:
+        invalid_urls = (
+            'not-a-url',
+            'sqlite:///app.db',
+            'postgresql+psycopg2://u:p@db/app',
+        )
+
+        for url in invalid_urls:
+            with self.subTest(url=url):
+                with self.assertRaisesRegex(ValueError, r'DATABASE_URL'):
+                    _ = load_database_connection_settings({'DATABASE_URL': url})
+
+    def test_database_url_wins_over_unsupported_selector(self) -> None:
+        settings = load_database_connection_settings(
+            {
+                'DB_CONNECTION': 'sqlite',
+                'DATABASE_URL': 'postgres://u:p@db:5432/app',
+            }
+        )
+
+        self.assertEqual(settings.connection, 'postgres')
+        self.assertEqual(settings.url, 'postgresql+asyncpg://u:p@db:5432/app')
 
 
 class TelemetrySettingsTests(unittest.TestCase):
