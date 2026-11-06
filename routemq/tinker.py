@@ -275,7 +275,18 @@ class AsyncMagics(Magics):
     def arun(self, line):
         """Execute async code using line magic."""
         code = f'await {line}'
-        return self.shell.run_cell_async(code)
+        preprocessing_exc_tuple = None
+        try:
+            transformed_cell = self.shell.transform_cell(code)
+        except Exception:
+            # Audit Accept: IPython displays transform errors from preprocessing_exc_tuple, as run_cell does.
+            transformed_cell = code
+            preprocessing_exc_tuple = sys.exc_info()
+        return self.shell.run_cell_async(
+            code,
+            transformed_cell=transformed_cell,
+            preprocessing_exc_tuple=preprocessing_exc_tuple,
+        )
 
 
 class TinkerEnvironment:

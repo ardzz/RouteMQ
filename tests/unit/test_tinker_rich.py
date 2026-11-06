@@ -1,8 +1,19 @@
 import asyncio
+import atexit
+import builtins
+import io
+import os
+import subprocess
+import sys
+import tempfile
 import unittest
 from collections import namedtuple
+from contextlib import redirect_stdout
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _rich_available():
@@ -319,18 +330,75 @@ class TestTinkerEnvironmentSetup(unittest.IsolatedAsyncioTestCase):
         mock_plain.assert_called_once()
 
 
-class TestAsyncMagics(unittest.TestCase):
-    def test_arun_wraps_line_in_await(self):
+class TestAsyncMagics(unittest.IsolatedAsyncioTestCase):
+    def _isolated_shell(self):
+        from IPython.core.interactiveshell import InteractiveShell
+        from traitlets.config import Config
+
         from routemq.tinker import AsyncMagics
 
-        shell = MagicMock()
-        magics = AsyncMagics()
-        magics.shell = shell
+        ipython_dir = self.enterContext(tempfile.TemporaryDirectory())
+        # InteractiveShell and its traceback display set these process globals; restore them after the test.
+        for target, name in (
+            (builtins, '__IPYTHON__'),
+            (builtins, 'display'),
+            (sys, 'ps1'),
+            (sys, 'ps2'),
+            (sys, 'ps3'),
+            (sys, 'last_type'),
+            (sys, 'last_value'),
+            (sys, 'last_traceback'),
+            (sys, 'last_exc'),
+        ):
+            self.enterContext(patch.object(target, name, getattr(target, name, None), create=True))
+        config = Config()
+        config.HistoryManager.hist_file = ':memory:'
+        with patch.dict(os.environ):
+            os.environ.pop('VIRTUAL_ENV', None)
+            shell = InteractiveShell(ipython_dir=ipython_dir, config=config)
+        self.addCleanup(atexit.unregister, shell.atexit_operations)
+        self.addCleanup(shell.cleanup)
+        self.addCleanup(shell.atexit_operations)
+        shell.autoawait = True
+        shell.register_magics(AsyncMagics)
+        return shell
 
-        result = magics.arun('do_work()')
+    async def test_arun_awaits_user_coroutine_and_returns_its_value(self):
+        shell = self._isolated_shell()
+        expected = object()
 
-        shell.run_cell_async.assert_called_once_with('await do_work()')
-        self.assertIs(result, shell.run_cell_async.return_value)
+        async def fetch_answer():
+            await asyncio.sleep(0)
+            return expected
+
+        shell.push({'fetch_answer': fetch_answer})
+
+        with redirect_stdout(io.StringIO()):
+            result = await shell.run_line_magic('arun', 'fetch_answer()')
+
+        result.raise_error()
+        self.assertIs(result.result, expected)
+
+    async def test_arun_returns_transform_error_without_running_user_coroutine(self):
+        shell = self._isolated_shell()
+        failure = ValueError('transform rejected')
+        expected = object()
+
+        async def fetch_answer():
+            return expected
+
+        def reject(lines):
+            raise failure
+
+        shell.push({'fetch_answer': fetch_answer})
+        shell.input_transformers_cleanup.append(reject)
+
+        with redirect_stdout(io.StringIO()):
+            result = await shell.run_line_magic('arun', 'fetch_answer()')
+
+        self.assertIs(result.error_before_exec, failure)
+        self.assertIsNone(result.error_in_exec)
+        self.assertIsNone(result.result)
 
 
 class TestRichFallback(unittest.TestCase):
@@ -372,30 +440,42 @@ class TestRichFallback(unittest.TestCase):
         self.assertIn('run_async(session.commit())', printed)
 
 
-class TestTinkerStartup(unittest.TestCase):
-    def test_start_tinker_sync_suppresses_standard_application_banner(self):
-        from routemq.tinker import start_tinker_sync
+class TestTinkerCli(unittest.TestCase):
+    def test_routemq_tinker_runs_async_helper_and_exits_cleanly(self):
+        workdir = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        env = {
+            'PATH': os.environ.get('PATH', ''),
+            'HOME': str(workdir),
+            'IPYTHONDIR': str(workdir / 'ipython'),
+            'PYTHONPATH': str(PROJECT_ROOT),
+            'PYTHONIOENCODING': 'utf-8',
+            'ENABLE_MYSQL': 'false',
+        }
+        session = '\n'.join(
+            [
+                "print('namespace', type(app).__name__, Model._is_enabled, redis_manager)",
+                "print('run_async', run_async(asyncio.sleep(0, result=41)))",
+                'exit()',
+                '',
+            ]
+        )
 
-        original_run = asyncio.run
-        app = MagicMock()
-        env = MagicMock()
-        env.globals = {}
-        env.session = None
-        env.setup = AsyncMock()
-        shell = MagicMock()
+        completed = subprocess.run(
+            [sys.executable, '-m', 'routemq.cli', 'tinker'],
+            cwd=workdir,
+            env=env,
+            input=session,
+            capture_output=True,
+            encoding='utf-8',
+            timeout=60,
+            check=False,
+        )
 
-        with (
-            patch('routemq.tinker.Application', return_value=app) as application,
-            patch('routemq.tinker.TinkerEnvironment', return_value=env),
-            patch('routemq.tinker.TerminalInteractiveShell.instance', return_value=shell),
-            patch('routemq.tinker.embed'),
-            patch('routemq.tinker.asyncio.run', side_effect=original_run),
-            patch('builtins.print'),
-        ):
-            start_tinker_sync(env_file='custom.env')
-
-        application.assert_called_once_with(env_file='custom.env', show_banner=False, log_to_console=False)
-        env.setup.assert_awaited_once()
+        output = completed.stdout + completed.stderr
+        self.assertEqual(completed.returncode, 0, output)
+        self.assertIn('namespace Application False None', completed.stdout)
+        self.assertIn('run_async 41', completed.stdout)
+        self.assertNotIn('Traceback', output)
 
 
 if __name__ == '__main__':

@@ -58,12 +58,13 @@ related lifecycle events note that coverage explicitly.
 | `routemq/tinker.py:47` | `ImportError` | Accept | Rich is optional for the REPL; fallback remains functional. | N/A |
 | `routemq/tinker.py:61` | `ImportError` | Accept | Figlet banner is cosmetic; Rich tables still work. | N/A |
 | `routemq/tinker.py:158` | `TypeError` | Accept | Scalar REPL rows are rendered as a single value column. | N/A |
-| `routemq/tinker.py:314` | `RuntimeError` | Accept | No active REPL loop, so `asyncio.run` is the safe fallback. | N/A |
-| `routemq/tinker.py:364` | `ImportError as e` | Accept | Optional app model import failures are displayed to the REPL user. | N/A |
-| `routemq/tinker.py:367` | `Exception as e` | Accept | Tinker model discovery is convenience-only and prints a warning. | N/A |
-| `routemq/tinker.py:471` | `KeyboardInterrupt` | Accept | Interactive Ctrl+C exits cleanly. | N/A |
-| `routemq/tinker.py:474` | `Exception as e` | Accept | Interactive startup errors are printed with traceback for the user. | N/A |
-| `routemq/tinker.py:507` | `RuntimeError` | Accept | No running event loop; `asyncio.run` is the intended fallback. | N/A |
+| `routemq/tinker.py:281` | `Exception` | Accept | Not swallowed; an `%arun` input-transform failure is passed to `run_cell_async()` as `preprocessing_exc_tuple`, so IPython shows the traceback and returns it as `error_before_exec`, matching IPython's own `run_cell()`. | `tests/unit/test_tinker_rich.py::TestAsyncMagics::test_arun_returns_transform_error_without_running_user_coroutine` |
+| `routemq/tinker.py:325` | `RuntimeError` | Accept | No active REPL loop, so `asyncio.run` is the safe fallback. | N/A |
+| `routemq/tinker.py:375` | `ImportError as e` | Accept | Optional app model import failures are displayed to the REPL user. | N/A |
+| `routemq/tinker.py:378` | `Exception as e` | Accept | Tinker model discovery is convenience-only and prints a warning. | N/A |
+| `routemq/tinker.py:481` | `KeyboardInterrupt` | Accept | Interactive Ctrl+C exits cleanly. | N/A |
+| `routemq/tinker.py:484` | `Exception as e` | Accept | Interactive startup errors are printed with traceback for the user. | N/A |
+| `routemq/tinker.py:517` | `RuntimeError` | Accept | No running event loop; `asyncio.run` is the intended fallback. | N/A |
 | `routemq/settings.py:41` | `ValueError` | Accept | Selected settings intentionally keep legacy fallback behavior when requested; otherwise re-raise. | N/A |
 | `routemq/settings.py:55` | `ValueError` | Accept | Selected settings intentionally keep legacy fallback behavior when requested; otherwise re-raise. | N/A |
 | `routemq/scaffold/scaffolder.py:148` | `ImportError as exc` | Accept | Re-raised with actionable CLI extra requirement and original cause. | N/A |
@@ -144,7 +145,7 @@ and OUT OF SCOPE for this audit. Hook handler failures are logged at DEBUG insid
 
 ## Classification counts
 
-- Total `except` blocks audited: **87**
+- Total `except` blocks audited: **88**
 - Fix: **9**
 - Re-raise: **1**
-- Accept: **77**
+- Accept: **78**

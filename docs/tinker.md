@@ -169,10 +169,11 @@ result = await session.execute(select(Device))  # Don't do this in tinker
 
 ## Prerequisites
 
-Make sure you have the following dependencies installed:
+IPython (`>=8.20.0`) and `nest-asyncio` (`>=1.5.8`) are base dependencies of RouteMQ, so installing the package is enough. Add the `cli` extra for the Rich banner, tables, and print helpers:
 
 ```bash
-pip install IPython==8.16.1 nest-asyncio==1.5.8
+uv add routemq
+uv add "routemq[cli]"
 ```
 
 ## Configuration
@@ -302,3 +303,9 @@ result = await session.execute(select(Device))
 # ✅ Do this instead
 result = run_async(session.execute(select(Device)))
 ```
+
+### `AsyncMagics` in your own IPython shell
+
+The `routemq tinker` REPL does not support bare `await` or `%arun`; use `run_async()` there.
+
+`routemq.tinker.AsyncMagics` is for code that registers it on its own IPython shell. Its `%arun` magic returns the coroutine from IPython's `run_cell_async()` and passes the transformed cell that IPython 9.16 and later require. Await the coroutine to get an `ExecutionResult`: the expression value is in `result.result`, and an input-transform error is in `result.error_before_exec` instead of being raised.
